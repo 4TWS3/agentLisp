@@ -4,6 +4,7 @@ on:
   push:
     tags:
       - "v*"
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -44,7 +45,7 @@ jobs:
         working-directory: python
         shell: pwsh
         run: |
-          uv pip install pyinstaller
+          uv sync --extra dev
           uv run pyinstaller --onefile --name agentlisp agentlisp_runtime/cli.py
           $tag = "${{ github.ref_name }}"
           $src = Join-Path (Get-Location) "dist\agentlisp.exe"
@@ -100,7 +101,7 @@ jobs:
         working-directory: python
         run: |
           set -euo pipefail
-          uv pip install pyinstaller
+          uv sync --extra dev
           uv run pyinstaller --onefile --name agentlisp agentlisp_runtime/cli.py
           tag="${GITHUB_REF_NAME}"
           arch="$(uname -m)"
@@ -142,7 +143,8 @@ jobs:
           set -euo pipefail
           cd release-artifacts
           # 只校验二进制 / wheel / sdist 等产物，跳过已存在的 SHA256SUMS 递归问题
-          find . -maxdepth 1 -type f ! -name SHA256SUMS -printf '%f\n' | LC_ALL=C sort | xargs sha256sum > SHA256SUMS
+          # 兼容 GNU/BSD/Windows 三平台 find：不用 GNU-only -printf，用 sed 去 ./ 前缀
+          find . -maxdepth 1 -type f ! -name SHA256SUMS | LC_ALL=C sort | sed 's|^\./||' | xargs sha256sum > SHA256SUMS
           echo "--- SHA256SUMS ---"
           cat SHA256SUMS
 

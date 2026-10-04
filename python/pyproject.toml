@@ -25,6 +25,7 @@ dev = [
     "ruff>=0.3.0",
     "mypy>=1.8.0",
     "tox>=4.13.0",
+    "pyinstaller==6.10.0",
 ]
 doc = [
     "mkdocs>=1.5.0",
