@@ -4,8 +4,8 @@ AgentLisp v2.0 Temporal 长流程与人在回路 (HITL) 引擎 (host/workflow_te
 利用 Temporal 实现长流程挂起落盘与人在回路 Signal 唤醒审批机制。
 """
 
-import asyncio
 import logging
+from datetime import timedelta
 from typing import Any
 
 try:
@@ -74,10 +74,12 @@ if TEMPORAL_AVAILABLE:
                     return {"status": "rejected", "reason": "Human reviewer rejected execution."}
 
             logger.info("▶ [Temporal HITL 恢复] 审批通过，继续执行 Activity...")
+            # temporalio 1.x 要求所有 timeout 必须是 datetime.timedelta（不能是 float/None 且不能写成 deadline float），
+            # 否则 protobuf well_known_types.FromTimedelta 会报 AttributeError float has no attribute 'seconds'
             res = await workflow.execute_activity(
                 execute_tool_activity,
                 agent_request,
-                start_to_close_timeout=asyncio.get_event_loop().time() + 60,
+                start_to_close_timeout=timedelta(seconds=60),
             )
             return {"status": "success", "result": res}
 

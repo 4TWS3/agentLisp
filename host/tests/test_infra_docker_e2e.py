@@ -80,7 +80,8 @@ def test_nfr_rel_1_redis_checkpoint_default_ttl_86390(event_loop):
         # clean up
         await store._redis.delete(store._key(run_id))  # type: ignore[union-attr]
         try:
-            await store._redis.close()  # type: ignore[union-attr,attr-defined]
+            # redis-py >= 5.0.1: close() 标记为 Deprecated，使用 aclose()
+            await store._redis.aclose()  # type: ignore[union-attr,attr-defined]
         except Exception:
             pass
         return int(ttl), loaded
@@ -216,7 +217,6 @@ def test_nfr_sec_1b_temporal_suspend_signal_resume(event_loop):
             task_queue=task_queue,
             workflows=[wt.AgentLispHITLWorkflow],
             activities=[wt.execute_tool_activity],
-            shutdown_on_close=True,
         ):
             handle = await client.start_workflow(
                 wt.AgentLispHITLWorkflow.run,

@@ -29,29 +29,70 @@ services:
       timeout: 3s
       retries: 10
 
+  temporal-postgres:
+    image: postgres:16-alpine
+    container_name: agentlisp-temporal-postgres
+    restart: unless-stopped
+    environment:
+      - POSTGRES_USER=temporal
+      - POSTGRES_PASSWORD=temporal
+      - POSTGRES_DB=temporal
+      # temporalio/auto-setup 需要 default + visibility 两个库（见 /etc/temporal/config/config_template.yaml）
+      # 但 postgres 官方镜像一次 POSTGRES_DB 只建 1 个，这里用 initdb.d shell 脚本补 temporal_visibility
+    ports: []
+    volumes:
+      - temporal-pgdata:/var/lib/postgresql/data
+      - ./init-temporal-dbs.sh:/docker-entrypoint-initdb.d/10-init-temporal-dbs.sh:ro
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U temporal -d temporal && psql -U temporal -lqt | cut -d \\| -f 1 | grep -qw temporal_visibility",
+        ]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
   temporal:
     image: temporalio/auto-setup:1.24.0
     container_name: agentlisp-temporal
     restart: unless-stopped
     depends_on:
-      - redis
+      temporal-postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
     ports:
       - "7233:7233"
       - "8080:8080"
     environment:
-      - DB=sqlite
+      # /etc/temporal/config/config_template.yaml 只有这 4 个值才输出 datastores.default 段：
+      # cassandra | mysql8 | postgres12 | postgres12_pgx。DB=postgres/sqlite 会静默 defaultStore 缺段 → 崩溃
+      - DB=postgres12
+      - POSTGRES_SEEDS=temporal-postgres
+      - DB_PORT=5432
+      - POSTGRES_USER=temporal
+      - POSTGRES_PWD=temporal
+      - DBNAME=temporal
+      - VISIBILITY_DBNAME=temporal_visibility
       - TEMPORAL_CLI_ADDRESS=temporal:7233
       - WEB_UI_PORT=8080
       - FRONTEND_GRPC_PORT=7233
+      - DEFAULT_NAMESPACE=default
+      - SKIP_DEFAULT_NAMESPACE_CREATION=false
+      - NUM_HISTORY_SHARDS=4
     volumes:
       - temporal-data:/etc/temporal
-      - temporal-db:/var/lib/temporal
     healthcheck:
-      test: ["CMD-SHELL", "tctl --address localhost:7233 cluster health 2>/dev/null || exit 0"]
+      test:
+        [
+          "CMD-SHELL",
+          "tctl --address localhost:7233 cluster health 2>/dev/null || nc -z 127.0.0.1 7233 || exit 1",
+        ]
       interval: 10s
-      timeout: 10s
-      retries: 20
-      start_period: 20s
+      timeout: 5s
+      retries: 24
+      start_period: 45s
 
   jaeger:
     # 注意：建议原文 jaegertacing 拼写有误，已修正为 jaegertracing
@@ -74,7 +115,7 @@ services:
 volumes:
   redis-data:
   temporal-data:
-  temporal-db:
+  temporal-pgdata:
 
 networks:
   default:
