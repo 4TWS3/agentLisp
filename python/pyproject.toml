@@ -1,0 +1,80 @@
+[project]
+name = "agentlisp-runtime"
+version = "0.1.0"
+description = "Python runtime engine for Agent DSL - executes Scheme-defined agent behaviors"
+readme = "README.md"
+requires-python = ">=3.12"
+license = { text = "MIT" }
+authors = [
+    { name = "agentlisp" }
+]
+dependencies = [
+    "pydantic>=2.6.0",
+    "pyyaml>=6.0.1",
+    "jsonschema>=4.21.0",
+    "structlog>=24.1.0",
+    "typer>=0.9.0",
+    "rich>=13.7.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.23.0",
+    "pytest-cov>=4.1.0",
+    "ruff>=0.3.0",
+    "mypy>=1.8.0",
+    "tox>=4.13.0",
+]
+doc = [
+    "mkdocs>=1.5.0",
+    "mkdocs-material>=9.5.0",
+]
+
+[project.scripts]
+agentlisp = "agentlisp_runtime.cli:app"
+
+[build-system]
+requires = ["hatchling>=1.21.0"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["agentlisp_runtime"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = [
+    "E",
+    "F",
+    "W",
+    "I",
+    "N",
+    "UP",
+    "B",
+    "SIM",
+    "RUF",
+]
+ignore = [
+    "E501",
+]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+skip-magic-trailing-comma = false
+
+[tool.mypy]
+python_version = "3.12"
+warn_return_any = true
+warn_unused_configs = true
+strict = true
+exclude = ["tests/", "examples/"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["python/tests"]
+pythonpath = ["python"]
+addopts = "-v --cov=agentlisp_runtime --cov-report=term-missing"

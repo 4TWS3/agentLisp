@@ -1,0 +1,62 @@
+# agent dsl 示例配置（YAML）
+name: compliance-reviewer
+purpose: 政务项目申报书合规性审查 Agent
+
+tools:
+  - name: knowledge
+    description: 知识库检索工具
+    input_schema:
+      query: string
+      limit: number
+    output_schema:
+      hits: list
+      total: number
+
+  - name: compliance
+    description: 合规性校验工具
+    input_schema:
+      document: string
+      rules: list
+    output_schema:
+      pass: boolean
+      issues: list
+
+  - name: report
+    description: 报告生成工具
+    input_schema:
+      data: any
+      template: string
+    output_schema:
+      report: string
+      path: string
+
+workflows:
+  - name: document-review
+    triggers: [manual, schedule]
+    steps:
+      - id: collect
+        action:
+          type: atomic
+          name: search
+          target: knowledge
+          method: query
+          params: ["项目申报书", 50]
+        next: verify
+        condition: true
+
+      - id: verify
+        action:
+          type: atomic
+          name: check
+          target: compliance
+          method: verify
+          params: ["project-book.docx", ["rule-1", "rule-2", "rule-3"]]
+        next: report
+
+      - id: report
+        action:
+          type: atomic
+          name: generate
+          target: report
+          method: generate
+          params: [{"status": "final"}, "standard-template"]

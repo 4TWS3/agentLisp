@@ -1,0 +1,111 @@
+[project]
+name = "agentlisp"
+version = "2.0.0a1"
+description = "AgentLisp v2 - Racket-based Agent DSL compiler + Python ReAct Harness runtime + Cloud-native host glue"
+readme = "README.md"
+requires-python = ">=3.12"
+license = { text = "MIT" }
+authors = [
+    { name = "agentlisp" }
+]
+dependencies = [
+    "pydantic>=2.6.0",
+    "pyyaml>=6.0.1",
+    "jsonschema>=4.21.0",
+    "structlog>=24.1.0",
+    "typer>=0.9.0",
+    "rich>=13.7.0",
+]
+
+[project.optional-dependencies]
+legacy = [
+    "agentlisp-runtime @ file://python",
+]
+llm = [
+    "anthropic>=0.34.0",
+    "openai>=1.30.0",
+]
+mcp = [
+    "mcp>=1.0.0",
+]
+web = [
+    "fastapi>=0.110.0",
+    "uvicorn[standard]>=0.27.0",
+    "sse-starlette>=1.8.0",
+]
+durable = [
+    "temporalio>=1.7.0",
+    "redis>=5.0.0",
+]
+observability = [
+    "opentelemetry-api>=1.24.0",
+    "opentelemetry-sdk>=1.24.0",
+    "opentelemetry-exporter-otlp-proto-grpc>=1.24.0",
+]
+sandbox = [
+    "docker>=7.0.0",
+]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.23.0",
+    "pytest-cov>=4.1.0",
+    "ruff>=0.3.0",
+    "mypy>=1.8.0",
+    "tox>=4.13.0",
+    "httpx>=0.27.0",
+]
+all = [
+    "agentlisp[llm,mcp,web,durable,observability,sandbox,dev]",
+]
+
+[project.scripts]
+agentlisp = "agentlisp_runtime.cli:app"
+agentlisp2 = "runtime.cli:app"
+
+[build-system]
+requires = ["hatchling>=1.21.0"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["runtime", "host", "python/agentlisp_runtime"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = [
+    "E",
+    "F",
+    "W",
+    "I",
+    "N",
+    "UP",
+    "B",
+    "SIM",
+    "RUF",
+]
+ignore = [
+    "E501",
+]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+skip-magic-trailing-comma = false
+
+[tool.mypy]
+python_version = "3.12"
+warn_return_any = true
+warn_unused_configs = true
+strict = false
+exclude = ["tests/", "examples/", "python/tests/", "python/examples/"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["runtime/tests", "host/tests", "python/tests"]
+pythonpath = [".", "python"]
+addopts = "-v --cov=runtime --cov=host --cov=python/agentlisp_runtime --cov-report=term-missing"
+markers = [
+    "req(requirement_id): 标记用例绑定到的 SRS 需求 ID (ISO/IEC/IEEE 29148 Traceability)",
+]

@@ -1,0 +1,138 @@
+include:
+  - ../infra/docker-compose.infra.yml
+
+services:
+  app:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+      args:
+        PYTHON_VERSION: "3.12"
+        RACKET_VERSION: "8.12"
+        UV_VERSION: "0.4"
+    image: agentlisp:latest
+    container_name: agentlisp-app
+    env_file:
+      - ../config/.env
+    environment:
+      SCHEME_ROOT: /app/scheme
+      COMPILER_ROOT: /app/compiler
+      PYTHONPATH: /app/python:/app
+      PYTHONDONTWRITEBYTECODE: "1"
+      PYTHONUNBUFFERED: "1"
+      AGENTLISP_REDIS_URL: redis://redis:6379/0
+      AGENTLISP_TEMPORAL_ADDR: temporal:7233
+      AGENTLISP_OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4317
+    volumes:
+      - ../scheme:/app/scheme:ro
+      - ../compiler:/app/compiler:ro
+      - ../runtime:/app/runtime:ro
+      - ../host:/app/host:ro
+      - ../python:/app/python:ro
+      - ../config:/app/config:ro
+      - ../examples:/app/examples:ro
+      - agentlisp-data:/app/data
+    working_dir: /app
+    tty: true
+    stdin_open: true
+    command: agentlisp --help
+    networks:
+      - agentlisp-net
+      - default
+
+  dev:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.dev
+      args:
+        PYTHON_VERSION: "3.12"
+        RACKET_VERSION: "8.12"
+        UV_VERSION: "0.4"
+    image: agentlisp:dev
+    container_name: agentlisp-dev
+    env_file:
+      - ../config/.env
+    environment:
+      SCHEME_ROOT: /app/scheme
+      COMPILER_ROOT: /app/compiler
+      PYTHONPATH: /app/python:/app
+      LOG_LEVEL: DEBUG
+      AGENTLISP_RUNNER: direct
+      AGENTLISP_REDIS_URL: redis://redis:6379/0
+      AGENTLISP_TEMPORAL_ADDR: temporal:7233
+      AGENTLISP_OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4317
+    volumes:
+      - ../scheme:/app/scheme
+      - ../compiler:/app/compiler
+      - ../runtime:/app/runtime
+      - ../host:/app/host
+      - ../python:/app/python
+      - ../examples:/app/examples
+      - ../config:/app/config
+      - ../.git:/app/.git:ro
+      - agentlisp-data:/app/data
+      - uv-cache:/root/.cache/uv
+      - racket-cache:/root/.racket
+    working_dir: /app
+    tty: true
+    stdin_open: true
+    command: sh -c "uv sync --dev && raco pkg install --auto --batch --link /app/compiler 2>/dev/null || true && tail -f /dev/null"
+    networks:
+      - agentlisp-net
+      - default
+    profiles:
+      - dev
+
+  test:
+    extends:
+      service: dev
+    container_name: agentlisp-test
+    command: >
+      sh -c "
+        echo '=== Compiler / Scheme Tests ===' &&
+        raco test /app/compiler/tests/ &&
+        raco test /app/scheme/tests/ ;
+        echo '=== Runtime / Host / Legacy Python Tests ===' &&
+        cd /app &&
+        uv run pytest runtime/tests host/tests python/tests -v --no-cov 2>/dev/null ||
+        uv run pytest runtime host python/tests -v
+      "
+    profiles:
+      - test
+
+  example:
+    extends:
+      service: app
+    container_name: agentlisp-example
+    command: sh -c "python -u /app/python/examples/run_compliance_agent.py && echo '---' && python -u -m examples.dist.repair_agent"
+    profiles:
+      - example
+
+  gateway:
+    extends:
+      service: app
+    container_name: agentlisp-gateway
+    command: >
+      sh -c "
+        cd /app && uv pip install --quiet 'agentlisp[web]' >/dev/null 2>&1 || true ;
+        python -c '
+        from host.gateway import Gateway, serve
+        from examples.dist.repair_agent import DocumentRepairerHarness
+        gw = Gateway()
+        gw.register(\"document-repairer\", DocumentRepairerHarness())
+        serve(gw, host=\"0.0.0.0\", port=8000)
+        '
+      "
+    ports:
+      - "8000:8000"
+    profiles:
+      - gateway
+
+volumes:
+  agentlisp-data:
+  uv-cache:
+  racket-cache:
+
+networks:
+  agentlisp-net:
+    driver: bridge

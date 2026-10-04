@@ -1,0 +1,50 @@
+ARG PYTHON_VERSION=3.12
+ARG RACKET_VERSION=8.12
+ARG UV_VERSION=0.4
+ARG DEBIAN_VERSION=bookworm
+
+FROM python:${PYTHON_VERSION}-slim-${DEBIAN_VERSION}
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1 \
+    VIRTUAL_ENV=/app/.venv \
+    PATH="/root/.local/bin:/app/.venv/bin:/usr/local/bin:$PATH"
+
+ARG RACKET_VERSION
+ARG DEBIAN_VERSION
+ARG RACKET_INSTALLER="racket-minimal-${RACKET_VERSION}-x86_64-linux-${DEBIAN_VERSION}.sh"
+ARG RACKET_URL="https://download.racket-lang.org/releases/${RACKET_VERSION}/installers/${RACKET_INSTALLER}"
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        ca-certificates \
+        curl \
+        git \
+        unzip \
+        libfontconfig1 \
+        build-essential \
+        jq \
+    && curl -fsSL "${RACKET_URL}" -o /tmp/racket-installer.sh \
+    && sh /tmp/racket-installer.sh --unix-style --dest /usr/local --create-dir \
+    && raco pkg install --auto --no-docs --batch \
+         base \
+         rackunit-lib \
+         syntax/parse \
+         data-lib \
+         json-lib \
+         scribble-lib \
+         racket-doc \
+    && rm -rf /tmp/* /var/lib/apt/lists/*
+
+ARG UV_VERSION
+ADD --chmod=755 https://astral.sh/uv/${UV_VERSION}/install.sh /install-uv.sh
+RUN sh /install-uv.sh
+
+WORKDIR /app
+
+COPY docker/entrypoint.sh /app/docker/entrypoint.sh
+RUN chmod +x /app/docker/entrypoint.sh
+
+ENTRYPOINT ["/app/docker/entrypoint.sh"]
+CMD ["sh"]

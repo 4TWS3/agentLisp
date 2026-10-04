@@ -1,0 +1,200 @@
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+    paths-ignore:
+      - "docs/**"
+      - "**/*.md"
+  pull_request:
+    branches: [main, develop]
+    paths-ignore:
+      - "docs/**"
+      - "**/*.md"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PYTHON_VERSION: "3.12"
+  RACKET_VERSION: "8.12"
+  UV_VERSION: "0.4.0"
+
+jobs:
+  scheme-tests:
+    name: Scheme DSL v0.1 Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Racket
+        uses: Bogdanp/setup-racket@v1.11
+        with:
+          architecture: x64
+          version: ${{ env.RACKET_VERSION }}
+          variant: minimal
+          packages: base,rackunit-lib,syntax-parse,data-lib,json-lib,parser-tools-lib
+
+      - name: Link v0.1 DSL package
+        working-directory: scheme
+        run: |
+          raco pkg install --auto --no-docs --batch --type dir --name agent-dsl .
+          raco pkg show agent-dsl || true
+
+      - name: Run v0.1 Scheme tests
+        working-directory: scheme
+        run: raco test tests/
+
+      - name: Run v0.1 Scheme examples compile check
+        working-directory: scheme
+        run: |
+          raco make examples/simple-agent.rkt
+
+  compiler-tests:
+    name: Compiler v2 Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Racket
+        uses: Bogdanp/setup-racket@v1.11
+        with:
+          architecture: x64
+          version: ${{ env.RACKET_VERSION }}
+          variant: minimal
+          packages: base,rackunit-lib,syntax-parse,data-lib,json-lib,parser-tools-lib
+
+      - name: Link compiler package
+        working-directory: compiler
+        run: |
+          raco pkg install --auto --no-docs --batch --type dir --name agentlisp-compiler .
+
+      - name: Run compiler tests
+        run: |
+          raco test compiler/tests/
+
+      - name: Smoke compile repair_agent.al
+        run: |
+          racket compiler/main.rkt -i examples/repair_agent.al -o /tmp/repair_agent_generated.py
+          python3 -c "import ast; ast.parse(open('/tmp/repair_agent_generated.py').read()); print('python ast ok')"
+
+  python-quality:
+    name: Python Lint & Type (v2 + v0.1)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ env.PYTHON_VERSION }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+
+      - name: Install dependencies (workspace root)
+        run: |
+          uv sync --dev
+
+      - name: Ruff lint
+        run: |
+          uv run ruff check runtime host python/agentlisp_runtime runtime/tests python/tests
+
+      - name: Ruff format check
+        run: |
+          uv run ruff format --check runtime host python/agentlisp_runtime runtime/tests python/tests
+
+      - name: MyPy type check
+        run: |
+          uv run mypy runtime || true  # v2 skeleton, strict-off; keep non-fatal until typing is mature
+
+  python-tests:
+    name: Python Tests ${{ matrix.os }}
+    needs: python-quality
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ env.PYTHON_VERSION }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+
+      - name: Install dependencies (root)
+        run: |
+          uv sync --dev
+
+      - name: Host import smoke
+        shell: bash
+        run: |
+          uv run python -c "import host.gateway, host.workflow, host.sandbox; print('host import ok')"
+
+      - name: Run pytest with coverage
+        shell: bash
+        run: |
+          uv run pytest runtime/tests python/tests -v \
+            --cov=runtime \
+            --cov=python/agentlisp_runtime \
+            --cov-report=xml \
+            --cov-report=term-missing \
+            --junitxml=junit/test-results.xml
+
+      - name: Upload coverage
+        if: matrix.os == 'ubuntu-latest'
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-xml
+          path: coverage.xml
+          retention-days: 7
+
+      - name: Upload test results
+        uses: actions/upload-artifact@v4
+        with:
+          name: junit-${{ matrix.os }}
+          path: junit/test-results.xml
+          retention-days: 7
+        if: always()
+
+  docker-build:
+    name: Docker Build
+    needs: [scheme-tests, compiler-tests, python-tests]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build runtime image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: docker/Dockerfile
+          push: false
+          load: true
+          tags: agentlisp:ci-test
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Smoke test CLI via Docker
+        run: |
+          docker run --rm agentlisp:ci-test agentlisp --help
+
+      - name: Smoke test generated harness module via Docker
+        run: |
+          docker run --rm --entrypoint python agentlisp:ci-test \
+            -m examples.dist.repair_agent
