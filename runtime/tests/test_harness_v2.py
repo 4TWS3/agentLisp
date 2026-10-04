@@ -948,3 +948,61 @@ def test_dockerfile_has_expected_args_and_labels_metadata() -> None:  # type: ig
     ]
     for name, pat in asserts:
         assert pat.search(text), f"docker/Dockerfile 缺失断言 {name}: pattern={pat.pattern!r}"
+
+
+# 14. CR-19 P1-4：CLI --version 暴露 __version__ = 0.1.0 与 pyproject.toml version 对齐 (IF-CLI-1)
+def test_cli_version_flag_prints_dunder_version_matches_pyproject() -> None:  # type: ignore[no-untyped-def]
+    """CR-19 P1-4 IF-CLI-1：CLI `--version` / `-V` 输出必与 __version__ 一致且与 pyproject.toml version 对齐；exit=0。"""
+    import os
+    import re
+    import subprocess
+    import sys
+
+    REPO = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    PYPROJECT = os.path.join(REPO, "python", "pyproject.toml")
+    with open(PYPROJECT, encoding="utf-8") as f:
+        toml_text = f.read()
+    ver_match = re.search(r'^version\s*=\s*"([^"]+)"\s*$', toml_text, re.MULTILINE)
+    assert ver_match is not None, 'python/pyproject.toml 缺失 version = "x.y.z" 未找到'
+    pyproject_ver = ver_match.group(1)
+    assert pyproject_ver, "python/__init__.py __version__ 必须非空"
+    PYTHON = sys.executable
+    env = os.environ.copy()
+    env["PYTHONPATH"] = os.path.join(REPO, "python")
+    for flag in ("--version", "-V"):
+        r = subprocess.run(
+            [PYTHON, "-m", "agentlisp_runtime.cli", flag],
+            capture_output=True,
+            text=True,
+            env=env,
+            timeout=30,
+        )
+        assert r.returncode == 0, f"cli {flag} exit != 0；stderr={r.stderr!r}"
+        out = (r.stdout or "").strip()
+        assert out == pyproject_ver, (
+            f"cli {flag} stdout={out!r} 与 pyproject version={pyproject_ver!r} 不一致"
+        )
+
+
+# 15. CR-19 P1-5：MCP scheme 白名单枚举校验 (IF-MCP-1, FR-PARSER-4)
+def test_mcp_scheme_whitelist_accepts_stdio_httpunix_https_sse_and_rejects_other() -> None:  # type: ignore[no-untyped-def]
+    """CR-19 P1-5 IF-MCP-1：§3 正文 L197 指定合法 scheme ∈ {stdio://，http+unix://，https://，sse://}；其他直接 FR-PARSER-FAIL。"""
+    from runtime.mcp_client import validate_mcp_scheme  # type: ignore
+
+    good_schemes = [
+        "stdio:///usr/local/bin/mcp-server",
+        "http+unix://%2Fvar%2Frun%2Fmcp.sock",
+        "https://mcp.example.com/v1/sse",
+        "sse://mcp.internal/agents",
+    ]
+    bad_schemes = [
+        "http://mcp.example.com",  # 明文 http (非 https:// sse://
+        "ftp://fileserver/mcp",
+        "tcp://127.0.0.1:8080",
+        "ws://mcp.example.com/ws",
+        "grpc://mcp:50051",
+    ]
+    for u in good_schemes:
+        assert validate_mcp_scheme(u) is True, f"mcp scheme 白名单应为真：{u}"
+    for u in bad_schemes:
+        assert validate_mcp_scheme(u) is False, f"mcp scheme 非白名单应为假：{u}"

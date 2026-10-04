@@ -11,8 +11,16 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
 
+from . import __version__
 from .engine import AgentEngine
 from .loader import AgentLoader
+
+
+def _version_callback(value: bool) -> None:
+    if value:
+        typer.echo(__version__)
+        raise typer.Exit(code=0)
+
 
 app = typer.Typer(
     name="agentlisp",
@@ -21,6 +29,21 @@ app = typer.Typer(
 )
 console = Console()
 logger = structlog.get_logger()
+
+
+@app.callback()
+def main(
+    version: bool | None = typer.Option(
+        None,
+        "--version",
+        "-V",
+        help="Show the Agent Lisp Runtime version and exit.",
+        is_eager=True,
+        callback=_version_callback,
+    ),
+) -> None:
+    """Agent Lisp Runtime CLI entrypoint."""
+    return None
 
 
 @app.command("validate")

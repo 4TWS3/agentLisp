@@ -5,10 +5,26 @@ from __future__ import annotations
 import asyncio
 from collections.abc import Awaitable, Callable
 from typing import Any
+from urllib.parse import urlparse
 
 from .errors import FeatureNotInstalledError, ToolNotFoundError
 
 HandlerFn = Callable[..., Awaitable[Any] | Any]
+
+MCP_ALLOWED_SCHEMES: frozenset[str] = frozenset({"stdio", "http+unix", "https", "sse"})
+
+
+def validate_mcp_scheme(url: str) -> bool:
+    """§3 FR-PARSER-4 / IF-MCP-1 scheme 白名单枚举校验。
+
+    合法 scheme：{stdio://，http+unix://，https://，sse://}（SRS L197 SSOT）。
+    其他 scheme（包括明文 http/ws/ftp/tcp/grpc）返回 False → parse 阶段直接 FR-PARSER-FAIL。
+    """
+    if not isinstance(url, str) or not url:
+        return False
+    parsed = urlparse(url)
+    scheme = (parsed.scheme or "").lower()
+    return scheme in MCP_ALLOWED_SCHEMES
 
 
 class ToolRegistry:
