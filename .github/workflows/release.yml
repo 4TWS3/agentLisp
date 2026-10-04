@@ -32,37 +32,50 @@ jobs:
           version: ${{ env.UV_VERSION }}
           enable-cache: true
 
-      - name: Install dependencies and build
+      - name: Install dependencies and build wheel + sdist
         working-directory: python
+        shell: pwsh
         run: |
           uv sync --no-dev
-          uv build --wheel
+          uv build
           Get-ChildItem dist/
 
-      - name: Package CLI exe with PyInstaller
+      - name: Package CLI exe with PyInstaller → rename with tag + platform
         working-directory: python
+        shell: pwsh
         run: |
           uv pip install pyinstaller
           uv run pyinstaller --onefile --name agentlisp agentlisp_runtime/cli.py
+          $tag = "${{ github.ref_name }}"
+          $src = Join-Path (Get-Location) "dist\agentlisp.exe"
+          $dst = Join-Path (Get-Location) ("dist\agentlisp-" + $tag + "-windows-x86_64.exe")
+          if (Test-Path $src) {
+              Move-Item -Force -Path $src -Destination $dst
+          } else {
+              Write-Error "PyInstaller did not produce dist\agentlisp.exe"
+              exit 1
+          }
+          # 同时留一份无 tag 的 agentlisp.exe，兼容依赖固定名的下载脚本；硬链接，占 0 额外空间
+          if ($PSVersionTable.PSVersion.Major -ge 5) {
+              New-Item -ItemType HardLink -Force -Path (Join-Path (Get-Location) "dist\agentlisp.exe") -Target $dst | Out-Null
+          }
           Get-ChildItem dist/
 
-      - name: Upload Windows build artifacts
+      - name: Upload Windows build artifacts (wheel + sdist + pyinstaller exe)
         uses: actions/upload-artifact@v4
         with:
           name: windows-x64-release
           path: |
-            python/dist/*.whl
-            python/dist/agentlisp.exe
+            python/dist/*
           retention-days: 30
 
   build-linux:
-    name: Build Linux / macOS Release
-    needs: build-windows
+    name: Build ${{ matrix.os }} Release
+    runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest]
-    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
 
@@ -77,11 +90,32 @@ jobs:
           version: ${{ env.UV_VERSION }}
           enable-cache: true
 
-      - name: Build wheels
+      - name: Build wheels + sdist
         working-directory: python
         run: |
           uv sync --no-dev
           uv build
+
+      - name: Package CLI singlefile with PyInstaller → rename with tag + os/arch
+        working-directory: python
+        run: |
+          set -euo pipefail
+          uv pip install pyinstaller
+          uv run pyinstaller --onefile --name agentlisp agentlisp_runtime/cli.py
+          tag="${GITHUB_REF_NAME}"
+          arch="$(uname -m)"
+          case "${{ matrix.os }}" in
+            ubuntu-latest) os_tag="linux" ;;
+            macos-latest)  os_tag="macos" ;;
+            *) os_tag="${{ matrix.os }}" ;;
+          esac
+          src="dist/agentlisp"
+          dst="dist/agentlisp-${tag}-${os_tag}-${arch}"
+          test -f "$src" || { echo "PyInstaller did not produce $src"; exit 1; }
+          mv "$src" "$dst"
+          # 同时留一份无 tag 无 platform 的 agentlisp，兼容固定名脚本
+          ln "$dst" "dist/agentlisp"
+          ls -la dist/
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
@@ -103,8 +137,17 @@ jobs:
           path: release-artifacts
           merge-multiple: true
 
+      - name: Generate SHA256SUMS (uploaded alongside assets for integrity check)
+        run: |
+          set -euo pipefail
+          cd release-artifacts
+          # 只校验二进制 / wheel / sdist 等产物，跳过已存在的 SHA256SUMS 递归问题
+          find . -maxdepth 1 -type f ! -name SHA256SUMS -printf '%f\n' | LC_ALL=C sort | xargs sha256sum > SHA256SUMS
+          echo "--- SHA256SUMS ---"
+          cat SHA256SUMS
+
       - name: List release assets
-        run: ls -R release-artifacts/
+        run: ls -la release-artifacts/
 
       - name: Create Release
         uses: softprops/action-gh-release@v2
