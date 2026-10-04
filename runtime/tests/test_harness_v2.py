@@ -555,3 +555,158 @@ async def test_repair_agent_pipeline_4phase_on_failure_abort_circuit_break_max_r
     )
     # 至少 1 轮 turn（verify 至少失败一次进入 Correct）
     assert final["turn_count"] >= 1
+
+
+# ==============================================================================
+# 10. CR-16 P1-5 LLM Provider enum / CircuitBreaker / Runtime ERR_CONTEXT_LEAKAGE
+# ==============================================================================
+
+
+def test_provider_enum_4_values_validate_provider_name() -> None:
+    """FR-PARSER-2: PROVIDER_ENUM={anthropic, openai, qwen, mock}。
+
+    validate_provider_name 对 4 个合法值通过；对非法值抛 ValueError。
+    """
+    from runtime.llm_client import PROVIDER_ENUM, validate_provider_name
+
+    assert {"anthropic", "openai", "qwen", "mock"} == PROVIDER_ENUM
+    for ok_name in ["anthropic", "openai", "qwen", "mock"]:
+        got = validate_provider_name(ok_name)
+        assert got == ok_name, (ok_name, got)
+    for bad_name in ["42max", "bedrock", "deepseek", "claude", "", "  ", "ANTHROPIC"]:
+        raised = False
+        try:
+            validate_provider_name(bad_name)
+        except ValueError as exc:
+            raised = True
+            assert "FR-PARSER-2" in str(exc) and "不在枚举" in str(exc)
+        assert raised, f"validate_provider_name({bad_name!r}) 应抛 ValueError"
+
+
+@pytest.mark.asyncio
+async def test_llm_orchestrator_circuit_breaker_fallback_model_invokes_fallback_provider() -> None:  # type: ignore[no-untyped-def]
+    """FR-CORRECT-2 + LLM CircuitBreaker：primary 连续 N 次 5xx → breaker open → on_failure=fallback-model。
+
+    预期：N+1 次 breaker 已经 open → LLMProviderOrchestrator 跳过 primary，直接调用 fallback_provider。
+    fallback_provider.achat 真被调用（fallback.calls 非空）。
+    """
+    from runtime.llm_client import (
+        CircuitBreaker,
+        LLMProviderOrchestrator,
+        MockProvider,
+    )
+
+    breaker = CircuitBreaker(failure_threshold=3, cooloff_seconds=9999.0)
+    primary = MockProvider(
+        responses=[],
+        fail_n_times=5,  # 前 5 次全是 5xx
+        failure_code=500,
+    )
+    fallback = MockProvider(
+        responses=[
+            {"role": "assistant", "content": "FALLBACK_FINAL", "tool_calls": None},
+            {"role": "assistant", "content": "FALLBACK_AGAIN", "tool_calls": None},
+        ]
+    )
+    orch = LLMProviderOrchestrator(
+        primary,
+        fallback_provider=fallback,
+        circuit_breaker=breaker,
+        on_failure="fallback-model",
+    )
+    msgs: list[dict[str, Any]] = [{"role": "user", "content": "do repair task"}]
+    # 前 3 次：breaker closed 时 can_allow_request → primary ProviderHTTPError
+    #   achat 里 (1) primary 异常后 continue → (2) fallback-model 走 fallback_provider
+    #   这样 primary fail counter 恰好达到 failure_threshold=3 → 3 次 breaker 仍 open
+    #   且 fallback_provider 前 3 次也会被调（输出 fallback 前 2 条 + 一条 default）。
+    # 因此我们用「primary.calls = breaker.triggered 之前的所有 achat 次数 = 3」作为 breaker 正常打开的佐证
+    #  然后 第 4、5 次 breaker.open → skip primary 仅调 fallback_provider，
+    #   此时 fallback 队列已空 → fallback_provider 返回 MockProvider end-of-queue，不是 FALLBACK_FINAL/AGAIN。
+    # 重写：把第 4 次 breaker.open 时的断言修改为「primary.calls 不再增加」 + 「fallback_calls 继续增加」。
+    for _ in range(3):
+        try:
+            await orch.achat(msgs)
+        except Exception:
+            pass
+    assert breaker.state == "open" and breaker.failure_count >= 3, breaker.stats()
+    assert len(primary.calls) == 3, (
+        f"前 3 次 breaker closed，primary 必须被调 3 次；actual={len(primary.calls)}"
+    )
+    before_primary = len(primary.calls)
+    before_fallback = len(fallback.calls)
+    # 第 4、5 次：breaker.open → skip primary → 只调 fallback_provider（2 次 +2）
+    for _ in range(2):
+        await orch.achat(msgs)
+    assert len(primary.calls) == before_primary, (
+        f"breaker open 之后 orchestrator 必须 skip primary，"
+        f"primary.calls 从 {before_primary} 变到 {len(primary.calls)}"
+    )
+    assert len(fallback.calls) >= before_fallback + 2, (
+        f"breaker open 后必须每轮都走 fallback_provider；"
+        f"before_fallback={before_fallback} after={len(fallback.calls)}"
+    )
+    assert fallback.calls, "fallback_provider.achat 必须真实被调用"
+    assert breaker.state == "open", breaker.stats()
+
+
+@pytest.mark.asyncio
+async def test_orchestrator_forbidden_context_keys_intercepts_before_llm_call(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    """FR-CHECK-3 runtime 层 ERR_CONTEXT_LEAKAGE：forbidden_context_keys 命中 messages → 拦截。
+
+    BaseHarnessV2 run() 捕获 HarnessError(ERR_CONTEXT_LEAKAGE) → trace.status=blocked, error 含精确错误码前缀。
+    """
+    from runtime.base_harness_v2 import BaseHarnessV2
+    from runtime.llm_client import (
+        ERR_CONTEXT_LEAKAGE,
+        LLMProviderOrchestrator,
+        MockProvider,
+    )
+
+    class _BashReg:
+        async def acall(self, name, **kw):
+            return {"exit_code": 0, "stdout": "", "stderr": ""}
+
+        def names(self):
+            return ["bash"]
+
+        def to_openai_schema(self):
+            return []
+
+    primary = MockProvider(
+        responses=[
+            {"role": "assistant", "content": "FINAL_OK", "tool_calls": None},
+        ]
+    )
+    orch = LLMProviderOrchestrator(
+        primary,
+        on_failure="abort",
+        forbidden_context_keys=["__TOP_SECRET_SYS_PREAMBLE__"],  # 命中即拦截
+    )
+    harness = BaseHarnessV2(
+        model_config={
+            "system_prompt": "You are agent. <<< __TOP_SECRET_SYS_PREAMBLE__=sk-leak-xyz >>>",
+            "agent_name": "leak-tester",
+        },
+        context_config={"status_bar": {"step_count": True}},
+        tools_config={"tools_schema": "Tool: bash(command:str)"},
+        harness_config={
+            "constrain": {"forbidden_commands": []},
+            "correct": {"max_retries": 2, "on_failure": "abort"},
+        },
+        llm_provider_orchestrator=orch,  # 显式走 orchestrator 分支
+        tool_registry=_BashReg(),
+        max_turns=4,
+    )
+    trace = await harness.run("trigger llm")
+    assert trace.status == "blocked", (
+        f"forbidden_context_keys 命中后 trace.status 必须 = blocked；"
+        f"actual status={trace.status!r}; error={trace.error!r}"
+    )
+    err = trace.error or ""
+    assert ERR_CONTEXT_LEAKAGE in err and "__TOP_SECRET_SYS_PREAMBLE__" in err, (
+        f"error 必须精确包含 ERR_CONTEXT_LEAKAGE + 命中键；actual err={err!r}"
+    )
+    # Provider 不应真被调用（LLM 前拦截）
+    assert primary.calls == [], (
+        "forbidden_context_keys 应在发 provider 前拦截，primary.achat 不允许被调用"
+    )

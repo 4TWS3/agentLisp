@@ -399,11 +399,22 @@ class BaseHarnessV2:
         max_turns: int = 30,
         react_mode: bool = True,
         agent_name: str | None = None,
+        # CR-16 P1-5 Provider enum / CircuitBreaker（显式传入参数（CI可控）：
+        llm_provider_orchestrator: Any | None = None,
+        llm_fallback_provider: Any | None = None,
+        llm_circuit_breaker: Any | None = None,
     ) -> None:
         self.model_config = dict(model_config or {})
         self.context_config = dict(context_config or {})
         self.tools_config = dict(tools_config or {})
         self.harness_config = dict(harness_config or {})
+
+        # CR-16：Provider 层（FR-PARSER-2 + FR-CORRECT-2）：
+        #   - llm_provider_orchestrator 显式传入时直接用；
+        #   - 否则在 Model Harness Builder 模式（默认）用 llm_client 做 achat。
+        self._llm_orchestrator = llm_provider_orchestrator
+        self._fallback_provider = llm_fallback_provider
+        self._circuit_breaker = llm_circuit_breaker
 
         self.llm_client: LLMClientProtocol = llm_client or MockLLMClient()  # Fix Issue #1
         self.tool_registry: ToolRegistryProtocol | None = tool_registry
@@ -918,8 +929,80 @@ class BaseHarnessV2:
                     # 1) 组装 KV 对齐上下文（每轮 retry 都要重建，因为 correct 的 feedback 会追加进 trajectory）
                     messages = self.build_context()
 
-                    # 2) LLM 决策
-                    llm_out = await self.llm_client.achat(messages)
+                    # 2) LLM 决策：CR-16 P1-5 Provider / CircuitBreaker / Context-Leakage 层
+                    try:
+                        if self._llm_orchestrator is not None:
+                            # 走新 orchestrator（primary 过 CircuitBreaker / forbidden_context_keys 过滤 / fallback-model）
+                            llm_out = await self._llm_orchestrator.achat(messages)
+                        else:
+                            llm_out = await self.llm_client.achat(messages)
+                    except Exception as exc:  # Provider 层异常统一落 trace：
+                        from .llm_client import (
+                            ERR_CONTEXT_LEAKAGE,
+                            CircuitBroken,
+                            HarnessError,
+                            ProviderHTTPError,
+                        )
+
+                        err_str = str(exc)
+                        if isinstance(exc, HarnessError) and ERR_CONTEXT_LEAKAGE in err_str:
+                            # FR-CHECK-3 runtime 层 context leakage：trace.status=blocked
+                            turn.status = "blocked"
+                            self.trajectory.append(
+                                {
+                                    "role": "assistant",
+                                    "content": err_str,
+                                    "blocked": True,
+                                    "context_leakage": True,
+                                }
+                            )
+                            self.status_bar.on_step(
+                                self._trace.run_id, turn.index, "blocked", err_str
+                            )
+                            await self._save_checkpoint()
+                            return {"status": "blocked", "reason": err_str}
+                        if isinstance(exc, CircuitBroken):
+                            # FR-CORRECT-2：circuit breaker 熔断；strategy ∈ {abort / ask-human / fallback-model}
+                            # abort / fallback-model（fallback 也失败）→ trace.status=failed；ask-human → 留给上层 HITL
+                            if exc.strategy == "ask-human":
+                                turn.status = "blocked"
+                                self.trajectory.append(
+                                    {
+                                        "role": "assistant",
+                                        "content": err_str,
+                                        "circuit_break": True,
+                                        "ask_human_required": True,
+                                    }
+                                )
+                                return {"status": "human_required", "reason": err_str}
+                            turn.status = "failed"
+                            self.trajectory.append(
+                                {"role": "assistant", "content": err_str, "circuit_break": True}
+                            )
+                            return {"status": "failed", "error": err_str, "feedback": err_str}
+                        if isinstance(exc, (ProviderHTTPError, TimeoutError, asyncio.TimeoutError)):
+                            # provider 单轮失败（没到 breaker 阈值）：计入 retry
+                            last_correction = {
+                                "status": "retry",
+                                "feedback": (
+                                    f"[Provider error] {type(exc).__name__}: {exc}; "
+                                    "请重发 tool_call 重试。"
+                                ),
+                            }
+                            self.trajectory.append(
+                                {"role": "assistant", "content": last_correction["feedback"]}
+                            )
+                            retries_this_step += 1
+                            if retries_this_step > max_local_retries + 3:
+                                # 防御性上限：局部 max_retries 之外再容忍 provider 层面若干次失败
+                                turn.status = "failed"
+                                return {
+                                    "status": "failed",
+                                    "error": err_str,
+                                    "feedback": err_str,
+                                }
+                            continue
+                        raise  # 其余异常交给 finally 外层 catch
                     assistant_msg = dict(llm_out)
                     content = assistant_msg.get("content")
                     tool_calls = assistant_msg.get("tool_calls")
