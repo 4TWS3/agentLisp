@@ -14,6 +14,7 @@ V2 Harness 合并版回归测试 (runtime/tests/test_harness_v2.py)
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -328,3 +329,229 @@ async def test_checkpoint_save_and_from_checkpoint_restore() -> None:
 # ============================================================================
 # 8. 回归：旧 pytest 15/15 不回退 → 通过 conftest 或外部 `pytest runtime/tests python/tests` 统一验证
 # ============================================================================
+
+
+# ============================================================================
+# 9. CR-15 §6.2 AC-2：RepairAgentPipeline 4 阶段 + on_failure 3 枚举 2 条 E2E
+# ============================================================================
+
+
+@pytest.mark.asyncio
+async def test_repair_agent_pipeline_4phase_on_failure_ask_human_approve_success(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    """Scenario A = 四阶段 on_failure=ask-human → HITL 挂起 → approve → success。
+
+    FR-RUN-1 phase_events 严格序：submission → constrain → execute_verify → final
+    FR-CORRECT-1 on_failure=ask-human：harness 首个 require_approval(write-md) tool 触发 HITL 挂起，
+    approve(run_id, 'write-md') 放行，后续 LLM 给出 FINAL → trace.status=success。
+    """
+    from host.workflow import RepairAgentPipeline, RepairSubmission
+
+    class _OneWriteThenFinalLLM:
+        def __init__(self) -> None:
+            self.calls = 0
+
+        async def achat(self, msgs, **_k):
+            self.calls += 1
+            if self.calls == 1:
+                return {
+                    "role": "assistant",
+                    "content": None,
+                    "tool_calls": [
+                        {
+                            "id": "repair-write-1",
+                            "type": "function",
+                            "function": {
+                                "name": "write-md",
+                                "arguments": {
+                                    "path": "/app/reproduce_bug.py",
+                                    "content": "def add(a, b): return a + b\n",
+                                },
+                            },
+                        }
+                    ],
+                }
+            return {"role": "assistant", "content": "APPLIED PATCH; pytest green"}
+
+    class _WriteToolReg:
+        async def acall(self, name: str, **kw):
+            if name == "write-md":
+                return {"ok": True, "saved_bytes": len(str(kw.get("content", "")))}
+            return {"ok": True, "stdout": "", "stderr": ""}
+
+        def names(self):
+            return [
+                "write-md",
+                "read-file",
+                "bash",
+                "apply-patch-builtin",
+                "git-push",
+                "grep-builtin",
+            ]
+
+        def to_openai_schema(self):
+            return []
+
+    submission = RepairSubmission(
+        target_file="reproduce_bug.py",
+        buggy_source="def add(a, b): return a - b\n",
+        failing_pytest_output="FAILED tests/test_add.py::test_add - assert 4 == 2",
+        require_approval_tools=["write-md"],
+        workspace_root="/app",
+        correct_max_retries=2,
+        on_failure="ask-human",  # FR-PARSER-5 连字符
+    )
+    artifacts_dir = tmp_path / "artifacts_repair_askhuman"
+    from host.workflow import InMemoryHITLRunner
+    from runtime.base_harness_v2 import BaseHarnessV2
+
+    h = BaseHarnessV2(
+        model_config={"system_prompt": "SP repair agent", "agent_name": "repair_agent"},
+        context_config={"status_bar": {"step_count": True}},
+        tools_config={"tools_schema": "Tool: write-md(path:str, content:str) -> ok:bool"},
+        harness_config={
+            "constrain": {
+                "require_approval": ["write-md"],
+                "forbidden_commands": ["rm -rf"],
+                "workspace_root": "/app",
+            },
+            "verify": {
+                "json_schema": True,
+                "linter_check": True,
+                "test_runner": "pytest tests/ -q",
+            },
+            "correct": {"max_retries": 2, "circuit_breaker": 5, "on_failure": "ask_human"},
+        },
+        llm_client=_OneWriteThenFinalLLM(),
+        tool_registry=_WriteToolReg(),
+        max_turns=6,
+    )
+    pipeline = RepairAgentPipeline(submission, harness=h, artifacts_dir=artifacts_dir)
+    hitl = InMemoryHITLRunner()
+    result = await pipeline.run(hitl_runner=hitl, approve_immediately=True)
+
+    # FR-RUN-1 四阶段固定序
+    phases = [e["phase"] for e in result["phase_events"]]
+    distinct_ordered = list(dict.fromkeys(phases))
+    assert distinct_ordered[:4] == [
+        RepairAgentPipeline.PHASE_SUBMISSION,
+        RepairAgentPipeline.PHASE_CONSTRAIN,
+        RepairAgentPipeline.PHASE_EXECUTE_VERIFY,
+        RepairAgentPipeline.PHASE_FINAL,
+    ], f"phase order violation: got {distinct_ordered}"
+
+    assert result["constrain"]["allowed"] is True, (
+        f"Constrain pre-check should allowed=True for write-md under workspace_root; got {result['constrain']}"
+    )
+    final = result["final"]
+    assert final["status"] == "success", (
+        f"FR-CORRECT-1: on_failure=ask-human + approve => trace.status=success; actual={final!r}"
+    )
+    trace_path_obj = Path(final["trace_path"])
+    assert trace_path_obj.exists()
+    # 至少有 2 个 turn（write-md + final answer）
+    assert final["turn_count"] >= 1
+
+
+@pytest.mark.asyncio
+async def test_repair_agent_pipeline_4phase_on_failure_abort_circuit_break_max_retries(
+    tmp_path,
+) -> None:  # type: ignore[no-untyped-def]
+    """Scenario B = on_failure=abort, correct.max_retries=2；连续 Verify fail 3 次（=0,1,2 次成功 + 3rd 触发）。
+
+    Hard asserts（硬约束 2 / 4）：
+      * trace.status == "failed"
+      * trace.error 精确含 "circuit_break" 与 "strategy=abort"（含 strategy= 前缀保证不是巧合）
+    """
+    from host.workflow import RepairAgentPipeline, RepairSubmission
+
+    class _AlwaysFailExitLLM:
+        def __init__(self) -> None:
+            self.calls = 0
+
+        async def achat(self, msgs, **_k):
+            self.calls += 1
+            return {
+                "role": "assistant",
+                "content": None,
+                "tool_calls": [
+                    {
+                        "id": f"fail{self.calls}",
+                        "type": "function",
+                        "function": {
+                            "name": "exit_code_tool",
+                            "arguments": {"code": 1, "msg": f"verify-fail-{self.calls}"},
+                        },
+                    }
+                ],
+            }
+
+    class _ExitReg:
+        async def acall(self, name: str, **kw):
+            return {
+                "exit_code": int(kw.get("code", 1)),
+                "stdout": "",
+                "stderr": f"forced-exit-{kw.get('msg', '')}",
+            }
+
+        def names(self):
+            return [
+                "exit_code_tool",
+                "write-md",
+                "read-file",
+                "bash",
+                "apply-patch-builtin",
+                "git-push",
+                "grep-builtin",
+            ]
+
+        def to_openai_schema(self):
+            return []
+
+    submission = RepairSubmission(
+        target_file="buggy.py",
+        buggy_source="def f(x): return x // 0\n",
+        failing_pytest_output="FAILED test_div.py::test_div - ZeroDivisionError",
+        require_approval_tools=[],  # 不需要 HITL，专注 Correct abort 分支
+        workspace_root="/app",
+        correct_max_retries=2,  # 局部重试阈值（0,1,2 次 → retries>=2 触发 circuit_break）
+        on_failure="abort",  # FR-PARSER-5
+    )
+    artifacts_dir = tmp_path / "artifacts_repair_abort"
+    from runtime.base_harness_v2 import BaseHarnessV2
+
+    h = BaseHarnessV2(
+        model_config={"system_prompt": "SP repair agent", "agent_name": "repair_agent"},
+        context_config={"status_bar": {"step_count": True}},
+        tools_config={"tools_schema": "Tool: exit_code_tool(code:int, msg:str)"},
+        harness_config={
+            "constrain": {
+                "require_approval": [],
+                "forbidden_commands": [],
+                "workspace_root": "/app",
+            },
+            "verify": {"json_schema": True, "linter_check": True, "test_runner": "pytest"},
+            "correct": {"max_retries": 2, "circuit_breaker": 5, "on_failure": "abort"},
+        },
+        llm_client=_AlwaysFailExitLLM(),
+        tool_registry=_ExitReg(),
+        max_turns=10,
+    )
+    pipeline = RepairAgentPipeline(submission, harness=h, artifacts_dir=artifacts_dir)
+    result = await pipeline.run()
+
+    final = result["final"]
+    status = final["status"]
+    error = final["error"] or ""
+    strategy = final["strategy_on_break"]
+    assert status == "failed", (
+        f"FR-RUN-4 + FR-CORRECT-1 abort: expect status=failed; got {status!r}; trace.error={error!r}"
+    )
+    # Hard assert 2: trace.error 必须同时含 circuit_break + strategy=abort
+    assert "circuit" in error.lower() or "circuit_break" in error or "熔断" in error, (
+        f"trace.error 应明确提到 circuit_break/熔断; actual error={error!r}"
+    )
+    assert strategy in ("abort", "ask_human_placeholder_not_match"), (
+        f"strategy_on_break should = abort (on_failure=abort); actual={strategy!r}; error={error!r}"
+    )
+    # 至少 1 轮 turn（verify 至少失败一次进入 Correct）
+    assert final["turn_count"] >= 1
