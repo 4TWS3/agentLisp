@@ -10,6 +10,7 @@
 (require racket/string
          racket/function
          racket/match
+         json
          ;; 关注点分离：parser/checker/emitter 三段式，checker 独立模块，枚举常量 Single Source of Truth
          "checker.rkt")
 
@@ -25,7 +26,20 @@
          PROVIDER-ENUM
          SIDEEFFECT-BUILTIN-TOOLS
          to-str
-         enum-member?)
+         enum-member?
+
+         ;; JSON 结构化错误重导出（SRS §5.1 --json-errors）
+         exn:agentlisp:check?
+         exn:agentlisp:parse?
+         exn:agentlisp:check->jsexpr
+         exn->jsexpr
+         checker-default-jsexpr-version
+         checker-errors->jsexpr-list-thunk
+         with-srcloc-from-form
+         current-checker-source-name
+         raise-check
+         raise-parse-with-srcloc
+         )
 
 ;; ---------------------------------------------------------------------
 ;; 通用辅助函数（以下函数仍保留在主文件，因为 emitter 段还要用）
@@ -57,11 +71,22 @@
   (string-append "[" (string-join (map py-string xs) ", ") "]"))
 
 ;; ------------------------------ 异常 --------------------------------
-;; 注意：异常类型现在在 checker.rkt 中提供（exn:agentlisp:check），parser 异常在这里
-(struct exn:agentlisp:parse exn:fail:read () #:transparent)
+;; 注意：
+;;   - checker 异常类型现在在 checker.rkt 提供（exn:agentlisp:check）
+;;   - parser 异常类型也迁移到 checker.rkt（exn:agentlisp:parse），这样 --json-errors 时两者 shape 统一
+;;   - 这里只保留 legacy 层：raise-parse → 统一转 raise-parse-with-srcloc（为了老调用方不 break）
 
 (define (raise-parse where msg)
-  (raise (exn:agentlisp:parse (format "[AGENTLISP_PARSE] ~a: ~a" where msg) (current-continuation-marks))))
+  (raise-parse-with-srcloc
+   'PARSE_GENERIC
+   (format "[PARSE_GENERIC] ~a: ~a" where msg)
+   #:srcloc #f
+   #:agent-name (cond
+                  [(and (pair? where) (eq? (car where) 'defagent) (pair? (cdr where)))
+                   (to-str (cadr where))]
+                  [else #f])
+   #:hints (list (format "原 raise-parse where=~a msg=~a" where msg)
+                 "若要启用 --json-errors 的精准红波浪定位，请改调用 raise-parse-with-srcloc #:srcloc 参数")))
 
 ;; 辅助（保留在主文件，emitter 仍要用）
 (define (->racket-bool v) (and v (not (eq? v #f))))

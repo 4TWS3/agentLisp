@@ -503,43 +503,131 @@ class BaseHarnessV2:
                 logger.warning("[Constrain] blocked forbidden=%r in cmd=%r", forbidden, cmd)
                 return False, f"Harness Blocked: Execution of {forbidden!r} is strictly forbidden."
         # (b) workspace_root 路径逃逸门控（SRS FR-RUN-3）：
-        #     从 command 参数中提取路径（shlex token 中含 / 或 . 的任何 token 视为候选），
-        #     若 workspace_root 非空，则所有候选路径必须是 workspace_root 的后代。
+        #     不只是 bash 的 command 参数，还要递归遍历 args 中所有字符串值：
+        #       - 含 "/" / "." / ".." 的候选 token；
+        #       - 像路径的参数名（path/paths/cwd/file/files/src/dst/target/output/dir/directory/root）；
+        #     workspace_root 非空时，所有候选必须是 workspace_root 的后代。
+        #
+        #     判定策略（评审要求的"物理 resolve + 纯 posix 规范化双保险"）：
+        #       1) Python 运行时真实路径存在 → 用 os.path.realpath / Path.resolve() 做物理规范化（解 symlink）后 is_relative_to；
+        #       2) 不存在或非本机路径（例如容器里的路径，本地单测不真的创建目录）→ 用 _normalize_pure_posix_parts 纯字符串规范化后 is_relative_to；
+        #       3) 任意一个命中逃逸 → 立即返回 WorkspaceEscape（不允许部分通过）。
         workspace_root = (self.harness_config.get("constrain", {}) or {}).get("workspace_root")
         if workspace_root:
+            root_raw = str(workspace_root)
+            path_candidates: List[str] = []
+            # (b.1) 从 bash 的 command 拆 shlex（老路径）
             try:
-                tokens = shlex.split(cmd, comments=True, posix=True)
+                tokens_cmd = shlex.split(cmd, comments=True, posix=True) if cmd else []
             except ValueError:
-                tokens = cmd.split()
-            root = pathlib.PurePosixPath(str(workspace_root)).expanduser() if False else pathlib.PurePosixPath(str(workspace_root))
-            # 规范化：把相对 root（以 / 开头）绝对化
-            for token in tokens:
-                if not token or token in {"|", "&&", ";", "||", "&", ">", "<", ">>"}:
+                tokens_cmd = cmd.split() if cmd else []
+            for token in tokens_cmd:
+                if not token or token in {"|", "&&", ";", "||", "&", ">", "<", ">>", "2>", "1>", "&>"}:
                     continue
                 if not ("/" in token or token == "." or token.startswith("..")):
                     continue
-                # Bash 侧绝对路径或相对路径都需要判定（此处允许 file:/// 协议前缀）
-                candidate_raw = token.replace("file://", "")
+                candidate = token.replace("file://", "")
+                if candidate:
+                    path_candidates.append(candidate)
+            # (b.2) 递归 args dict 收集路径候选（带参数名语义）
+            PATH_HINT_KEYS = {
+                "path", "paths", "file", "files", "dir", "dirs", "directory", "directories",
+                "target", "dst", "src", "root", "output", "cwd", "workspace", "mount",
+                "source", "destination", "working_dir", "working_directory", "home",
+            }
+
+            def _walk(v: Any, key_hint: Optional[str]) -> None:
+                if isinstance(v, str):
+                    s = v.replace("file://", "")
+                    if key_hint and key_hint in PATH_HINT_KEYS:
+                        # 参数名明确是路径：即使不含 "/" 也加入（相对路径 "./foo" / "foo.txt"）
+                        path_candidates.append(s)
+                        return
+                    if "/" in s or s == "." or s.startswith(".."):
+                        path_candidates.append(s)
+                    return
+                if isinstance(v, dict):
+                    for kk, vv in v.items():
+                        _walk(vv, str(kk) if isinstance(kk, str) else None)
+                    return
+                if isinstance(v, (list, tuple, set)):
+                    for item in v:
+                        _walk(item, key_hint)
+                    return
+
+            for k, v in args.items():
+                _walk(v, str(k) if isinstance(k, str) else None)
+            # (b.3) 去重（保持顺序）
+            seen: set = set()
+            dedup: List[str] = []
+            for s in path_candidates:
+                if s in seen:
+                    continue
+                seen.add(s)
+                dedup.append(s)
+            # (b.4) 对每个候选做双保险规范化 + is_relative_to 判定
+            root_pure = pathlib.PurePosixPath(root_raw)
+            import os as _os
+
+            def _fs_resolve_if_exists(cand_path: str) -> Optional[pathlib.Path]:
+                """路径真实存在（或父目录存在可 resolve）→ 返回 Path.resolve(strict=False)；否则返回 None。"""
                 try:
-                    candidate = pathlib.PurePosixPath(candidate_raw)
+                    # 允许把非绝对的相对 root 先拼成绝对存在性检查
+                    cp = pathlib.Path(cand_path)
+                    if not cp.is_absolute():
+                        cp = pathlib.Path(str(root_raw)) / cand_path
+                    try:
+                        if cp.exists() or cp.parent.exists():  # 存在 or 父存在 → 调真实 FS resolve
+                            return cp.resolve(strict=False)
+                    except (OSError, RuntimeError):
+                        return None
+                except Exception:  # noqa: BLE001
+                    return None
+                return None
+
+            for candidate in dedup:
+                try:
+                    cand_pure = pathlib.PurePosixPath(candidate)
                 except Exception:  # noqa: BLE001
                     continue
-                # 相对路径（不以 / 开头）视为相对 root，绝对路径直接比较
+                if cand_pure.is_absolute():
+                    resolved_pure = _normalize_pure_posix_parts(cand_pure)
+                else:
+                    resolved_pure = _normalize_pure_posix_parts(root_pure / cand_pure)
+                escaped_pure = False
                 try:
-                    if candidate.is_absolute():
-                        resolved = candidate
-                    else:
-                        resolved = (root / candidate)
-                    # 关键：对 parts 做手工规范化去掉 `..` / `.`，保持纯字符串运算（不调真实 FS）
-                    resolved = _normalize_pure_posix_parts(resolved)
-                    # PurePath.is_relative_to (Python 3.9+)
-                    if not resolved.is_relative_to(root):
-                        logger.warning("[Constrain][WorkspaceEscape] root=%r escaped=%r", str(root), str(resolved))
+                    escaped_pure = not resolved_pure.is_relative_to(root_pure)
+                except Exception:  # noqa: BLE001
+                    escaped_pure = True
+                if escaped_pure:
+                    logger.warning("[Constrain][WorkspaceEscape-Pure] root=%r candidate=%r resolved=%r",
+                                   str(root_pure), candidate, str(resolved_pure))
+                    return False, (
+                        f"Harness Blocked: WorkspaceEscape: target path candidate {candidate!r} "
+                        f"resolves to {str(resolved_pure)!r} escapes workspace_root={str(root_pure)!r}"
+                    )
+                # 物理 FS 层 resolve 再验一次（双保险）：存在就解 symlink，解后必须仍在 root 下
+                fs_resolved = _fs_resolve_if_exists(candidate)
+                if fs_resolved is not None:
+                    root_fs = pathlib.Path(str(root_raw)).resolve(strict=False)
+                    try:
+                        if not fs_resolved.is_relative_to(root_fs):
+                            logger.warning("[Constrain][WorkspaceEscape-FS] root=%r candidate=%r resolved_fs=%r",
+                                           str(root_fs), candidate, str(fs_resolved))
+                            return False, (
+                                f"Harness Blocked: WorkspaceEscape: filesystem-resolved path {candidate!r} "
+                                f"→ {str(fs_resolved)!r} (symlink/realpath) escapes workspace_root={str(root_fs)!r}"
+                            )
+                    except Exception:  # noqa: BLE001
+                        # is_relative_to 抛异常视为逃逸（可能是 path 类型不同等）
+                        logger.warning("[Constrain][WorkspaceEscape-FS-exc] root=%r candidate=%r",
+                                       str(root_raw), candidate, exc_info=True)
                         return False, (
-                            f"Harness Blocked: WorkspaceEscape: target path {str(resolved)!r} escapes workspace_root={str(root)!r}"
+                            f"Harness Blocked: WorkspaceEscape: path {candidate!r} failed filesystem "
+                            f"is_relative_to check against workspace_root={str(root_raw)!r}"
                         )
-                except (TypeError, ValueError, AttributeError):
-                    pass
+                # 再检查：真实 root 存在 + 候选绝对路径但 root 是 `/app/workspace`，候选是 `/app/workspacefoo` 时，PurePosix 仍可能误判？
+                # PurePosixPath("/app/workspacefoo").is_relative_to("/app/workspace") 返回 False，所以无需再补
         return True, "OK"
 
     def verify(self, observation: Dict[str, Any]) -> Tuple[bool, str]:
@@ -631,6 +719,7 @@ class BaseHarnessV2:
         parent_trajectory_ref = self.trajectory
         parent_step_count_ref = self.step_count
         parent_terminated_ref = self.is_terminated
+        exc_info: Optional[Tuple[Any, Any, Any]] = None
         try:
             self.trajectory = child_trajectory
             self.step_count = child_step_count
@@ -638,13 +727,37 @@ class BaseHarnessV2:
             logger.debug("[scoped_worker:%s] ENTER trajectory.len=%s step_count=%s inherit=%s",
                          worker_name, len(self.trajectory), self.step_count, inherit_trajectory)
             yield self
+        except Exception as _exc:  # noqa: BLE001
+            import sys as _sys
+            exc_info = _sys.exc_info()
+            raise
         finally:
-            # (b) 退出（正常/异常）：强制 GC 截断父级 trajectory 与 step_count
+            # (b) 退出（正常/异常）：
+            #   - 先 .clear() child 列表对象本体（即使外部持有引用，也会把内容释放）——真·GC 回收；
+            #   - 再把父级引用恢复；无论是否抛异常都必须执行。
+            try:
+                # 如果 inherit=True：child 的前 len(parent_trajectory_ref) 条其实是父级内容，不要误删父级 dict 对象
+                # 正确做法：仅截断新增部分 [parent_len:]；inherit=False 时就是全 clear
+                parent_len = len(parent_trajectory_ref) if inherit_trajectory else 0
+                if len(child_trajectory) > parent_len:
+                    del child_trajectory[parent_len:]
+                # 截断尾部残余仍可能有残留引用（如 dict 内嵌套大块值），再整体 None 化一遍剩余位置
+                # 并把可能的大字符串值替换为空，加速 GC。
+                for m in child_trajectory:
+                    if isinstance(m, dict):
+                        if isinstance(m.get("content"), str) and len(m["content"]) > 1024:
+                            m["content"] = ""
+                        if isinstance(m.get("name"), str) is False:
+                            pass
+            except Exception:  # noqa: BLE001
+                logger.debug("[scoped_worker:%s] child clear non-fatal", worker_name, exc_info=True)
             self.trajectory = parent_trajectory_ref
             self.step_count = parent_step_count_ref
             self.is_terminated = parent_terminated_ref
             logger.debug("[scoped_worker:%s] EXIT  parent trajectory.len=%s step_count=%s (worker output: GC discarded)",
                          worker_name, len(self.trajectory), self.step_count)
+            # 若上层捕获/吞异常，依然保留原始异常语义（不丢 traceback）
+            del exc_info
 
     # ------------------------------------------------------------------
     # 内部：ReAct Loop / Step (Fix Issue #1)

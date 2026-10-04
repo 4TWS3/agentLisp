@@ -5,6 +5,8 @@
          racket/file
          racket/string
          racket/format
+         racket/pretty
+         json
          "parser.rkt"
          "checker.rkt"
          "emitter.rkt")
@@ -14,6 +16,8 @@
   (define output-path #f)
   (define check-only? #f)
   (define emit-python? #t)
+  (define json-errors? #f)
+  (define verbose? #f)
 
   (command-line
    #:program "agentlispc"
@@ -22,6 +26,9 @@
    [("-o" "--output") path "Output .py destination file (stdout if omitted)" (set! output-path path)]
    [("--check-only") "Run static checks only, do not emit" (set! check-only? #t)]
    [("--no-emit") "Alias for --check-only" (set! check-only? #t)]
+   [("--json-errors") "Emit compiler diagnostics as JSON array to stdout (SRS §5.1, 用于 IDE 红波浪)"
+    (set! json-errors? #t)]
+   [("-v" "--verbose") "Verbose: print progress" (set! verbose? #t)]
    #:args positional
    (when (and (not input-path) (pair? positional))
      (set! input-path (car positional)))
@@ -29,20 +36,204 @@
      (set! output-path (cadr positional))))
 
   (unless input-path
+    (when json-errors?
+      (write-json
+       (list (hasheq 'schema_version checker-default-jsexpr-version
+                     'code           "CLI_MISSING_INPUT"
+                     'severity       "error"
+                     'srs_id         ""
+                     'message        "agentlispc: missing input file"
+                     'agent_name     'null
+                     'srcloc         (hasheq 'source "command-line"
+                                             'line     'null 'column 'null
+                                             'position 'null 'span 'null)
+                     'hints          '("usage: racket compiler/main.rkt -i INPUT.al -o OUTPUT.py [--check-only] [--json-errors]")))
+       (current-output-port))
+      (newline))
     (fprintf (current-error-port) "agentlispc: missing input file\n")
-    (fprintf (current-error-port) "usage: racket compiler/main.rkt -i INPUT.al -o OUTPUT.py [--check-only]\n")
+    (fprintf (current-error-port) "usage: racket compiler/main.rkt -i INPUT.al -o OUTPUT.py [--check-only] [--json-errors]\n")
     (exit 2))
 
-  (define source (file->value-list input-path))
-  (define ast (parse-s-exp input-path source))
+  (define (emit-json-errors errs)
+    (write-json errs (current-output-port))
+    (newline)
+    (flush-output (current-output-port)))
 
-  (displayln (format "==> AgentLisp v2 compiler: ~a" input-path))
-  (displayln (format "    agents: ~a  tools: ~a  harnesses: ~a"
-                     (length (al-ast-agents ast))
-                     (length (al-ast-top-level-tools ast))
-                     (length (al-ast-top-level-harnesses ast))))
+  (define source
+    (with-handlers ([exn:fail?
+                     (lambda (e)
+                       (if json-errors?
+                           (begin
+                             (emit-json-errors
+                              (list
+                               (hasheq 'schema_version checker-default-jsexpr-version
+                                       'code           "IO_READ_FAILED"
+                                       'severity       "error"
+                                       'srs_id         ""
+                                       'message        (exn-message e)
+                                       'agent_name     'null
+                                       'srcloc         (hasheq 'source (or input-path "unknown")
+                                                               'line 'null 'column 'null
+                                                               'position 'null 'span 'null)
+                                       'hints          '("检查文件存在性与权限；路径必须是 UTF-8"))))
+                             (exit 3))
+                           (raise e)))])
+      (file->value-list input-path)))
 
-  (define all-ok? (report-checks (check-ast ast)))
+  (define ast
+    (with-handlers
+      ([(lambda (e) (or (exn:agentlisp:parse? e) (exn:fail:read? e) (exn:fail? e)))
+        (lambda (e)
+          (cond
+            [json-errors?
+             (emit-json-errors (list (exn->jsexpr e)))
+             (exit 2)]
+            [else (raise e)]))])
+      (with-srcloc-from-form input-path (parse-s-exp input-path source))))
+
+  (when verbose?
+    (displayln (format "==> AgentLisp v2 compiler: ~a" input-path))
+    (displayln (format "    agents: ~a  tools: ~a  harnesses: ~a"
+                       (length (al-ast-agents ast))
+                       (length (al-ast-top-level-tools ast))
+                       (length (al-ast-top-level-harnesses ast)))))
+
+  ;; 兼容 report-checks / check-ast：
+  ;; 主文件 agentlisp_compiler.rkt 的 API 是 (check-agent parsed) 抛异常；
+  ;; 而 parser.rkt 返回的是 al-ast，需要 parse-defagent + check-agent。
+  ;; 为了兼容 test-core.rkt 里的 (check-ast ast) → list of check-result，
+  ;; 这里用 "逐个 agent 调用 parse-defagent + check-agent" 的方式驱动：
+  (define (check-ast/legacy a)
+    (with-handlers ([exn:agentlisp:check?
+                     (lambda (e)
+                       (define j (exn:agentlisp:check->jsexpr e))
+                       (list (hasheq 'ok? #f
+                                     'title (symbol->string (exn:agentlisp:check-code e))
+                                     'message (exn-message e)
+                                     'jsexpr j)))]
+                    [exn:agentlisp:parse?
+                     (lambda (e)
+                       (define j (exn->jsexpr e))
+                       (list (hasheq 'ok? #f
+                                     'title (symbol->string (exn:agentlisp:parse-code e))
+                                     'message (exn-message e)
+                                     'jsexpr j)))])
+      (define agents (al-ast-agents a))
+      (cond
+        [(pair? agents)
+         (define combined-results
+           (for/list ([ag-form source]
+                      #:when (and (pair? ag-form) (eq? (car ag-form) 'define-agent)))
+             (with-handlers ([exn:agentlisp:check?
+                              (lambda (e)
+                                (hasheq 'ok? #f
+                                        'title (symbol->string (exn:agentlisp:check-code e))
+                                        'message (exn-message e)
+                                        'jsexpr (exn:agentlisp:check->jsexpr e)))])
+               (define-values (parsed-name parsed-acc)
+                 (let loop ([xs (cdr ag-form)] [name (if (pair? (cdr ag-form)) (cadr ag-form) #f)])
+                   (values (and name (to-str name)) #t)))
+               (with-srcloc-from-form
+                input-path
+                (begin
+                  (require "agentlisp_compiler.rkt")
+                  (define parsed (parse-defagent ag-form))
+                  (check-agent parsed)
+                  (hasheq 'ok? #t 'title (format "check-agent: ~a" (or parsed-name "anon")) 'message ""))))))
+         combined-results]
+        [else
+         (list (hasheq 'ok? #t 'title "empty-ast" 'message "no define-agent forms, trivially pass static checks"))])))
+
+  (define (report-checks results)
+    (define bad (for/list ([r results] #:unless (hash-ref r 'ok? #f)) r))
+    (cond
+      [(pair? bad)
+       (when (not json-errors?)
+         (for ([b bad])
+           (fprintf (current-error-port)
+                    "  [CHECK FAILED] ~a: ~a\n"
+                    (hash-ref b 'title "?")
+                    (hash-ref b 'message ""))))
+       #f]
+      [else #t]))
+
+  ;; 真正执行检查：优先用 agentlisp_compiler.rkt 的 parse-defagent + check-agent（返回单错误更精准）
+  (define check-results
+    (with-handlers
+      ([(lambda (e) #t)
+        (lambda (e)
+          (cond
+            [json-errors?
+             (emit-json-errors (list (exn->jsexpr e)))
+             (exit 1)]
+            [else
+             (list (hasheq 'ok? #f 'title (format "~a" (if (exn? e) (exn-message e) e))
+                           'message (format "~a" (if (exn? e) (exn-message e) e))))]))])
+      (let loop ([xs source] [errs-rev '()])
+        (cond
+          [(null? xs) (reverse errs-rev)]
+          [else
+           (define form (car xs))
+           (cond
+             [(and (pair? form) (eq? (car form) 'define-agent))
+              (let inner ()
+                (dynamic-require '(submod "." json-errors-runner) #f)
+                (with-handlers ([exn:agentlisp:check?
+                                 (lambda (e)
+                                   (loop (cdr xs)
+                                         (cons (hasheq 'ok? #f
+                                                       'title (symbol->string (exn:agentlisp:check-code e))
+                                                       'message (exn-message e)
+                                                       'jsexpr (exn:agentlisp:check->jsexpr e))
+                                               errs-rev)))]
+                                [exn:agentlisp:parse?
+                                 (lambda (e)
+                                   (loop (cdr xs)
+                                         (cons (hasheq 'ok? #f
+                                                       'title (symbol->string (exn:agentlisp:parse-code e))
+                                                       'message (exn-message e)
+                                                       'jsexpr (exn->jsexpr e))
+                                               errs-rev)))]
+                                [exn:fail?
+                                 (lambda (e)
+                                   (loop (cdr xs)
+                                         (cons (hasheq 'ok? #f
+                                                       'title "RUNTIME_CHECK_EXN"
+                                                       'message (exn-message e)
+                                                       'jsexpr (exn->jsexpr e))
+                                               errs-rev)))])
+                  (local-require "agentlisp_compiler.rkt")
+                  (parameterize ([current-checker-source-name input-path])
+                    (define parsed (parse-defagent form))
+                    (check-agent parsed))
+                  (define aname
+                    (if (and (pair? (cdr form)) (pair? (cddr form)))
+                        (to-str (cadr form))
+                        "anon"))
+                  (loop (cdr xs)
+                        (cons (hasheq 'ok? #t
+                                      'title (format "check-agent: ~a" aname)
+                                      'message "")
+                              errs-rev))))]
+             [else (loop (cdr xs) errs-rev)]))])))
+
+  ;; JSON errors 输出模式：把所有 failed 的 jsexpr 打平成一个 array；成功时输出 []
+  (when json-errors?
+    (define json-list
+      (for/fold ([acc '()])
+                ([r (in-list check-results)])
+        (cond
+          [(not (hash-ref r 'ok? #f))
+           (define js (hash-ref r 'jsexpr (lambda () (exn->jsexpr (make-exn:fail (hash-ref r 'message "?") (current-continuation-marks))))))
+           (append acc (list js))]
+          [else acc])))
+    (emit-json-errors json-list)
+    (when (pair? json-list)
+      (exit 1))
+    (when check-only?
+      (exit 0)))
+
+  (define all-ok? (report-checks check-results))
   (unless all-ok?
     (fprintf (current-error-port) "\nstatic checks FAILED, aborting.\n")
     (exit 1))
@@ -60,7 +251,8 @@
         (begin
           (make-parent-directory* output-path)
           (display-to-file code output-path #:exists 'replace)
-          (displayln (format "==> emitted ~a bytes -> ~a" (string-length code) output-path)))
+          (when verbose?
+            (displayln (format "==> emitted ~a bytes -> ~a" (string-length code) output-path))))
         (display code)))
 
   (exit 0))
@@ -73,3 +265,7 @@
         (if (eof-object? v)
             (reverse acc)
             (loop (cons v acc)))))))
+
+(module+ json-errors-runner
+  ;; 占位：避免 dynamic-require 失败，真正逻辑在 main 内 inline 了
+  (void))

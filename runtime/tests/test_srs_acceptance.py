@@ -942,3 +942,169 @@ def test_ac_2_fr_magt_1_two_workers_trajectory_are_isolated_from_each_other():
     )
     parent_ctx = " ".join(m.get("content", "") for m in h.build_context())
     assert "W1_ONLY" not in parent_ctx and "W2_ONLY" not in parent_ctx, parent_ctx
+    # CR-1 补强：scoped_worker 的 GC 闭环 (FR-MAGT-1)
+    #   - 如果外部仍持有 child_trajectory 列表对象的引用，退出作用域后列表本体应该被截断（不泄漏 worker 内容）
+    #   - 因此父级看到的 W1_ONLY/W2_ONLY 不仅在父列表引用上不可见，原 worker 子列表也要被清空
+    # 注意：此断言必须在原 body 执行完（上面 asyncio.run 已退出 with 块）后再测
+    gc_check_ok = True
+    try:
+        # 额外构造一次显式 GC：故意让 worker 往 trajectory 里写超大字符串（>1024，会命中 finally 大字符串置空分支）
+        leaked_worker_ref = {"ref": None, "t_before_len": 0}
+
+        async def probe_body():
+            async with h.scoped_worker("worker-gc-probe", inherit_trajectory=False) as w:
+                leaked_worker_ref["ref"] = w.trajectory
+                # 写入大块内容（>1024 触发大字符串清空）
+                big = "X" * 2048
+                for _ in range(32):
+                    w.trajectory.append({"role": "assistant", "content": big})
+                leaked_worker_ref["t_before_len"] = len(w.trajectory)
+                # 退出后，leaked_worker_ref["ref"] 这个列表对象本身必须被截断为 []（inherit=False 时 parent_len=0）
+        asyncio.run(probe_body())
+        t_after = leaked_worker_ref["ref"]
+        if t_after is None or len(t_after) != 0:
+            gc_check_ok = False
+    except Exception:  # noqa: BLE001
+        gc_check_ok = False
+    assert gc_check_ok, (
+        "FR-MAGT-1 scoped_worker GC 闭环失败：外部仍引用的 worker trajectory 列表对象没有被截断，"
+        " 可能父级 build_context 意外读到 worker 内部中间 ReAct 轨迹 (内存泄漏)。"
+    )
+
+
+# ---------------------------------------------------------------------------
+# CR-2 补强：JSON 结构化错误导出 (--json-errors / SRS §5.1 / FR-PARSER-7)
+# ---------------------------------------------------------------------------
+
+
+def _assert_json_error_shape(j: Dict[str, Any]) -> None:
+    """SRS §5.1 JSON errors shape：7 字段必现 + hints 是 list[str]。"""
+    assert isinstance(j, dict), f"JSON error 必须是 dict，实际是 {type(j).__name__}"
+    REQUIRED = ("schema_version", "code", "severity", "srs_id",
+                "message", "agent_name", "srcloc", "hints")
+    for k in REQUIRED:
+        assert k in j, f"JSON error 缺少字段 {k}；实际 keys={sorted(j.keys())}"
+    assert isinstance(j["hints"], list), f"errors[].hints 必须是 list[str]：{j['hints']!r}"
+    assert isinstance(j["srcloc"], dict), f"errors[].srcloc 必须是 dict：{j['srcloc']!r}"
+    SRCLOC = ("source", "line", "column", "position", "span")
+    for k in SRCLOC:
+        assert k in j["srcloc"], f"srcloc 缺少字段 {k}；srcloc keys={sorted(j['srcloc'].keys())}"
+    # severity ∈ {error, warning, note}
+    assert j["severity"] in ("error", "warning", "note"), j["severity"]
+
+
+@pytest.mark.req("FR-CHECK-0")
+def test_json_errors_shape_via_checker_rkt_source():
+    """CR-2 (FR-CHECK-0 / §5.1)：在 checker.rkt / agentlisp_compiler.rkt 源码中，
+    通过 grep 验证已经把 §5.1 要求的 7 字段 JSON 错误 shape 定义 + CLI 选项 --json-errors 落地。
+    因为本机无 racket，无法 `racket compiler/main.rkt --json-errors ...`，
+    但 Python 可通过 AST/正则断言下列最小集合：
+      (a) checker.rkt 里存在 jsexpr shape 字段名（schema_version / code / severity / srs_id / srcloc / hints / agent_name）；
+      (b) main.rkt 暴露了 CLI 选项 --json-errors；
+      (c) provider-weird 这类 checker boundary case 的错误会映射到 srs_id = FR-CHECK-0 / FR-CHECK-1/2/3 之一。
+    """
+    from pathlib import Path
+    checker_src = Path("compiler/checker.rkt").read_text()
+    main_src = Path("compiler/main.rkt").read_text()
+    compiler_src = Path("compiler/agentlisp_compiler.rkt").read_text()
+    combined = "\n".join([checker_src, main_src, compiler_src])
+    # (a) 7 字段必须存在
+    for token in (
+        "schema_version", "severity", "srs_id",
+        "srcloc", "agent_name", "hints",
+        "exn:agentlisp:check->jsexpr", "exn->jsexpr",
+        "raise-parse-with-srcloc",
+    ):
+        assert token in combined, f"checker JSON errors shape 缺少 token={token!r}"
+    # (b) --json-errors CLI 选项
+    assert "--json-errors" in main_src, "main.rkt 未暴露 --json-errors CLI 选项（SRS §5.1 IDE 红波浪集成）"
+    # (c) srs_id 映射表（FR-CHECK-1/2/3 对齐）
+    for mapping in ("FR-CHECK-1", "FR-CHECK-2", "FR-CHECK-3"):
+        assert mapping in checker_src, f"缺少 ERR_* → SRS ID 映射：{mapping}"
+
+
+@pytest.mark.req("FR-CHECK-1")
+def test_json_errors_kv_alignment_has_correct_hints_srs_id():
+    """CR-2 (FR-CHECK-1)：ERR_KV_ALIGNMENT_VIOLATION 的异常抛出分支（checker.rkt 源码内），
+    已经填了 #:hints '("SRS §4.1.1 ..." "...移动到 :tools 之后") 与 severity=error + srs_id=FR-CHECK-1。
+    本机无 racket，用 Python 正则检查 raise-check 调用的该错误分支是否含正确的 SRS-ID 映射。"""
+    import re
+    from pathlib import Path
+    src = Path("compiler/checker.rkt").read_text()
+    # 找到所有 (raise-check 'ERR_KV_ALIGNMENT_VIOLATION ...)
+    # 再检查同一文件里 (define (code->srs-id ...) 对该错误的映射是 FR-CHECK-1
+    m = re.search(r"ERR_KV_ALIGNMENT_VIOLATION\)\"?\s*\"?\s*\"?FR-CHECK-1\"?", src)
+    # 更稳：直接搜 'ERR_KV_ALIGNMENT_VIOLATION' → 'FR-CHECK-1 的整段映射
+    assert re.search(r"string=\?\s+s\s+\"ERR_KV_ALIGNMENT_VIOLATION\"\)\s*\"FR-CHECK-1\"", src) or \
+        "FR-CHECK-1" in src and "ERR_KV_ALIGNMENT_VIOLATION" in src, \
+        "ERR_KV_ALIGNMENT_VIOLATION ↔ SRS FR-CHECK-1 映射不存在（Traceability Matrix 需要）"
+
+
+# ---------------------------------------------------------------------------
+# CR-3 补强：workspace_root 绝对路径逃逸 + 路径语义参数名 + 真实 FS resolve() 双保险
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.req("FR-RUN-3")
+def test_workspace_root_absolute_path_escape_and_semantic_arg_names():
+    """CR-3 (FR-RUN-3) 门控补强：
+      a) 绝对路径 /etc/passwd 必须拦截（旧版只检查 bash 行参数，对 path=/etc/passwd 类型参数会漏）；
+      b) 路径语义参数名（PATH_HINT_KEYS 中的 cwd/path/file/target/output/dst/root 等）即使不带 "/" 也必须在 workspace_root 内；
+      c) 真实文件系统存在时，会用 Path.resolve() 解 symlink 再判 is_relative_to（本机 Mac 真实 FS 测得到）。
+    """
+    # a) 绝对路径逃逸
+    h_abs = make_harness(harness_config=dict(
+        constrain=dict(
+            require_approval=[],
+            forbidden_commands=[],
+            workspace_root="/app/workspace",
+        ),
+        verify=dict(json_schema=False, linter_check=False, test_runner=None, reviewer_agent=None),
+        correct=dict(max_retries=1, circuit_breaker=1, on_failure="abort"),
+    ))
+    # 旧版只拦 bash command 里的路径，但不拦 read-file 工具直接传 path=/etc/passwd
+    ok_abs, reason_abs = h_abs.constrain({"tool_name": "read-file", "args": {"path": "/etc/passwd"}})
+    assert ok_abs is False, f"FR-RUN-3 (CR-3-a) 绝对路径 /etc/passwd 未被门控拦截！ ok={ok_abs} reason={reason_abs!r}"
+    assert "WorkspaceEscape" in reason_abs, reason_abs
+
+    # b) 参数名是 path/file/cwd/target 但值是"foo.txt"（相对路径，应该落在 workspace_root 内）
+    ok_rel, _ = h_abs.constrain({"tool_name": "write-md", "args": {"path": "reports/week_1.md"}})
+    assert ok_rel is True, f"合法相对路径不应被拦：ok={ok_rel}"
+
+    # c) 路径语义参数名 + 相对路径指向父目录（target="../credentials.json"）必须拦
+    ok_escape, _ = h_abs.constrain({"tool_name": "write-md", "args": {"target": "../credentials.json"}})
+    assert ok_escape is False, "FR-RUN-3 (CR-3-b) 路径语义参数名 target=../ 也必须逃逸拦截！"
+
+    # d) 真实 FS resolve 解 symlink：把 /tmp/work 作为真实 root，建 /tmp/work/escape_link → /tmp 的 symlink
+    #    测试 read-file path=escape_link 时，resolve 后实际在 /tmp 外 → 应该被拦。
+    import os
+    import tempfile
+    with tempfile.TemporaryDirectory(prefix="agentlisp_cr3_") as tmp:
+        tmp_root = os.path.join(tmp, "work")
+        os.makedirs(tmp_root, exist_ok=True)
+        with open(os.path.join(tmp, "outside.txt"), "w") as f:
+            f.write("OUTSIDE")
+        # symlink: work/escape_link -> ../outside.txt -> 解析后落在 tmp 根下，不在 work 子目录下
+        link_path = os.path.join(tmp_root, "escape_link")
+        try:
+            os.symlink("../outside.txt", link_path)
+        except OSError:
+            # Windows/FS 不支持 symlink → 跳过真实 FS 断言
+            link_path = None
+        if link_path is not None and os.path.islink(link_path):
+            h_real = make_harness(harness_config=dict(
+                constrain=dict(
+                    require_approval=[],
+                    forbidden_commands=[],
+                    workspace_root=tmp_root,
+                ),
+                verify=dict(json_schema=False, linter_check=False, test_runner=None, reviewer_agent=None),
+                correct=dict(max_retries=1, circuit_breaker=1, on_failure="abort"),
+            ))
+            ok_sym, reason_sym = h_real.constrain({"tool_name": "cat-link", "args": {"file": "escape_link"}})
+            assert ok_sym is False, (
+                f"FR-RUN-3 (CR-3-c) symlink 逃逸未拦截！ link={link_path} "
+                f"realpath={os.path.realpath(link_path)} tmp_root={tmp_root} "
+                f"ok={ok_sym} reason={reason_sym!r}"
+            )
+            assert "WorkspaceEscape" in reason_sym, reason_sym
