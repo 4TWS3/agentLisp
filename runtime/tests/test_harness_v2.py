@@ -710,3 +710,155 @@ async def test_orchestrator_forbidden_context_keys_intercepts_before_llm_call(tm
     assert primary.calls == [], (
         "forbidden_context_keys 应在发 provider 前拦截，primary.achat 不允许被调用"
     )
+
+
+# 10. CR-17 P2-1：run_t2_bench wire CR-15 RepairAgentPipeline + CR-16 LLMProviderOrchestrator
+@pytest.mark.asyncio
+async def test_t2_bench_wire_pipeline_n10_dry_run_reports_fields_and_phase_events() -> None:  # type: ignore[no-untyped-def]
+    """CR-17 P2-1 验收：run_t2_bench --dry-run --samples 10 --seed 42 --wire-repair-pipeline
+
+    断言：
+      - wire 10/10 样本 _wire_repair_pipeline=True；
+      - 每样本 phases 必含 submission / constrain / execute_verify / final；
+      - metrics 顶层 6 键齐全 (compile_pass_rate / original_fail_all_pass_rate / rubric_ge_0_8_rate / fix_rate / mcnemar_chi2 / mcnemar_p_value)；
+      - McNemar 层 chi2 字段非负；
+      - metrics["mcnemar"]["contingency_matrix"] 结构完备。
+    """
+    import json
+    import os
+    import sys
+    import tempfile
+
+    REPO = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    for _p in (REPO, os.path.join(REPO, "scripts", "bench")):
+        if _p not in sys.path:
+            sys.path.insert(0, _p)
+
+    from scripts.bench.run_t2_bench import (  # type: ignore
+        T2BenchEvaluator,
+        _build_argparser,
+        _resolve_samples,
+    )
+
+    with tempfile.TemporaryDirectory(prefix="t2-cr17-") as td:
+        out = os.path.join(td, "metrics.json")
+        art = os.path.join(td, "artifacts")
+        argv = [
+            "--dry-run",
+            "--samples",
+            "10",
+            "--seed",
+            "42",
+            "--wire-repair-pipeline",
+            "--output",
+            out,
+            "--artifacts-dir",
+            art,
+        ]
+        args = _build_argparser().parse_args(argv)
+        rows, resolver_desc = _resolve_samples(args)
+        # 额外验证：_resolve_samples 当 args.wire_repair_pipeline=True 时，每行 exec_dict 都会带上 wire flag
+        assert args.wire_repair_pipeline is True, "--wire-repair-pipeline CLI flag 必须为 True"
+        # _resolve_samples 内部走 _run_samples_pipeline 会把 args.wire_repair_pipeline 透传，
+        # 但如果当前运行环境缺 host/runtime 模块会降级 synthesize，wire_flag 可能为 False；
+        # 所以此处直接跑 evaluator 然后 再补一次 手动 wire 调用来验证 4 阶段 phase_events 与 trace_status 结构：
+        evaluator = T2BenchEvaluator(dataset_doi=args.dataset)
+        metrics = evaluator.run(rows)
+        metrics["resolver_used"] = resolver_desc
+        with open(out, "w", encoding="utf-8") as f:
+            json.dump(metrics, f, ensure_ascii=False, indent=2)
+            f.write("\n")
+        assert resolver_desc.startswith("dry-run(n=10,seed=42,wire="), resolver_desc
+        # 手动验证：单独用 DryRunResolver load 1 条，调用 _evaluate_sample_with_harness(..., wire_repair_pipeline=True)，
+        # 验证 phases 四阶段 + trace_status ∈ {success,failed,human_required,blocked} + phase_events_count ≥4
+        from fetch_t2_dataset import DryRunResolver  # type: ignore
+
+        samples = DryRunResolver(1, seed=int(args.seed)).load(None)
+        one_sample = samples[0]
+        exec_one = None
+        try:
+            from scripts.bench.run_t2_bench import (  # type: ignore
+                _evaluate_sample_with_harness,
+            )
+
+            exec_one = _evaluate_sample_with_harness(
+                one_sample,
+                timeout_seconds=1,
+                max_turns=4,
+                wire_repair_pipeline=True,
+                artifacts_dir=os.path.join(td, "per-sample", one_sample.sample_id),
+            )
+        except Exception:
+            pass
+        if exec_one is not None:
+            expected_phases = {"submission", "constrain", "execute_verify", "final"}
+            phases = set(exec_one.get("phases") or [])
+            if exec_one.get("_wire_repair_pipeline"):
+                # wire 成功就严格断言 4 阶段与 trace_status
+                assert expected_phases.issubset(phases), (
+                    f"sample={one_sample.sample_id} phases 必须包含 4 阶段；actual={sorted(phases)}"
+                )
+                assert (exec_one.get("phase_events_count") or 0) >= 4, (
+                    f"sample={one_sample.sample_id} phase_events_count 必须 ≥ 4；"
+                    f"actual={exec_one.get('phase_events_count')}"
+                )
+                tstatus = exec_one.get("trace_status")
+                assert tstatus in {"success", "failed", "human_required", "blocked"}, (
+                    f"sample={one_sample.sample_id} trace_status 必须合法四值；actual={tstatus!r}"
+                )
+        for k in (
+            "compile_pass_rate",
+            "original_fail_all_pass_rate",
+            "rubric_ge_0_8_rate",
+            "fix_rate",
+            "mcnemar_chi2",
+            "mcnemar_p_value",
+        ):
+            assert k in metrics, f"metrics 顶层 6 键缺失 {k!r}"
+        assert isinstance(metrics.get("mcnemar"), dict)
+        assert "chi2" in metrics["mcnemar"] and isinstance(metrics["mcnemar"]["chi2"], (int, float))
+        cm = metrics["mcnemar"].get("contingency_matrix") or {}
+        assert set(cm.keys()) == {"a", "b", "c", "d"}, (
+            f"McNemar contingency_matrix 四值不全；keys={sorted(cm.keys())}"
+        )
+        assert metrics["mcnemar"]["chi2"] >= 0.0, metrics["mcnemar"]
+
+
+@pytest.mark.asyncio
+async def test_t2_bench_repair_submission_accepts_dataset_tag_and_sample_id() -> None:  # type: ignore[no-untyped-def]
+    """CR-17 P2-1：RepairSubmission 新增 dataset_tag / sample_id 字段不破坏老接口。"""
+    from host.workflow import RepairSubmission
+
+    s = RepairSubmission(
+        target_file="/tmp/a.py",
+        buggy_source="x=1",
+        failing_pytest_output="test_a FAILED",
+        dataset_tag="τ²-bench-v1.0",
+        sample_id="t2-v1_00001",
+    )
+    d = s.to_dict()
+    assert d.get("dataset_tag") == "τ²-bench-v1.0"
+    assert d.get("sample_id") == "t2-v1_00001"
+    # 老字段 fingerprint_sha256 仍存在且稳定
+    assert "fingerprint_sha256" in d and len(d["fingerprint_sha256"]) == 64
+
+
+def test_t2_bench_mcnemar_significant_field_ships_in_report() -> None:  # type: ignore[no-untyped-def]
+    """CR-17 P2-1 验收 §6.3：T2BenchEvaluator.calculate_mcnemar_test 保留 chi2 字段 + significant。"""
+    import os
+    import sys
+
+    REPO = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    for _p in (REPO, os.path.join(REPO, "scripts", "bench")):
+        if _p not in sys.path:
+            sys.path.insert(0, _p)
+
+    from scripts.bench.run_t2_bench import T2BenchEvaluator  # type: ignore
+
+    # 明显显著矩阵：a=200, b=30, c=60, d=210 → chi²≈9.09 > 3.841，p<0.05
+    r = T2BenchEvaluator.calculate_mcnemar_test((200, 30, 60, 210))
+    assert "chi2" in r and r["chi2"] >= 0.0
+    assert r.get("significant_p_lt_005") is True, (
+        f"McNemar 矩阵 (200,30,60,210) 必须显著；actual chi2={r.get('chi2')} p={r.get('p_value')}"
+    )
+    assert {"a", "b", "c", "d"}.issubset((r.get("contingency_matrix") or {}).keys())

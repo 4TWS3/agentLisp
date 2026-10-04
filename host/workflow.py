@@ -457,6 +457,8 @@ class RepairSubmission:
     correct_max_retries: int = 3
     correct_circuit_breaker: int = 5
     on_failure: str = "ask-human"  # FR-PARSER-5
+    dataset_tag: str = ""  # 对齐 τ²-bench v1.0 标识（run_t2_bench 写 "τ²-bench-v1.0"）
+    sample_id: str = ""  # 对应 t2-bench sample_id（pytest 断言用）
 
     def fingerprint_sha256(self) -> str:
         payload = f"{self.target_file}|{self.buggy_source}|{self.failing_pytest_output}|{self.expected_patch_hint}"
