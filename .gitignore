@@ -68,6 +68,7 @@ _agent_export_tmp.rkt
 
 .terraform/
 *.tfstate
+uv.lock
 *.tfstate.backup
 
 node_modules/
