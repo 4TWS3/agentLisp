@@ -8,14 +8,16 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import os
+import uuid
 from abc import ABC, abstractmethod
 from collections import deque
 from dataclasses import dataclass, field
-from typing import Any, Deque, Dict, List, Optional, Tuple
+from typing import Any
 
-from runtime.errors import FeatureNotInstalledError
 from runtime.base_harness import BaseHarness, ExecutionTrace
+from runtime.errors import FeatureNotInstalledError
 
 
 @dataclass
@@ -23,17 +25,17 @@ class WorkflowRequest:
     agent_name: str
     harness: BaseHarness
     inputs: dict[str, Any]
-    workflow: Optional[str] = None
-    run_id: Optional[str] = None
+    workflow: str | None = None
+    run_id: str | None = None
 
 
 @dataclass
 class HITLSuspension:
     run_id: str
     tool_name: str
-    args: Dict[str, Any]
+    args: dict[str, Any]
     approvable_event: asyncio.Event = field(default_factory=asyncio.Event)
-    decision: Optional[str] = None  # "approve" | "reject"
+    decision: str | None = None  # "approve" | "reject"
 
     def resolve(self, decision: str) -> None:
         self.decision = decision
@@ -87,21 +89,23 @@ class InMemoryHITLRunner(WorkflowRunner):
     """
 
     def __init__(self) -> None:
-        self.traces: Dict[str, Any] = {}
-        self._tasks: Dict[str, asyncio.Task[Any]] = {}
-        self.suspend_queue: Deque[HITLSuspension] = deque()
-        self._by_run_tool: Dict[Tuple[str, str], HITLSuspension] = {}
-        self.events: List[Dict[str, Any]] = []
+        self.traces: dict[str, Any] = {}
+        self._tasks: dict[str, asyncio.Task[Any]] = {}
+        self.suspend_queue: deque[HITLSuspension] = deque()
+        self._by_run_tool: dict[tuple[str, str], HITLSuspension] = {}
+        self.events: list[dict[str, Any]] = []
 
-    def _require_approval_tools(self, harness: Any) -> List[str]:
-        tools: List[str] = []
+    def _require_approval_tools(self, harness: Any) -> list[str]:
+        tools: list[str] = []
         hcfg = getattr(harness, "harness_config", None) or {}
         ccfg = getattr(harness, "context_config", None) or {}
         correct_cfg = hcfg.get("correct", {}) or {}
         tools.extend(list(correct_cfg.get("require_approval", []) or []))
-        constrain_cfg = ccfg.get("constrain", {}) or ccfg.get("constraints", {}) or {}
-        tools.extend(list(constrain_cfg.get("require_approval", []) or []))
-        out: List[str] = []
+        constrain_cfg_harness = hcfg.get("constrain", {}) or {}
+        tools.extend(list(constrain_cfg_harness.get("require_approval", []) or []))
+        constrain_cfg_context = ccfg.get("constrain", {}) or ccfg.get("constraints", {}) or {}
+        tools.extend(list(constrain_cfg_context.get("require_approval", []) or []))
+        out: list[str] = []
         for t in tools:
             if isinstance(t, str) and t and t not in out:
                 out.append(t)
@@ -145,7 +149,7 @@ class InMemoryHITLRunner(WorkflowRunner):
             monkeypatch harness.constrain → 命中 require_approval 时放 suspension。"""
             require_approval_set = set(self._require_approval_tools(harness))
             orig_constrain = harness.constrain
-            run_state: Dict[str, Any] = {"active_suspension": None}
+            run_state: dict[str, Any] = {"active_suspension": None}
 
             def _emit_event(kind: str, **extra: Any) -> None:
                 self.events.append({"run_id": run_id, "kind": kind, **extra})
@@ -153,7 +157,7 @@ class InMemoryHITLRunner(WorkflowRunner):
                     sb = getattr(harness, "status_bar", None)
                     if sb is not None and hasattr(sb, "on_step"):
                         sb.on_step(run_id, len(getattr(harness, "_trace", None).turns if harness._trace else []), kind, str(extra))
-                except Exception:  # noqa: BLE001
+                except Exception:
                     pass
 
             def _hooked_constrain(tool_call):
@@ -188,12 +192,12 @@ class InMemoryHITLRunner(WorkflowRunner):
                             self.events.append({"run_id": run_id, "kind": "human_rejected", "tool_name": susp.tool_name})
                             try:
                                 harness.status_bar.on_step(run_id, len(harness._trace.turns) if harness._trace else 0, "rejected", susp.tool_name)
-                            except Exception:  # noqa: BLE001
+                            except Exception:
                                 pass
                             # 将 trace.status 置 failed + error=human_rejected
                             if harness._trace is not None:
-                                setattr(harness._trace, "status", "failed")
-                                setattr(harness._trace, "error", f"human_rejected: tool={susp.tool_name}")
+                                harness._trace.status = "failed"
+                                harness._trace.error = f"human_rejected: tool={susp.tool_name}"
                             return harness._trace
                         assert susp.decision == "approve"
                         self.events.append({"run_id": run_id, "kind": "human_approved", "tool_name": susp.tool_name})
@@ -215,6 +219,76 @@ class InMemoryHITLRunner(WorkflowRunner):
             raise KeyError(f"no run_id: {run_id}")
         trace = await asyncio.wait_for(task, timeout=timeout)
         return trace
+
+    @contextlib.contextmanager
+    def patch_harness_constrain(self, harness: Any) -> Any:
+        """用于 BDD / pytest 单测：
+        模拟 `submit(user_input, harness)` 的 Constrain Hook（不真正创建 async task，
+        同步地在 harness.constrain 里注入 Suspension + human_required 事件）。
+        用法:
+            runner = InMemoryHITLRunner()
+            with runner.patch_harness_constrain(harness):
+                harness.constrain({"tool_name": "git-push", ...})   # 抛 _HITLNeedApproval
+        """
+        require_approval_set = set(self._require_approval_tools(harness))
+        orig_constrain = harness.constrain
+        run_state: dict[str, Any] = {"active_suspension": None}
+        run_id = f"patch-{uuid.uuid4().hex[:8]}"
+
+        def _hooked(tool_call):
+            nonlocal run_state
+            allowed, reason = orig_constrain(tool_call)
+            tool_name = tool_call.get("tool_name", "") if isinstance(tool_call, dict) else ""
+            if not require_approval_set:
+                return allowed, reason
+            if tool_name in require_approval_set and allowed:
+                args = tool_call.get("args", {}) if isinstance(tool_call, dict) else {}
+                susp = HITLSuspension(run_id=run_id, tool_name=tool_name, args=args)
+                self.suspend_queue.append(susp)
+                self._by_run_tool[(run_id, tool_name)] = susp
+                run_state["active_suspension"] = susp
+                self.events.append({"run_id": run_id, "kind": "human_required",
+                                    "tool_name": tool_name, "args": args})
+                raise _HITLNeedApproval(susp)
+            return allowed, reason
+
+        try:
+            harness.constrain = _hooked  # type: ignore[method-assign]
+            yield self
+        finally:
+            harness.constrain = orig_constrain  # type: ignore[method-assign]
+
+    async def run_approve(
+        self,
+        harness: Any,
+        *,
+        user_input: str,
+        llm: Any,
+        tool_name: str,
+    ) -> dict[str, Any]:
+        """BDD 便利方法：等价于 submit → (在 HITL 挂起时立刻 approve 一次) → wait。
+
+        实现说明：submit 返回 run_id 后立即 asyncio.sleep(0) 让任务跑到第一次 Constrain，
+        接着 approve 一次 suspension，再 wait。返回 trace dict。
+        """
+        rid = await self.submit(WorkflowRequest(
+            agent_name=getattr(harness, "agent_name", "bdd-harness"),
+            harness=harness,
+            inputs={"user_input": user_input, "llm": llm},
+        ))
+        # 最多等 5s 让 suspension 入队（harness 要先跑 constrain hook）
+        deadline = asyncio.get_running_loop().time() + 5.0
+        while asyncio.get_running_loop().time() < deadline:
+            if (rid, tool_name) in self._by_run_tool:
+                break
+            await asyncio.sleep(0.02)
+        await self.approve(rid, tool_name)
+        trace = await self.wait(rid, timeout=30.0)
+        try:
+            td = trace.to_dict() if hasattr(trace, "to_dict") else trace
+            return {"status": td.get("status", "unknown"), "trace": td, "run_id": rid}
+        except Exception:
+            return {"status": getattr(trace, "status", "unknown"), "trace": trace, "run_id": rid}
 
     async def approve(self, run_id: str, tool_name: str) -> None:
         key = (run_id, tool_name)
@@ -258,7 +332,7 @@ class TemporalRunner(WorkflowRunner):
     def __init__(
         self,
         *,
-        temporal_client: Optional[Any] = None,
+        temporal_client: Any | None = None,
         task_queue: str = "agentlisp",
         namespace: str = "default",
         host_port: str = "localhost:7233",
@@ -290,7 +364,7 @@ class TemporalRunner(WorkflowRunner):
         raise NotImplementedError("TemporalRunner.wait skeleton")
 
 
-def default_runner(prefer_temporal: Optional[bool] = None) -> WorkflowRunner:
+def default_runner(prefer_temporal: bool | None = None) -> WorkflowRunner:
     want = prefer_temporal if prefer_temporal is not None else (
         os.getenv("AGENTLISP_RUNNER", "direct").lower() == "temporal"
     )
@@ -303,11 +377,11 @@ def default_runner(prefer_temporal: Optional[bool] = None) -> WorkflowRunner:
 
 
 __all__ = [
-    "WorkflowRequest",
-    "WorkflowRunner",
     "DirectRunner",
     "InMemoryHITLRunner",
     "TemporalRunner",
+    "WorkflowRequest",
+    "WorkflowRunner",
     "default_runner",
 ]
 

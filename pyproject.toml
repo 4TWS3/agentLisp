@@ -103,9 +103,11 @@ exclude = ["tests/", "examples/", "python/tests/", "python/examples/"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
-testpaths = ["runtime/tests", "host/tests", "python/tests"]
+testpaths = ["runtime/tests", "host/tests", "python/tests", "tests"]
 pythonpath = [".", "python"]
 addopts = "-v --cov=runtime --cov=host --cov=python/agentlisp_runtime --cov-report=term-missing"
 markers = [
     "req(requirement_id): 标记用例绑定到的 SRS 需求 ID (ISO/IEC/IEEE 29148 Traceability)",
+    "bdd: pytest-bdd 行为驱动测试场景 (Specification by Example / 实例化需求)",
+    "tag(name): BDD 自由标签 (非 SRS-ID 的 @KV-Alignment 等分类 tag 映射到 tag(name=...) 避免 unknown mark)",
 ]
