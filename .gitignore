@@ -28,6 +28,7 @@ __pypackages__/
 coverage.xml
 htmlcov/
 junit/
+artifacts/
 *.egg-info/
 dist/
 build/
