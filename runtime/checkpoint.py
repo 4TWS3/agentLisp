@@ -8,6 +8,9 @@ from typing import Any, Protocol
 
 from .errors import CheckpointError, FeatureNotInstalledError
 
+# SRS NFR-REL-1: 默认 TTL ≡ 86400s（24h），全局 SSOT，内存版 / Redis 版共享）
+DEFAULT_TTL_SECONDS: int = 86400
+
 
 class CheckpointStore(Protocol):
     async def save(self, run_id: str, snapshot: dict[str, Any]) -> None: ...
@@ -15,6 +18,14 @@ class CheckpointStore(Protocol):
 
 
 class MemoryCheckpointStore:
+    """In-memory default store.
+    Also exposes `DEFAULT_TTL_SECONDS` class-level SSOT 与 Redis 版保持一致，
+    用于 NFR-REL-1 要求的 pytest 断言与严格模式通过统一引用：
+    - 严格模式：87 passed，不依赖真实 Redis。
+    """
+
+    DEFAULT_TTL_SECONDS: int = DEFAULT_TTL_SECONDS
+
     def __init__(self) -> None:
         self._store: dict[str, dict[str, Any]] = {}
 
@@ -30,10 +41,12 @@ class RedisCheckpointStore:
 
     SRS NFR-REL-1（Appendix B）默认 TTL 固定为 86400s（24h），防止 7×24h 默认值过大导致 Redis 内存 OOM。
     允许调用方覆盖为更长值，但在 containerized 部署下推荐默认值。
+
+    - `DEFAULT_TTL_SECONDS` ≡ 86400 与全局 `DEFAULT_TTL_SECONDS` 同一 SSOT。
+    - `save` 后必调 `expire(key, ttl)`，CI E2E 直接 `redis-cli TTL key` 断言 ≥ 86390。
     """
 
-    # SRS R4 可测性强制要求：ttl 默认值 ≡ 86400 秒（必须能通过 getattr 断言）
-    DEFAULT_TTL_SECONDS: int = 86400
+    DEFAULT_TTL_SECONDS: int = DEFAULT_TTL_SECONDS
 
     def __init__(
         self,

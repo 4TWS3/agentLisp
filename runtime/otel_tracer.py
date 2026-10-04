@@ -70,6 +70,18 @@ def _import_otel() -> tuple[Any | None, Any | None, Any | None]:
         return None, None, None
 
 
+def _import_otel_otlp_exporter() -> Any | None:
+    """可选 OTLP gRPC exporter（docker-compose Jaeger 4317）。未装 observability 组则返回 None。"""
+    try:
+        from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import (  # type: ignore[import-not-found]
+            OTLPSpanExporter,
+        )
+
+        return OTLPSpanExporter
+    except Exception:
+        return None
+
+
 def create_tracer(
     service_name: str = "agentlisp",
     *,
