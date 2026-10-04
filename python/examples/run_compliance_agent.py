@@ -6,9 +6,9 @@ import asyncio
 import json
 import random
 from pathlib import Path
+from typing import ClassVar
 
 from agentlisp_runtime.engine import AgentEngine
-from agentlisp_runtime.loader import AgentLoader
 from agentlisp_runtime.models import (
     Agent,
     AtomicAction,
@@ -20,18 +20,14 @@ from agentlisp_runtime.models import (
 
 
 class KnowledgeBaseTool:
-    _DOCS = {
+    _DOCS: ClassVar[dict[str, str]] = {
         "doc-1": "政务信息化项目申报需包含项目背景、建设目标、投资估算三部分。",
         "doc-2": "项目总投资超过1000万需由省级评审委员会审批。",
         "doc-3": "合规性审查规则集版本 2.3 生效日期 2026-01-01。",
     }
 
     async def query(self, keyword: str, limit: int = 10) -> dict:
-        hits = [
-            {"id": k, "content": v}
-            for k, v in self._DOCS.items()
-            if keyword in v
-        ]
+        hits = [{"id": k, "content": v} for k, v in self._DOCS.items() if keyword in v]
         return {"query": keyword, "hits": hits[:limit], "total": len(hits)}
 
 
@@ -67,7 +63,9 @@ def build_compliance_agent() -> Agent:
                     Step(
                         id="collect",
                         action=AtomicAction(
-                            name="search", target="knowledge", method="query",
+                            name="search",
+                            target="knowledge",
+                            method="query",
                             params=["项目申报书", 50],
                         ),
                         next="verify",
@@ -75,7 +73,9 @@ def build_compliance_agent() -> Agent:
                     Step(
                         id="verify",
                         action=AtomicAction(
-                            name="verify", target="compliance", method="verify",
+                            name="verify",
+                            target="compliance",
+                            method="verify",
                             params=["project-book.docx", ["rule-1", "rule-2", "rule-3"]],
                         ),
                         next="report",
@@ -83,7 +83,9 @@ def build_compliance_agent() -> Agent:
                     Step(
                         id="report",
                         action=AtomicAction(
-                            name="gen", target="report", method="generate",
+                            name="gen",
+                            target="report",
+                            method="generate",
                             params=[{"status": "done"}, "standard-template"],
                         ),
                         next=None,
