@@ -129,11 +129,13 @@ class InMemoryHITLRunner(WorkflowRunner):
                 # 在 _react_step 之前：用 v2 接口先看 turn.action 是否命中 require_approval
                 # 直接把 Harness 的 _react_step 包一层：注册 approve/reject 钩子
                 if require_approval_set:
+
                     async def _wrapped_react_step(orig_step_fn):
                         # 先把 action 从下一个要调用的 turn 里预读？更稳的方法是在 constrain 之后 execute 前：
                         # 这里简化：用 status_bar events 反查（但 status_bar 是可观测，不提供 action pre-hook）
                         # 最终方法：把 harness.constrain 包一层 Wrapper
                         return await orig_step_fn()
+
                     _ = _wrapped_react_step  # 占位；真实路径用另一种：直接跑 run()，在 constrain 里通过 side channel 抛 HITLNeedApproval
                 result = await harness._react_step() if hasattr(harness, "_react_step") else None
                 if result is None:
@@ -156,7 +158,12 @@ class InMemoryHITLRunner(WorkflowRunner):
                 try:
                     sb = getattr(harness, "status_bar", None)
                     if sb is not None and hasattr(sb, "on_step"):
-                        sb.on_step(run_id, len(getattr(harness, "_trace", None).turns if harness._trace else []), kind, str(extra))
+                        sb.on_step(
+                            run_id,
+                            len(getattr(harness, "_trace", None).turns if harness._trace else []),
+                            kind,
+                            str(extra),
+                        )
                 except Exception:
                     pass
 
@@ -189,9 +196,20 @@ class InMemoryHITLRunner(WorkflowRunner):
                         # 等待 approve/reject
                         await asyncio.wait_for(susp.approvable_event.wait(), timeout=86_400.0)
                         if susp.decision == "reject":
-                            self.events.append({"run_id": run_id, "kind": "human_rejected", "tool_name": susp.tool_name})
+                            self.events.append(
+                                {
+                                    "run_id": run_id,
+                                    "kind": "human_rejected",
+                                    "tool_name": susp.tool_name,
+                                }
+                            )
                             try:
-                                harness.status_bar.on_step(run_id, len(harness._trace.turns) if harness._trace else 0, "rejected", susp.tool_name)
+                                harness.status_bar.on_step(
+                                    run_id,
+                                    len(harness._trace.turns) if harness._trace else 0,
+                                    "rejected",
+                                    susp.tool_name,
+                                )
                             except Exception:
                                 pass
                             # 将 trace.status 置 failed + error=human_rejected
@@ -200,7 +218,13 @@ class InMemoryHITLRunner(WorkflowRunner):
                                 harness._trace.error = f"human_rejected: tool={susp.tool_name}"
                             return harness._trace
                         assert susp.decision == "approve"
-                        self.events.append({"run_id": run_id, "kind": "human_approved", "tool_name": susp.tool_name})
+                        self.events.append(
+                            {
+                                "run_id": run_id,
+                                "kind": "human_approved",
+                                "tool_name": susp.tool_name,
+                            }
+                        )
                         # 继续下一循环，此时再次调用 constrain → 同一个 tool_name 会再次命中 require_approval，需要放行一次：
                         # 使用 allow_once set
                         require_approval_set.discard(susp.tool_name)
@@ -247,8 +271,14 @@ class InMemoryHITLRunner(WorkflowRunner):
                 self.suspend_queue.append(susp)
                 self._by_run_tool[(run_id, tool_name)] = susp
                 run_state["active_suspension"] = susp
-                self.events.append({"run_id": run_id, "kind": "human_required",
-                                    "tool_name": tool_name, "args": args})
+                self.events.append(
+                    {
+                        "run_id": run_id,
+                        "kind": "human_required",
+                        "tool_name": tool_name,
+                        "args": args,
+                    }
+                )
                 raise _HITLNeedApproval(susp)
             return allowed, reason
 
@@ -271,11 +301,13 @@ class InMemoryHITLRunner(WorkflowRunner):
         实现说明：submit 返回 run_id 后立即 asyncio.sleep(0) 让任务跑到第一次 Constrain，
         接着 approve 一次 suspension，再 wait。返回 trace dict。
         """
-        rid = await self.submit(WorkflowRequest(
-            agent_name=getattr(harness, "agent_name", "bdd-harness"),
-            harness=harness,
-            inputs={"user_input": user_input, "llm": llm},
-        ))
+        rid = await self.submit(
+            WorkflowRequest(
+                agent_name=getattr(harness, "agent_name", "bdd-harness"),
+                harness=harness,
+                inputs={"user_input": user_input, "llm": llm},
+            )
+        )
         # 最多等 5s 让 suspension 入队（harness 要先跑 constrain hook）
         deadline = asyncio.get_running_loop().time() + 5.0
         while asyncio.get_running_loop().time() < deadline:
@@ -320,7 +352,7 @@ class InMemoryHITLRunner(WorkflowRunner):
         susp.resolve("reject")
 
 
-class _HITLNeedApproval(Exception):
+class _HITLNeedApproval(Exception):  # noqa: N818
     def __init__(self, suspension: HITLSuspension) -> None:
         super().__init__(f"HITL approve needed: tool={suspension.tool_name}")
         self.suspension = suspension
@@ -349,9 +381,8 @@ class TemporalRunner(WorkflowRunner):
     async def _get_client(self) -> Any:  # pragma: no cover - temporal not in CI env
         if self._client is None:
             from temporalio.client import Client  # type: ignore[import-not-found]
-            self._client = await Client.connect(
-                target_url=self.host_port, namespace=self.namespace
-            )
+
+            self._client = await Client.connect(target_url=self.host_port, namespace=self.namespace)
         return self._client
 
     async def submit(self, req: WorkflowRequest) -> str:  # pragma: no cover
@@ -365,8 +396,10 @@ class TemporalRunner(WorkflowRunner):
 
 
 def default_runner(prefer_temporal: bool | None = None) -> WorkflowRunner:
-    want = prefer_temporal if prefer_temporal is not None else (
-        os.getenv("AGENTLISP_RUNNER", "direct").lower() == "temporal"
+    want = (
+        prefer_temporal
+        if prefer_temporal is not None
+        else (os.getenv("AGENTLISP_RUNNER", "direct").lower() == "temporal")
     )
     if want:
         try:
@@ -384,4 +417,3 @@ __all__ = [
     "WorkflowRunner",
     "default_runner",
 ]
-

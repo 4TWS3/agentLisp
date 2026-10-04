@@ -23,6 +23,7 @@ def test_runtime_imports() -> None:
         ReActTurn,
         __version__,
     )
+
     assert __version__.startswith("2.")
 
 
@@ -51,14 +52,15 @@ def test_status_bar_composite() -> None:
         LoggingStatusBar,
         PrintingStatusBar,
     )
+
     bar = CompositeStatusBar(PrintingStatusBar(), LoggingStatusBar())
     assert isinstance(bar.bars, tuple)
     assert len(bar.bars) == 2
 
 
 def test_tool_registry_async() -> None:
-    from runtime.mcp_client import ToolRegistry
     from runtime.errors import ToolNotFoundError
+    from runtime.mcp_client import ToolRegistry
 
     reg = ToolRegistry()
 
@@ -95,9 +97,10 @@ def test_feature_not_installed_message_mentions_install_command() -> None:
 
 def test_host_imports_no_opt_deps() -> None:
     # 确保即使未安装 FastAPI / Temporal / docker，也能成功 import
-    import host.gateway as g  # noqa: F401
-    import host.workflow as w  # noqa: F401
-    import host.sandbox as s  # noqa: F401
+    import host.gateway as g
+    import host.sandbox as s
+    import host.workflow as w
+
     assert issubclass(w.DirectRunner, w.WorkflowRunner)
     assert issubclass(s.NullSandbox, s.Sandbox)
     # Gateway 的 app 要么成功构建（环境装了 web optional 组），要么抛出 FeatureNotInstalledError/ImportError
@@ -112,12 +115,14 @@ def test_host_imports_no_opt_deps() -> None:
 
 def test_generated_agent_importable() -> None:
     import importlib
+
     importlib.invalidate_caches()
     mod = importlib.import_module("examples.dist.repair_agent")
     assert mod.AGENT_NAME == "document-repairer"
     assert "document-repairer" in mod.HARNESS_REGISTRY
     cls = mod.HARNESS_REGISTRY["document-repairer"]
     from runtime.base_harness import BaseHarness
+
     assert issubclass(cls, BaseHarness)
 
 

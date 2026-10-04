@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Optional
 
 import structlog
 import typer
@@ -26,7 +25,9 @@ logger = structlog.get_logger()
 
 @app.command("validate")
 def validate(
-    agent_file: Path = typer.Argument(..., exists=True, readable=True, help="Agent definition file"),
+    agent_file: Path = typer.Argument(  # noqa: B008
+        ..., exists=True, readable=True, help="Agent definition file"
+    ),
     format: str = typer.Option("json", "--format", "-f", help="Input format: json|yaml|scheme"),
 ) -> None:
     """Validate an agent definition file."""
@@ -50,17 +51,19 @@ def validate(
             for wf in agent.workflows:
                 table.add_row(wf.name, str(len(wf.steps)), ", ".join(wf.triggers) or "-")
             console.print(table)
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         console.print(f"[bold red]✗ Validation failed:[/bold red] {exc}")
-        raise typer.Exit(code=1)
+        raise typer.Exit(code=1) from exc
 
 
 @app.command("run")
 def run_workflow(
-    agent_file: Path = typer.Argument(..., exists=True, readable=True, help="Agent definition file"),
+    agent_file: Path = typer.Argument(  # noqa: B008
+        ..., exists=True, readable=True, help="Agent definition file"
+    ),
     workflow: str = typer.Argument(..., help="Workflow name to execute"),
     format: str = typer.Option("json", "--format", "-f", help="Input format: json|yaml|scheme"),
-    output: Optional[Path] = typer.Option(None, "--output", "-o", help="Write result to file"),
+    output: Path | None = typer.Option(None, "--output", "-o", help="Write result to file"),  # noqa: B008
 ) -> None:
     """Execute a workflow defined in the agent file."""
     import asyncio
@@ -87,8 +90,8 @@ def run_workflow(
 
 @app.command("export")
 def export(
-    scheme_file: Path = typer.Argument(..., exists=True, readable=True, help="Scheme .rkt file"),
-    output: Path = typer.Option(Path("agent.json"), "--output", "-o", help="Output JSON file"),
+    scheme_file: Path = typer.Argument(..., exists=True, readable=True, help="Scheme .rkt file"),  # noqa: B008
+    output: Path = typer.Option(Path("agent.json"), "--output", "-o", help="Output JSON file"),  # noqa: B008
     racket_exe: str = typer.Option("racket", "--racket", help="Racket executable path"),
 ) -> None:
     """Export a Scheme agent definition to JSON."""
@@ -98,12 +101,10 @@ def export(
             agent.model_dump_json(indent=2),
             encoding="utf-8",
         )
-        console.print(
-            f"[bold green]✓ Exported agent '{agent.name}' to {output}[/bold green]"
-        )
-    except Exception as exc:  # noqa: BLE001
+        console.print(f"[bold green]✓ Exported agent '{agent.name}' to {output}[/bold green]")
+    except Exception as exc:
         console.print(f"[bold red]✗ Export failed:[/bold red] {exc}")
-        raise typer.Exit(code=1)
+        raise typer.Exit(code=1) from exc
 
 
 def _load_agent(path: Path, fmt: str):

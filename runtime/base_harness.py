@@ -5,8 +5,9 @@ from __future__ import annotations
 import asyncio
 import time
 import uuid
+from collections.abc import AsyncIterable, Callable
 from dataclasses import dataclass, field
-from typing import Any, AsyncIterable, Callable, Optional
+from typing import Any
 
 import structlog
 from pydantic import BaseModel, Field
@@ -25,7 +26,7 @@ class ReActTurn:
     observation: Any = None
     answer: str = ""
     started_at: float = field(default_factory=time.perf_counter)
-    finished_at: Optional[float] = None
+    finished_at: float | None = None
 
     def finish(self) -> None:
         self.finished_at = time.perf_counter()
@@ -43,8 +44,8 @@ class ExecutionTrace(BaseModel):
     final_answer: str = ""
     status: str = "pending"
     started_at: float = Field(default_factory=time.perf_counter)
-    finished_at: Optional[float] = None
-    error: Optional[str] = None
+    finished_at: float | None = None
+    error: str | None = None
 
     @property
     def duration_ms(self) -> float:
@@ -66,12 +67,12 @@ class BaseHarness:
 
     def __init__(
         self,
-        agent_cfg: Optional[dict[str, Any]] = None,
-        llm_client: Optional[Any] = None,
-        tool_registry: Optional[Any] = None,
-        checkpoint_store: Optional[Any] = None,
-        memory_fs: Optional[Any] = None,
-        status_bar: Optional[Any] = None,
+        agent_cfg: dict[str, Any] | None = None,
+        llm_client: Any | None = None,
+        tool_registry: Any | None = None,
+        checkpoint_store: Any | None = None,
+        memory_fs: Any | None = None,
+        status_bar: Any | None = None,
         max_turns: int = 30,
         react_mode: bool = True,
     ) -> None:
@@ -94,17 +95,17 @@ class BaseHarness:
         for cb in self._hooks.get(event, []):
             try:
                 cb(payload)
-            except Exception:  # noqa: BLE001
+            except Exception:
                 log.exception("hook.failed", event=event)
 
     # ------------------------------------------------------------- public API
-    def run(self, inputs: Optional[dict[str, Any]] = None, **kwargs: Any) -> ExecutionTrace:
+    def run(self, inputs: dict[str, Any] | None = None, **kwargs: Any) -> ExecutionTrace:
         return asyncio.run(self.run_async(inputs=inputs, **kwargs))
 
     async def run_async(
         self,
-        inputs: Optional[dict[str, Any]] = None,
-        workflow: Optional[str] = None,
+        inputs: dict[str, Any] | None = None,
+        workflow: str | None = None,
     ) -> ExecutionTrace:
         trace = ExecutionTrace(agent_name=self.agent_name)
         try:
@@ -135,7 +136,7 @@ class BaseHarness:
             trace.status = "success" if trace.status == "pending" else trace.status
             self._emit("done", {"run_id": trace.run_id, "answer": trace.final_answer})
             await self.status_bar.on_done(trace)
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             trace.status = "failed"
             trace.error = str(exc)
             log.exception("harness.failed", run_id=trace.run_id, error=str(exc))
@@ -148,7 +149,7 @@ class BaseHarness:
         return trace
 
     async def stream_async(
-        self, inputs: Optional[dict[str, Any]] = None, **_kw: Any
+        self, inputs: dict[str, Any] | None = None, **_kw: Any
     ) -> AsyncIterable[dict[str, Any]]:
         q: asyncio.Queue[dict[str, Any]] = asyncio.Queue()
 
@@ -189,7 +190,7 @@ class BaseHarness:
             self._emit("turn", {"index": idx, "stage": "think"})
             try:
                 response = await self.llm.next(prompt_payload, history, trace)
-            except Exception as exc:  # noqa: BLE001
+            except Exception as exc:
                 raise HarnessError(f"LLM call failed at turn {idx}: {exc}") from exc
 
             structured = self._coerce_llm_response(response)
@@ -246,9 +247,9 @@ class BaseHarness:
     # ----------------------------------------------------------- v0.1 bridge
     def _legacy_engine(self) -> Any | None:
         try:
-            from agentlisp_runtime.loader import AgentLoader
             from agentlisp_runtime.engine import AgentEngine
-        except Exception:  # noqa: BLE001
+            from agentlisp_runtime.loader import AgentLoader
+        except Exception:
             return None
         try:
             agent = AgentLoader.from_dict(self.cfg)
@@ -256,7 +257,7 @@ class BaseHarness:
                 k: v for k, v in (self.tools.handlers() if hasattr(self.tools, "handlers") else {})
             }
             return AgentEngine(agent, tool_handlers=handlers)
-        except Exception:  # noqa: BLE001
+        except Exception:
             return None
 
 
@@ -282,7 +283,7 @@ def _jsonable_snapshot(v: Any) -> Any:
     if hasattr(v, "model_dump"):
         try:
             return v.model_dump(mode="json")  # type: ignore[attr-defined]
-        except Exception:  # noqa: BLE001
+        except Exception:
             return str(v)
     return str(v)
 
@@ -332,12 +333,12 @@ class _MemoryCheckpoint:
     async def save(self, run_id: str, snapshot: dict[str, Any]) -> None:
         self.store.setdefault(run_id, {}).update(snapshot)
 
-    async def load(self, run_id: str) -> Optional[dict[str, Any]]:
+    async def load(self, run_id: str) -> dict[str, Any] | None:
         return self.store.get(run_id)
 
 
 class _NullMemoryFS:
-    async def read(self, path: str) -> Optional[str]:
+    async def read(self, path: str) -> str | None:
         return None
 
     async def write(self, path: str, content: str) -> None:

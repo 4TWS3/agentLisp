@@ -4,9 +4,8 @@ from __future__ import annotations
 
 import json
 import subprocess
-import sys
 from pathlib import Path
-from typing import Any, Union
+from typing import Any
 
 import yaml
 
@@ -64,14 +63,14 @@ class AgentLoader:
         )
 
     @classmethod
-    def from_json(cls, path: Union[str, Path]) -> Agent:
+    def from_json(cls, path: str | Path) -> Agent:
         path = Path(path)
         with path.open("r", encoding="utf-8") as f:
             data = json.load(f)
         return cls.from_dict(data)
 
     @classmethod
-    def from_yaml(cls, path: Union[str, Path]) -> Agent:
+    def from_yaml(cls, path: str | Path) -> Agent:
         path = Path(path)
         with path.open("r", encoding="utf-8") as f:
             data = yaml.safe_load(f)
@@ -80,9 +79,9 @@ class AgentLoader:
     @classmethod
     def from_scheme(
         cls,
-        path: Union[str, Path],
+        path: str | Path,
         racket_exe: str = "racket",
-        scheme_root: Union[str, Path, None] = None,
+        scheme_root: str | Path | None = None,
     ) -> Agent:
         path = Path(path)
         script_dir = path.parent

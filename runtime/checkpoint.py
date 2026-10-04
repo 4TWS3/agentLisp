@@ -4,14 +4,14 @@ from __future__ import annotations
 
 import json
 import os
-from typing import Any, Optional, Protocol
+from typing import Any, Protocol
 
 from .errors import CheckpointError, FeatureNotInstalledError
 
 
 class CheckpointStore(Protocol):
     async def save(self, run_id: str, snapshot: dict[str, Any]) -> None: ...
-    async def load(self, run_id: str) -> Optional[dict[str, Any]]: ...
+    async def load(self, run_id: str) -> dict[str, Any] | None: ...
 
 
 class MemoryCheckpointStore:
@@ -21,7 +21,7 @@ class MemoryCheckpointStore:
     async def save(self, run_id: str, snapshot: dict[str, Any]) -> None:
         self._store.setdefault(run_id, {}).update(snapshot)
 
-    async def load(self, run_id: str) -> Optional[dict[str, Any]]:
+    async def load(self, run_id: str) -> dict[str, Any] | None:
         return self._store.get(run_id)
 
 
@@ -37,18 +37,20 @@ class RedisCheckpointStore:
 
     def __init__(
         self,
-        url: Optional[str] = None,
+        url: str | None = None,
         *,
         key_prefix: str = "agentlisp:ckpt:",
         ttl_seconds: int = DEFAULT_TTL_SECONDS,
-        client: Optional[Any] = None,
+        client: Any | None = None,
     ) -> None:
         if client is None:
             try:
                 from redis.asyncio import Redis  # type: ignore[import-not-found]
             except ImportError as exc:
                 raise FeatureNotInstalledError("Redis checkpoint", "durable") from exc
-            self._redis = Redis.from_url(url or os.getenv("AGENTLISP_REDIS_URL", "redis://localhost:6379/0"))
+            self._redis = Redis.from_url(
+                url or os.getenv("AGENTLISP_REDIS_URL", "redis://localhost:6379/0")
+            )
         else:
             self._redis = client
         self.prefix = key_prefix
@@ -66,16 +68,18 @@ class RedisCheckpointStore:
             existing = await self._redis.hget(self._key(run_id), "v")  # type: ignore[union-attr]
             merged: dict[str, Any] = json.loads(existing or "{}")
             merged.update(snapshot)
-            await self._redis.hset(self._key(run_id), "v", json.dumps(merged, default=str, ensure_ascii=False).encode())  # type: ignore[union-attr]
+            await self._redis.hset(
+                self._key(run_id), "v", json.dumps(merged, default=str, ensure_ascii=False).encode()
+            )  # type: ignore[union-attr]
             await self._redis.expire(self._key(run_id), self.ttl)  # type: ignore[union-attr]
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             raise CheckpointError(f"save {run_id} failed: {exc}") from exc
 
-    async def load(self, run_id: str) -> Optional[dict[str, Any]]:
+    async def load(self, run_id: str) -> dict[str, Any] | None:
         try:
             raw = await self._redis.hget(self._key(run_id), "v")  # type: ignore[union-attr]
             if not raw:
                 return None
             return json.loads(raw)
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             raise CheckpointError(f"load {run_id} failed: {exc}") from exc

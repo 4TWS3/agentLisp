@@ -1,14 +1,15 @@
 """AgentLisp 全局 pytest conftest：
-   1. pytest-bdd 的 Gherkin 中文关键字（zh-CN）兼容（pytest-bdd 7 内置；此 conftest 提供兜底别名）。
-   2. 把 BDD scenarios 的 tag (@FR-CHECK-1 / @FR-RUN-3 / @NFR-* …… 等以 @SRS-ID 形式标注)
-      自动映射为已经注册的 @pytest.mark.req("FR-CHECK-1")，保证严格模式
-      `-W error::pytest.PytestUnknownMarkWarning` 下不因为未知 tag 挂掉，且
-      与 SRS 29148 Traceability Matrix 已有 marker 统一（junit XML 一份即可导出）。
-   3. pytest_bdd 的自由 tag（@KV-Alignment 这样的「非 SRS-ID 标签」）在严格模式下会被当
-      作 Unknown pytest marker 报错。此 conftest 注册 pytest_bdd_apply_tag hook，
-      对所有非 SRS-ID / 非 pytest 内置 marker，统一转成 @pytest.mark.tag(name=KV-Alignment)
-     （marker 在 pyproject.toml 注册 tag，严格模式就不会报错）。
+1. pytest-bdd 的 Gherkin 中文关键字（zh-CN）兼容（pytest-bdd 7 内置；此 conftest 提供兜底别名）。
+2. 把 BDD scenarios 的 tag (@FR-CHECK-1 / @FR-RUN-3 / @NFR-* …… 等以 @SRS-ID 形式标注)
+   自动映射为已经注册的 @pytest.mark.req("FR-CHECK-1")，保证严格模式
+   `-W error::pytest.PytestUnknownMarkWarning` 下不因为未知 tag 挂掉，且
+   与 SRS 29148 Traceability Matrix 已有 marker 统一（junit XML 一份即可导出）。
+3. pytest_bdd 的自由 tag（@KV-Alignment 这样的「非 SRS-ID 标签」）在严格模式下会被当
+   作 Unknown pytest marker 报错。此 conftest 注册 pytest_bdd_apply_tag hook，
+   对所有非 SRS-ID / 非 pytest 内置 marker，统一转成 @pytest.mark.tag(name=KV-Alignment)
+  （marker 在 pyproject.toml 注册 tag，严格模式就不会报错）。
 """
+
 from __future__ import annotations
 
 import re
@@ -48,11 +49,16 @@ def _record_req_markers_to_junitxml(record_property: Any, request: Any) -> None:
             if marker.args and isinstance(marker.args[0], str):
                 record_property("req", marker.args[0])
         for marker in request.node.iter_markers(name="tag"):
-            name = marker.kwargs.get("name") if marker.kwargs else (marker.args[0] if marker.args else None)
+            name = (
+                marker.kwargs.get("name")
+                if marker.kwargs
+                else (marker.args[0] if marker.args else None)
+            )
             if isinstance(name, str):
                 record_property("tag", name)
     except Exception:
         pass
+
 
 # --------- 1. Tag → req marker 自动映射（pytest_collection_modifyitems hook）--------
 # 合法 SRS-ID 正则：FR-<NAME>-<NUM> / NFR-<CATEGORY>-<NUMa?> / AC-<NUM> / IF-<NAME>-<NUM> / R-<NUM>
@@ -67,12 +73,27 @@ _SRS_ID_RE = re.compile(
 )
 
 # pytest 内置 marker（不能当作 req / tag 映射）
-_BUILTIN_MARKERS = frozenset({
-    "parametrize", "xfail", "xpass", "skip", "skipif", "usefixtures",
-    "filterwarnings", "asyncio", "req", "bdd", "tag",
-    "pytest_bdd", "scenario", "features",
-    "allure", "allure_label", "allure_id",  # allure 也常用，先排除
-})
+_BUILTIN_MARKERS = frozenset(
+    {
+        "parametrize",
+        "xfail",
+        "xpass",
+        "skip",
+        "skipif",
+        "usefixtures",
+        "filterwarnings",
+        "asyncio",
+        "req",
+        "bdd",
+        "tag",
+        "pytest_bdd",
+        "scenario",
+        "features",
+        "allure",
+        "allure_label",
+        "allure_id",  # allure 也常用，先排除
+    }
+)
 
 
 def pytest_bdd_apply_tag(tag: str, function: Any) -> bool:
@@ -132,4 +153,3 @@ def pytest_collection_modifyitems(config: Any, items: Iterable[pytest.Item]) -> 
         except Exception:
             # 某些 pytest 版本 item.own_markers 是 frozen 的，放过（上面 pytest_bdd_apply_tag 已经处理绝大部分）
             pass
-

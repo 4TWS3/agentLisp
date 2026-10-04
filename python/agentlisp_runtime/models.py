@@ -2,20 +2,21 @@
 
 from __future__ import annotations
 
+from collections.abc import Awaitable, Callable
 from enum import Enum
-from typing import Any, Awaitable, Callable, Optional
+from typing import Any
 from uuid import UUID, uuid4
 
 from pydantic import BaseModel, Field, field_validator
 
 
-class ActionType(str, Enum):
+class ActionType(str, Enum):  # noqa: UP042
     ATOMIC = "atomic"
     COMPOSITE = "composite"
     CUSTOM = "custom"
 
 
-class ExecutionStatus(str, Enum):
+class ExecutionStatus(str, Enum):  # noqa: UP042
     PENDING = "pending"
     RUNNING = "running"
     SUCCESS = "success"
@@ -37,7 +38,7 @@ class Tool(BaseModel):
     description: str = ""
     input_schema: dict[str, Any] = Field(default_factory=dict)
     output_schema: dict[str, Any] = Field(default_factory=dict)
-    handler: Optional[Callable[..., Awaitable[Any] | Any]] = Field(default=None, exclude=True)
+    handler: Callable[..., Awaitable[Any] | Any] | None = Field(default=None, exclude=True)
 
     @field_validator("name")
     @classmethod
@@ -50,7 +51,7 @@ class Tool(BaseModel):
 class Step(BaseModel):
     id: str
     action: AtomicAction | dict[str, Any]
-    next: Optional[str] = None
+    next: str | None = None
     condition: bool | str = True
 
     @field_validator("id")
@@ -80,13 +81,13 @@ class Agent(BaseModel):
             raise ValueError("Agent name cannot be empty")
         return v
 
-    def get_tool(self, tool_name: str) -> Optional[Tool]:
+    def get_tool(self, tool_name: str) -> Tool | None:
         for tool in self.tools:
             if tool.name == tool_name:
                 return tool
         return None
 
-    def get_workflow(self, workflow_name: str) -> Optional[Workflow]:
+    def get_workflow(self, workflow_name: str) -> Workflow | None:
         for wf in self.workflows:
             if wf.name == workflow_name:
                 return wf
@@ -110,18 +111,18 @@ class StepExecutionResult(BaseModel):
     step_id: str
     status: ExecutionStatus
     output: Any = None
-    error: Optional[str] = None
+    error: str | None = None
     duration_ms: float = 0.0
 
 
 class ExecutionResult(BaseModel):
     run_id: UUID
     agent_name: str
-    workflow_name: Optional[str]
+    workflow_name: str | None
     status: ExecutionStatus
     steps: list[StepExecutionResult] = Field(default_factory=list)
     total_duration_ms: float = 0.0
-    error: Optional[str] = None
+    error: str | None = None
 
     @property
     def success(self) -> bool:

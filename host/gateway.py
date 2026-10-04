@@ -6,13 +6,12 @@ when constructing the app; import-level smoke stays green).
 
 from __future__ import annotations
 
-import asyncio
 import json
-import uuid
-from typing import Any, AsyncIterable, Optional
+from collections.abc import AsyncIterable
+from typing import Any
 
-from runtime.errors import FeatureNotInstalledError
 from runtime.base_harness import BaseHarness, ExecutionTrace
+from runtime.errors import FeatureNotInstalledError
 
 
 class Gateway:
@@ -21,11 +20,11 @@ class Gateway:
 
     def __init__(
         self,
-        harness_registry: Optional[dict[str, BaseHarness]] = None,
+        harness_registry: dict[str, BaseHarness] | None = None,
     ) -> None:
         self.registry: dict[str, BaseHarness] = harness_registry or {}
         self.traces: dict[str, ExecutionTrace] = {}
-        self._app: Optional[Any] = None
+        self._app: Any | None = None
 
     def register(self, name: str, harness: BaseHarness) -> None:
         self.registry[name] = harness
@@ -37,7 +36,7 @@ class Gateway:
             try:
                 from fastapi import FastAPI, HTTPException
                 from fastapi.responses import StreamingResponse
-                from pydantic import BaseModel as _BM
+                from pydantic import BaseModel as _BM  # noqa: N814
             except ImportError as exc:  # pragma: no cover
                 raise FeatureNotInstalledError("FastAPI gateway", "web") from exc
 
@@ -49,7 +48,7 @@ class Gateway:
 
             class RunRequest(_BM):
                 inputs: dict[str, Any] = {}
-                workflow: Optional[str] = None
+                workflow: str | None = None
                 stream: bool = False
 
             @app.get("/health", tags=["meta"])
@@ -69,14 +68,20 @@ class Gateway:
                     async def _events() -> AsyncIterable[str]:
                         harness = self.registry[name]
                         async for evt in harness.stream_async(inputs=req.inputs):
-                            yield "data: " + json.dumps(evt, default=str, ensure_ascii=False) + "\n\n"
+                            yield (
+                                "data: " + json.dumps(evt, default=str, ensure_ascii=False) + "\n\n"
+                            )
                         final = trace_ref.get("trace")
                         if final is not None:
-                            yield "data: " + json.dumps(
-                                {"event": "trace", "value": final.model_dump(mode="json")},
-                                ensure_ascii=False,
-                                default=str,
-                            ) + "\n\n"
+                            yield (
+                                "data: "
+                                + json.dumps(
+                                    {"event": "trace", "value": final.model_dump(mode="json")},
+                                    ensure_ascii=False,
+                                    default=str,
+                                )
+                                + "\n\n"
+                            )
                         yield "data: [DONE]\n\n"
 
                     return StreamingResponse(_events(), media_type="text/event-stream")
@@ -104,7 +109,7 @@ def serve(
     *,
     host: str = "0.0.0.0",
     port: int = 8000,
-    uvicorn_kwargs: Optional[dict[str, Any]] = None,
+    uvicorn_kwargs: dict[str, Any] | None = None,
 ) -> None:  # pragma: no cover
     """Convenience launcher. Requires 'web' optional group."""
     try:

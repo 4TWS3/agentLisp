@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """
 AgentLisp v2.0 核心运行时基类 (runtime/base_agent_harness.py)
 固化架构规范：
@@ -8,101 +7,113 @@ AgentLisp v2.0 核心运行时基类 (runtime/base_agent_harness.py)
 
 import asyncio
 import logging
-from typing import Dict, Any, List, Tuple, Optional
+from typing import Any
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - [%(levelname)s] - %(message)s")
 
+
 class BaseAgentHarness:
-    def __init__(self, 
-                 model_config: Dict[str, Any],
-                 context_config: Dict[str, Any],
-                 tools_config: Dict[str, Any],
-                 harness_config: Dict[str, Any]):
+    def __init__(
+        self,
+        model_config: dict[str, Any],
+        context_config: dict[str, Any],
+        tools_config: dict[str, Any],
+        harness_config: dict[str, Any],
+    ):
         self.model_config = model_config
         self.context_config = context_config
         self.tools_config = tools_config
         self.harness_config = harness_config
-        
+
         # 运行时状态
-        self.trajectory: List[Dict[str, Any]] = []
+        self.trajectory: list[dict[str, Any]] = []
         self.step_count: int = 0
         self.is_terminated: bool = False
 
     # ------------------------------------------------------------------
     # 1. KV Cache 对齐的上下文组装器 (Static -> Dynamic -> Trailing Hook)
     # ------------------------------------------------------------------
-    def build_context(self) -> List[Dict[str, Any]]:
+    def build_context(self) -> list[dict[str, Any]]:
         """
         严格按照 AgentLisp 规约组装 Context：
-        [1. System Prompt (Static)] -> [2. Tool Schemas (Static)] 
+        [1. System Prompt (Static)] -> [2. Tool Schemas (Static)]
         -> [3. History Trajectory (Dynamic)] -> [4. Status Bar (Trailing Hook)]
         """
         messages = []
-        
+
         # (1) 静态 System Prompt
         sys_prompt = self.model_config.get("system_prompt", "You are a helpful Agent.")
         messages.append({"role": "system", "content": sys_prompt})
-        
+
         # (2) 静态工具声明 (有助于 LLM 供应商进行 Prefix Caching)
         if "tools_schema" in self.tools_config:
-            messages.append({
-                "role": "system", 
-                "content": f"<tools_definition>\n{self.tools_config['tools_schema']}\n</tools_definition>"
-            })
-            
+            messages.append(
+                {
+                    "role": "system",
+                    "content": f"<tools_definition>\n{self.tools_config['tools_schema']}\n</tools_definition>",
+                }
+            )
+
         # (3) 动态历史轨迹 (Trajectory)
         messages.extend(self.trajectory)
-        
+
         # (4) 尾部 Status Bar 挂钩 (防止模型长对话迷失)
         status_items = self.context_config.get("status_bar", {})
         if status_items.get("step_count", True):
-            status_bar_str = f"<agent_status>Step: {self.step_count} | Status: Active</agent_status>"
+            status_bar_str = (
+                f"<agent_status>Step: {self.step_count} | Status: Active</agent_status>"
+            )
             messages.append({"role": "user", "content": status_bar_str})
-            
+
         return messages
 
     # ------------------------------------------------------------------
     # 2. Harness 三重安全与控制流管道
     # ------------------------------------------------------------------
-    def constrain(self, tool_call: Dict[str, Any]) -> Tuple[bool, str]:
+    def constrain(self, tool_call: dict[str, Any]) -> tuple[bool, str]:
         """【护栏 1：约束 (Constrain)】负面清单与工作区安全锁"""
         cmd = tool_call.get("args", {}).get("command", "")
         forbidden_list = self.harness_config.get("constrain", {}).get("forbidden_commands", [])
-        
+
         for forbidden in forbidden_list:
             if forbidden in cmd:
                 logging.warning(f"❌ [Constrain 拦截] 触发禁用命令: {forbidden}")
                 return False, f"Harness Blocked: Execution of '{forbidden}' is strictly forbidden."
-        
+
         return True, "OK"
 
-    def verify(self, observation: Dict[str, Any]) -> Tuple[bool, str]:
+    def verify(self, observation: dict[str, Any]) -> tuple[bool, str]:
         """【护栏 2：验证 (Verify)】结果静态/动态断言"""
         # 如果观察结果中存在语法/Linter 错误
         if observation.get("exit_code", 0) != 0:
             err_msg = observation.get("stderr", "Execution failed")
             logging.warning(f"⚠️️ [Verify 失败] 输出断言不通过: {err_msg}")
             return False, err_msg
-        
+
         return True, "Verified"
 
-    async def correct(self, tool_call: Dict[str, Any], error_msg: str, retries: int) -> Dict[str, Any]:
+    async def correct(
+        self, tool_call: dict[str, Any], error_msg: str, retries: int
+    ) -> dict[str, Any]:
         """【护栏 3：纠正 (Correct)】局部静默重试与降级"""
         max_retries = self.harness_config.get("correct", {}).get("max_retries", 3)
         logging.info(f"🔄 [Correct 自动纠错] 第 {retries}/{max_retries} 次重试...")
-        
+
         if retries >= max_retries:
             on_failure = self.harness_config.get("correct", {}).get("on_failure", "ask_human")
             logging.error(f"🚨 [Correct 熔断] 已达最大重试上限，触发终态策略: {on_failure}")
             return {"status": "failed", "action": on_failure, "error": error_msg}
-        
+
         # 内部静默重试逻辑（可返回反馈提示给模型）
-        return {"status": "retry", "feedback": f"Previous execution failed with: {error_msg}. Please fix your parameters."}
+        return {
+            "status": "retry",
+            "feedback": f"Previous execution failed with: {error_msg}. Please fix your parameters.",
+        }
 
     # ------------------------------------------------------------------
     # 3. 核心 ReAct 步骤驱动循环
     # ------------------------------------------------------------------
-    async def step(self, user_input: Optional[str] = None) -> Dict[str, Any]:
+    async def step(self, user_input: str | None = None) -> dict[str, Any]:
         self.step_count += 1
         if user_input:
             self.trajectory.append({"role": "user", "content": user_input})
@@ -121,7 +132,7 @@ class BaseAgentHarness:
 
         # 模拟执行工具
         mock_observation = {"exit_code": 0, "stdout": "file1.py\nfile2.py", "stderr": ""}
-        
+
         passed, verify_msg = self.verify(mock_observation)
         if not passed:
             correction = await self.correct(mock_tool_call, verify_msg, retries=1)
@@ -130,12 +141,13 @@ class BaseAgentHarness:
         self.trajectory.append({"role": "tool", "content": mock_observation["stdout"]})
         return {"status": "success", "output": mock_observation["stdout"]}
 
+
 # ----------------------------------------------------------------------
 # 本地验证：单文件可直接运行测试
 # ----------------------------------------------------------------------
 if __name__ == "__main__":
     print("=== 测试 AgentLisp BaseAgentHarness 运行时 ===")
-    
+
     # 初始化配置
     agent_harness = BaseAgentHarness(
         model_config={"system_prompt": "你是一个自动修复 Bug 的 Agent。"},
@@ -143,10 +155,10 @@ if __name__ == "__main__":
         tools_config={"tools_schema": "Tool: bash(command: str)"},
         harness_config={
             "constrain": {"forbidden_commands": ["rm -rf"]},
-            "correct": {"max_retries": 3, "on_failure": "ask_human"}
-        }
+            "correct": {"max_retries": 3, "on_failure": "ask_human"},
+        },
     )
-    
+
     # 运行一步测试
     asyncio.run(agent_harness.step("请检查当前目录下的文件"))
     print("✅ BaseAgentHarness 运行成功！")

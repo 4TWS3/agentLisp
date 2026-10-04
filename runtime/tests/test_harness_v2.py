@@ -14,8 +14,7 @@ V2 Harness 合并版回归测试 (runtime/tests/test_harness_v2.py)
 
 from __future__ import annotations
 
-import asyncio
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 import pytest
 
@@ -26,7 +25,6 @@ from runtime.base_harness_v2 import (
     _contains_forbidden_token,
     build_kv_aligned_context,
 )
-
 
 # ============================================================================
 # 1. build_kv_aligned_context 顺序 (Issue #3: Status Bar 必须是 system 角色，不是 user)
@@ -54,8 +52,10 @@ def test_build_context_kv_order_and_status_bar_role() -> None:
     assert ctx[2] == {"role": "user", "content": "u1"}
     assert ctx[3] == {"role": "assistant", "content": "a1"}
     # ★ 关键修复：Status Bar 必须是 system 角色（修复 Issue #3）
-    assert ctx[4]["role"] == "system", f"Issue #3 regression: Status Bar role={ctx[4]['role']!r} 应为 system"
-    assert "<agent_status>Step: 5 | Status: Active</agent_status>" == ctx[4]["content"]
+    assert ctx[4]["role"] == "system", (
+        f"Issue #3 regression: Status Bar role={ctx[4]['role']!r} 应为 system"
+    )
+    assert ctx[4]["content"] == "<agent_status>Step: 5 | Status: Active</agent_status>"
 
 
 # ============================================================================
@@ -67,11 +67,11 @@ def test_build_context_kv_order_and_status_bar_role() -> None:
     "cmd,forbidden,expected_hit",
     [
         ("rm -rf /", "rm -rf", True),
-        ("rm -rfx /data", "rm -rf", False),           # 子串命中但 token 不命中 → 不拦截
-        ("ls /tmp/rm -rf-work", "rm -rf", False),     # shlex token 拆分后不含 → 不拦截
+        ("rm -rfx /data", "rm -rf", False),  # 子串命中但 token 不命中 → 不拦截
+        ("ls /tmp/rm -rf-work", "rm -rf", False),  # shlex token 拆分后不含 → 不拦截
         ("echo hello world", "cat", False),
         ("cat /etc/passwd", "cat", True),
-        ("category", "cat", False),                   # 词边界不匹配 → 不拦截
+        ("category", "cat", False),  # 词边界不匹配 → 不拦截
         ("concatenate file1 file2", "cat", False),
         ("bash -c 'rm -rf /tmp/x'", "rm -rf", True),  # shlex 后参数含完整 forbidden → 拦截
     ],
@@ -90,8 +90,8 @@ def test_constrain_token_boundary(cmd: str, forbidden: str, expected_hit: bool) 
 
 
 class _EchoToolRegistry:
-    def __init__(self, register: Optional[Dict[str, Any]] = None) -> None:
-        self._handlers: Dict[str, Any] = dict(register or {})
+    def __init__(self, register: dict[str, Any] | None = None) -> None:
+        self._handlers: dict[str, Any] = dict(register or {})
         if "echo" not in self._handlers:
             self._handlers["echo"] = lambda **kw: kw.get("message", "")
         if "failing" not in self._handlers:
@@ -100,32 +100,41 @@ class _EchoToolRegistry:
     async def acall(self, name: str, **kwargs: Any) -> Any:
         return self._handlers[name](**kwargs)
 
-    def names(self) -> List[str]:
+    def names(self) -> list[str]:
         return list(self._handlers.keys())
 
-    def to_openai_schema(self) -> List[Dict[str, Any]]:
+    def to_openai_schema(self) -> list[dict[str, Any]]:
         return [
-            {"type": "function", "function": {"name": n, "description": f"tool {n}", "parameters": {"type": "object"}}}
+            {
+                "type": "function",
+                "function": {
+                    "name": n,
+                    "description": f"tool {n}",
+                    "parameters": {"type": "object"},
+                },
+            }
             for n in self._handlers
         ]
 
 
 class _RecordingStatusBar:
     def __init__(self) -> None:
-        self.events: List[tuple] = []
+        self.events: list[tuple] = []
 
-    def on_start(self, run_id: str, agent_name: Optional[str]) -> None:
+    def on_start(self, run_id: str, agent_name: str | None) -> None:
         self.events.append(("on_start", run_id, agent_name))
 
     def on_step(self, run_id: str, turn_index: int, event: str, detail: Any = None) -> None:
         self.events.append(("on_step", run_id, turn_index, event))
 
-    def on_done(self, run_id: str, status: str, final_answer: Optional[str], error: Optional[str]) -> None:
+    def on_done(
+        self, run_id: str, status: str, final_answer: str | None, error: str | None
+    ) -> None:
         self.events.append(("on_done", run_id, status, final_answer, error))
 
 
 def _make_harness(llm_responses, **overrides: Any) -> BaseHarnessV2:
-    base_kwargs: Dict[str, Any] = dict(
+    base_kwargs: dict[str, Any] = dict(
         model_config={"system_prompt": "SP for V2 tests", "agent_name": "test-agent-v2"},
         context_config={"status_bar": {"step_count": True}},
         tools_config={"tools_schema": "Tool: echo(message:str)"},
@@ -145,9 +154,17 @@ async def test_run_success_has_evidence_chain_and_statusbar_events() -> None:
     sb = _RecordingStatusBar()
     h = _make_harness(
         llm_responses=[
-            {"role": "assistant", "content": None, "tool_calls": [
-                {"id": "c1", "type": "function", "function": {"name": "echo", "arguments": {"message": "hi"}}}
-            ]},
+            {
+                "role": "assistant",
+                "content": None,
+                "tool_calls": [
+                    {
+                        "id": "c1",
+                        "type": "function",
+                        "function": {"name": "echo", "arguments": {"message": "hi"}},
+                    }
+                ],
+            },
             {"role": "assistant", "content": "FINAL"},
         ],
         tool_registry=_EchoToolRegistry(),
@@ -173,19 +190,36 @@ async def test_run_success_has_evidence_chain_and_statusbar_events() -> None:
 @pytest.mark.asyncio
 async def test_constrain_blocks_exact_forbidden_but_not_false_positive() -> None:
     """Constrain 命中真实 rm -rf 应 blocked。"""
+
     class _BadLLM:
         async def achat(self, *_a, **_k):
-            return {"role": "assistant", "content": None, "tool_calls": [
-                {"id": "c", "type": "function", "function": {"name": "bash", "arguments": {"command": "rm -rf /"}}}
-            ]}
+            return {
+                "role": "assistant",
+                "content": None,
+                "tool_calls": [
+                    {
+                        "id": "c",
+                        "type": "function",
+                        "function": {"name": "bash", "arguments": {"command": "rm -rf /"}},
+                    }
+                ],
+            }
+
     class _BashReg:
-        async def acall(self, name, **kw): return "never"
-        def names(self): return ["bash"]
-        def to_openai_schema(self): return []
+        async def acall(self, name, **kw):
+            return "never"
+
+        def names(self):
+            return ["bash"]
+
+        def to_openai_schema(self):
+            return []
 
     h = _make_harness(llm_responses=[], llm_client=_BadLLM(), tool_registry=_BashReg())
     trace = await h.run("trigger")
-    assert trace.status == "blocked", f"expect blocked status got {trace.status!r}; error={trace.error!r}"
+    assert trace.status == "blocked", (
+        f"expect blocked status got {trace.status!r}; error={trace.error!r}"
+    )
     assert "Harness Blocked" in (trace.error or "") and "rm -rf" in (trace.error or "")
 
 
@@ -197,23 +231,35 @@ async def test_verify_failure_triggers_correct_then_circuit_breaker() -> None:
     预期：局部 correct.max_retries=2 先触发，_react_step 返回 status=failed，
     run() 写 trace.status=failed，error 含 on_failure=fail_fast / Max retries / circuit 字样。
     """
+
     class _FailExitLLM:
         def __init__(self) -> None:
             self.calls = 0
 
-        async def achat(self, msgs, **_k):  # noqa: ANN001 (故意保持类型最简)
+        async def achat(self, msgs, **_k):
             self.calls += 1
             # 永远坚持出相同的 exit_code_tool（verify 永远失败），强制触发 correct 熔断
-            return {"role": "assistant", "content": None, "tool_calls": [
-                {"id": f"c{self.calls}", "type": "function",
-                 "function": {"name": "exit_code_tool", "arguments": {"code": 1}}}
-            ]}
+            return {
+                "role": "assistant",
+                "content": None,
+                "tool_calls": [
+                    {
+                        "id": f"c{self.calls}",
+                        "type": "function",
+                        "function": {"name": "exit_code_tool", "arguments": {"code": 1}},
+                    }
+                ],
+            }
 
     class _ExitCodeReg:
-        async def acall(self, name, **kw):  # noqa: ANN001
+        async def acall(self, name, **kw):
             return {"exit_code": int(kw.get("code", 1)), "stdout": "", "stderr": "exit-1"}
-        def names(self): return ["exit_code_tool"]
-        def to_openai_schema(self): return []
+
+        def names(self):
+            return ["exit_code_tool"]
+
+        def to_openai_schema(self):
+            return []
 
     h = _make_harness(
         llm_responses=[],
@@ -228,9 +274,9 @@ async def test_verify_failure_triggers_correct_then_circuit_breaker() -> None:
         f"turns={[(t.index, t.status, t.action) for t in trace.turns]}"
     )
     err = trace.error or ""
-    assert "fail_fast" in err or "Max retries" in err or "circuit" in err.lower() or "熔断" in err, (
-        f"error 应提到 fail_fast / Max retries / circuit / 熔断 之一，实际 err={err!r}"
-    )
+    assert (
+        "fail_fast" in err or "Max retries" in err or "circuit" in err.lower() or "熔断" in err
+    ), f"error 应提到 fail_fast / Max retries / circuit / 熔断 之一，实际 err={err!r}"
 
 
 @pytest.mark.asyncio
@@ -247,9 +293,17 @@ async def test_checkpoint_save_and_from_checkpoint_restore() -> None:
         async def achat(self, msgs, **_k):
             self.calls += 1
             if self.calls == 1:
-                return {"role": "assistant", "content": None, "tool_calls": [
-                    {"id": "c1", "type": "function", "function": {"name": "echo", "arguments": {"message": "step1"}}}
-                ]}
+                return {
+                    "role": "assistant",
+                    "content": None,
+                    "tool_calls": [
+                        {
+                            "id": "c1",
+                            "type": "function",
+                            "function": {"name": "echo", "arguments": {"message": "step1"}},
+                        }
+                    ],
+                }
             return {"role": "assistant", "content": "FINAL"}
 
     h = _make_harness(

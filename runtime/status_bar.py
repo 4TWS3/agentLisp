@@ -20,12 +20,13 @@ class StatusBar(Protocol):
 
 class PrintingStatusBar:
     async def on_start(self, trace: ExecutionTrace, inputs: dict[str, Any]) -> None:
-        print(f"▶ [run_id={trace.run_id}] start agent={trace.agent_name} inputs={list(inputs.keys())}")
+        print(
+            f"▶ [run_id={trace.run_id}] start agent={trace.agent_name} inputs={list(inputs.keys())}"
+        )
 
     async def on_step(self, trace: ExecutionTrace, turn: ReActTurn) -> None:
         print(
-            f"   · turn={turn.index} action={turn.action_name!r} "
-            f"duration_ms={turn.duration_ms:.1f}"
+            f"   · turn={turn.index} action={turn.action_name!r} duration_ms={turn.duration_ms:.1f}"
         )
 
     async def on_done(self, trace: ExecutionTrace) -> None:

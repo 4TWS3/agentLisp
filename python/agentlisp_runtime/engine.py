@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import asyncio
 import time
-from typing import Any, Callable, Optional
+from collections.abc import Callable
+from typing import Any
 
 import structlog
 
@@ -26,7 +27,7 @@ class AgentEngine:
     def __init__(
         self,
         agent: Agent,
-        tool_handlers: Optional[dict[str, Callable[..., Any]]] = None,
+        tool_handlers: dict[str, Callable[..., Any]] | None = None,
     ) -> None:
         self._agent = agent
         self._tool_handlers: dict[str, Callable[..., Any]] = tool_handlers or {}
@@ -43,7 +44,7 @@ class AgentEngine:
     async def run_workflow(
         self,
         workflow_name: str,
-        context: Optional[ExecutionContext] = None,
+        context: ExecutionContext | None = None,
     ) -> ExecutionResult:
         start_time = time.perf_counter()
         context = context or ExecutionContext()
@@ -75,7 +76,7 @@ class AgentEngine:
         try:
             await self._execute_steps(workflow, context, result)
             result.status = ExecutionStatus.SUCCESS
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             logger.exception("workflow.error", error=str(exc))
             result.status = ExecutionStatus.FAILED
             result.error = str(exc)
@@ -101,7 +102,7 @@ class AgentEngine:
         if not workflow.steps:
             return
 
-        current_step_id: Optional[str] = workflow.steps[0].id
+        current_step_id: str | None = workflow.steps[0].id
         visited: set[str] = set()
 
         while current_step_id is not None:
@@ -117,9 +118,7 @@ class AgentEngine:
             result.steps.append(step_result)
 
             if step_result.status == ExecutionStatus.FAILED:
-                raise RuntimeError(
-                    f"Step '{step.id}' failed: {step_result.error}"
-                )
+                raise RuntimeError(f"Step '{step.id}' failed: {step_result.error}")
 
             if step.next is None or step.next is False:
                 break
@@ -160,7 +159,7 @@ class AgentEngine:
                 output=output,
                 duration_ms=(time.perf_counter() - start_time) * 1000,
             )
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             logger.exception("step.error", step=step.id, error=str(exc))
             return StepExecutionResult(
                 step_id=step.id,
@@ -178,8 +177,8 @@ class AgentEngine:
             return condition
         if isinstance(condition, str):
             try:
-                return bool(eval(condition, {"context": context}))  # noqa: S307
-            except Exception:  # noqa: BLE001
+                return bool(eval(condition, {"context": context}))
+            except Exception:
                 logger.warning("condition.eval_failed", condition=condition)
                 return False
         return True
@@ -248,10 +247,7 @@ class AgentEngine:
         else:
             return None
         for part in rest:
-            if isinstance(data, dict):
-                data = data.get(part)
-            else:
-                data = getattr(data, part, None)
+            data = data.get(part) if isinstance(data, dict) else getattr(data, part, None)
             if data is None:
                 break
         return data

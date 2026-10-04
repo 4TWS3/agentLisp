@@ -2,6 +2,11 @@
 
 from __future__ import annotations
 
+from .base_harness import (
+    BaseHarness,
+    ExecutionTrace,
+    ReActTurn,
+)
 from .errors import (
     AgentLispError,
     CheckpointError,
@@ -9,21 +14,16 @@ from .errors import (
     HarnessError,
     ToolNotFoundError,
 )
-from .base_harness import (
-    BaseHarness,
-    ExecutionTrace,
-    ReActTurn,
-)
 
 __version__ = "2.0.0a1"
 __all__ = [
     "AgentLispError",
+    "BaseHarness",
     "CheckpointError",
+    "ExecutionTrace",
     "FeatureNotInstalledError",
     "HarnessError",
-    "ToolNotFoundError",
-    "BaseHarness",
-    "ExecutionTrace",
     "ReActTurn",
+    "ToolNotFoundError",
     "__version__",
 ]

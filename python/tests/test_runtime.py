@@ -56,7 +56,9 @@ async def test_engine_run_simple_workflow():
                 steps=[
                     Step(
                         id="say-hi",
-                        action=AtomicAction(name="hi", target="greet", method="hello", params=["World"]),
+                        action=AtomicAction(
+                            name="hi", target="greet", method="hello", params=["World"]
+                        ),
                         next=None,
                     ),
                 ],

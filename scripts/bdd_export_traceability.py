@@ -14,6 +14,7 @@
     （由 conftest.py 的 autouse fixture 把 @pytest.mark.req 写入）作为
     聚合键，生成一份可人工审查的 Markdown 矩阵。
 """
+
 from __future__ import annotations
 
 import argparse
@@ -120,7 +121,10 @@ def _parse_junit(xml_path: pathlib.Path) -> list[tuple[_ScenarioResult, list[str
     return rows
 
 
-def _aggregate(buckets: collections.defaultdict[str, _SRSBucket], rows: list[tuple[_ScenarioResult, list[str], list[str]]]) -> None:
+def _aggregate(
+    buckets: collections.defaultdict[str, _SRSBucket],
+    rows: list[tuple[_ScenarioResult, list[str], list[str]]],
+) -> None:
     for scenario, reqs, _tags in rows:
         if reqs:
             for rid in reqs:
@@ -156,7 +160,9 @@ def _srs_id_sort_key(srs_id: str) -> tuple[Any, ...]:
 
 
 def generate_markdown(rows: list[tuple[_ScenarioResult, list[str], list[str]]]) -> str:
-    buckets: collections.defaultdict[str, _SRSBucket] = collections.defaultdict(lambda: _SRSBucket(srs_id=""))
+    buckets: collections.defaultdict[str, _SRSBucket] = collections.defaultdict(
+        lambda: _SRSBucket(srs_id="")
+    )
     _aggregate(buckets, rows)
     sorted_ids = sorted(buckets.keys(), key=_srs_id_sort_key)
     total_all = sum(b.total for b in buckets.values())
@@ -168,9 +174,13 @@ def generate_markdown(rows: list[tuple[_ScenarioResult, list[str], list[str]]]) 
     lines.append("")
     lines.append("> 生成来源：`pytest --junitxml` 导出结果 + `conftest.py` @req marker → property")
     lines.append("> ")
-    lines.append(f"> 总计：{total_all} 个 Scenario，Passed={passed_all}，Failed={failed_all}，Skipped/Xfail={skip_xfail_all}")
+    lines.append(
+        f"> 总计：{total_all} 个 Scenario，Passed={passed_all}，Failed={failed_all}，Skipped/Xfail={skip_xfail_all}"
+    )
     lines.append("")
-    lines.append("| SRS-ID | Scenario 数量 | Passed | Failed | Skipped/Xfail | 覆盖到的 Scenario 列表 |")
+    lines.append(
+        "| SRS-ID | Scenario 数量 | Passed | Failed | Skipped/Xfail | 覆盖到的 Scenario 列表 |"
+    )
     lines.append("| --- | ---: | ---: | ---: | ---: | --- |")
     for srs_id in sorted_ids:
         b = buckets[srs_id]
@@ -181,15 +191,21 @@ def generate_markdown(rows: list[tuple[_ScenarioResult, list[str], list[str]]]) 
     lines.append("")
     lines.append("## 说明")
     lines.append("")
-    lines.append("- `(未映射 SRS-ID)`：对应测试用例没有打上 @pytest.mark.req(...) / BDD feature 没有 @FR-CHECK-1 等 SRS tag。")
-    lines.append("- 与 `docs/spec/agentlisp_srs.md` 附录 B 的 Traceability Matrix 做交叉比对，即可判定「需求覆盖完备性」。")
+    lines.append(
+        "- `(未映射 SRS-ID)`：对应测试用例没有打上 @pytest.mark.req(...) / BDD feature 没有 @FR-CHECK-1 等 SRS tag。"
+    )
+    lines.append(
+        "- 与 `docs/spec/agentlisp_srs.md` 附录 B 的 Traceability Matrix 做交叉比对，即可判定「需求覆盖完备性」。"
+    )
     lines.append("- Failed ≠ 0 的需求行：需要修复对应测试用例后再发版。")
     return "\n".join(lines) + "\n"
 
 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description="从 junitxml 生成 SRS Traceability Markdown Matrix")
-    ap.add_argument("--junitxml", required=True, type=pathlib.Path, help="pytest --junitxml 生成的 XML 路径")
+    ap.add_argument(
+        "--junitxml", required=True, type=pathlib.Path, help="pytest --junitxml 生成的 XML 路径"
+    )
     ap.add_argument("--output", required=True, type=pathlib.Path, help="输出 Markdown 文件路径")
     args = ap.parse_args(argv)
     if not args.junitxml.exists():

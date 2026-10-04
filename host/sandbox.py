@@ -6,7 +6,7 @@ import asyncio
 import os
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Any, Optional
+from typing import Any
 
 from runtime.errors import FeatureNotInstalledError
 
@@ -26,7 +26,7 @@ class Sandbox(ABC):
         self,
         command: list[str],
         *,
-        env: Optional[dict[str, str]] = None,
+        env: dict[str, str] | None = None,
         timeout: float = 60.0,
         **kwargs: Any,
     ) -> SandboxRunResult: ...
@@ -42,11 +42,12 @@ class NullSandbox(Sandbox):
         self,
         command: list[str],
         *,
-        env: Optional[dict[str, str]] = None,
+        env: dict[str, str] | None = None,
         timeout: float = 60.0,
         **_: Any,
     ) -> SandboxRunResult:
         import time
+
         start = time.perf_counter()
         merged_env = {**os.environ, **(env or {})}
         proc = await asyncio.create_subprocess_exec(
@@ -58,7 +59,7 @@ class NullSandbox(Sandbox):
         try:
             stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=timeout)
             exit_code = int(proc.returncode or 0)
-        except asyncio.TimeoutError as exc:
+        except TimeoutError as exc:
             proc.kill()
             raise TimeoutError(f"command timed out after {timeout}s") from exc
         return SandboxRunResult(
@@ -77,9 +78,9 @@ class DockerSandbox(Sandbox):
         self,
         *,
         image: str = "python:3.12-slim-bookworm",
-        docker_client: Optional[Any] = None,
+        docker_client: Any | None = None,
         network_mode: str = "none",
-        memory_limit: Optional[str] = "512m",
+        memory_limit: str | None = "512m",
         read_only: bool = True,
     ) -> None:
         if docker_client is None:
@@ -99,11 +100,12 @@ class DockerSandbox(Sandbox):
         self,
         command: list[str],
         *,
-        env: Optional[dict[str, str]] = None,
+        env: dict[str, str] | None = None,
         timeout: float = 60.0,
         **kwargs: Any,
     ) -> SandboxRunResult:
         import time
+
         start = time.perf_counter()
         loop = asyncio.get_running_loop()
 
@@ -129,7 +131,9 @@ class DockerSandbox(Sandbox):
                 except Exception:
                     pass
 
-        exit_code, stdout, stderr = await asyncio.wait_for(loop.run_in_executor(None, _sync), timeout=timeout)
+        exit_code, stdout, stderr = await asyncio.wait_for(
+            loop.run_in_executor(None, _sync), timeout=timeout
+        )
         return SandboxRunResult(
             exit_code=exit_code,
             stdout=stdout,

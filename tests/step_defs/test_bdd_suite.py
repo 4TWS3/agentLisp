@@ -9,6 +9,7 @@
     Racket 侧：本机 racket 可执行时跑 compiler/main.rkt --check-only --json-errors，否则用
     Python 等价静态断言（保证严格模式下本机也 passed，不挂 CI 的 raco test 结论）。
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -18,6 +19,7 @@ import pathlib
 import shutil
 import subprocess
 import tempfile
+import uuid
 from collections.abc import Callable
 from typing import Any
 
@@ -26,6 +28,7 @@ import pytest
 # pytest-bdd 缺省时直接 skip 整个模块（所有场景）
 try:
     from pytest_bdd import given, parsers, scenarios, then, when  # type: ignore
+
     _PYTEST_BDD_OK = True
 except Exception:
     _PYTEST_BDD_OK = False
@@ -45,9 +48,27 @@ assert FEATURES_DIR.is_dir(), f"BDD features dir missing: {FEATURES_DIR}"
 # ---------------------------------------------------------------------------
 
 _PREFIX_ALIASES: dict[str, tuple[str, ...]] = {
-    "given": ("假如 ", "并且 ", "而且 ", "此外 ", "启动 ", "挂载 ", "配置 ",
-              "开启 ", "设置 ", "准备 ", "加载 ", "连接 ", "创建 ", "进入 ",
-              "已经 ", "宿主 ", "运行时 ", "FastAPI ", "评估套件 "),
+    "given": (
+        "假如 ",
+        "并且 ",
+        "而且 ",
+        "此外 ",
+        "启动 ",
+        "挂载 ",
+        "配置 ",
+        "开启 ",
+        "设置 ",
+        "准备 ",
+        "加载 ",
+        "连接 ",
+        "创建 ",
+        "进入 ",
+        "已经 ",
+        "宿主 ",
+        "运行时 ",
+        "FastAPI ",
+        "评估套件 ",
+    ),
     "when": ("当 ", "并且 ", "而且 "),
     "then": ("那么 ", "并且 ", "而且 "),
 }
@@ -57,7 +78,7 @@ def _stripped(text: str, kind: str) -> str:
     stripped = text
     for pfx in _PREFIX_ALIASES[kind]:
         if text.startswith(pfx):
-            stripped = text[len(pfx):].lstrip()
+            stripped = text[len(pfx) :].lstrip()
             break
     return stripped
 
@@ -77,11 +98,10 @@ def _register_all_then_variants(text: str, fn: Callable[..., Any]) -> Callable[.
     return fn
 
 
-
-
 # ---------------------------------------------------------------------------
 # 通用 fixture
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture
 def test_context() -> dict[str, Any]:
@@ -97,35 +117,51 @@ def _racket_available() -> bool:
 # Given
 # ---------------------------------------------------------------------------
 
+
 def _step_init_compiler(test_context: dict[str, Any]) -> None:
     test_context["compiler_ready"] = True
     test_context["racket_available"] = _racket_available()
 
+
 _register_all_given_variants("已经初始化 AgentLisp Racket 编译器前端", _step_init_compiler)
-_register_all_given_variants("启动 AgentLisp Racket 编译器前端 (compiler/main.rkt)",
-                             lambda tc: (_step_init_compiler(tc), tc.setdefault("racket_options", set())) or None)
-_register_all_given_variants("开启静态断言检查选项 (--check-only)",
-                             lambda tc: tc.setdefault("racket_options", set()).add("--check-only") or None)
-_register_all_given_variants('返回的标准错误码应当为 "{error_code}"',
-                             lambda tc, error_code: _then_check_code(tc, error_code))
-_register_all_given_variants('JSON 对象中应精准包含 "{f1}", "{f2}", "{f3}", "{f4}" 及 "{f5}" 字段',
-                             lambda *a, **kw: None)
-_register_all_given_variants('状态自动同步存入 Redis Checkpoint Store',
-                             lambda tc: _then_redis_sync(tc))
-_register_all_given_variants('第二条消息应当为静态 Tool Definitions',
-                             lambda tc: _then_second_tools(tc))
-_register_all_given_variants('消息末尾固定追加包含当前 Step 数的 <agent_status> StatusBar 挂钩',
-                             lambda tc: _then_statusbar_tail(tc))
-_register_all_given_variants('主 Agent 的 build_context() 中绝对不包含子 Worker 的 2048 字节中间日志',
-                             lambda tc: _then_parent_not_leak(tc))
-_register_all_given_variants('主 Agent 仅接收到 Worker 显式提交的结构化产物 Artifact',
-                             lambda tc: _then_artifact_only(tc))
-_register_all_given_variants('状态机状态变更为 "AWAITING_HUMAN_APPROVAL"',
-                             lambda tc: _then_status_awaiting(tc))
-_register_all_given_variants('返回错误上下文 "{expected}"',
-                             lambda tc, expected: _then_verify_context(tc, expected))
-_register_all_given_variants('自由度为 1 的 p-value < 0.05',
-                             lambda tc: _when_pvalue_check(tc))
+_register_all_given_variants(
+    "启动 AgentLisp Racket 编译器前端 (compiler/main.rkt)",
+    lambda tc: (_step_init_compiler(tc), tc.setdefault("racket_options", set())),
+)
+_register_all_given_variants(
+    "开启静态断言检查选项 (--check-only)",
+    lambda tc: tc.setdefault("racket_options", set()).add("--check-only") or None,
+)
+_register_all_given_variants(
+    '返回的标准错误码应当为 "{error_code}"', lambda tc, error_code: _then_check_code(tc, error_code)
+)
+_register_all_given_variants(
+    'JSON 对象中应精准包含 "{f1}", "{f2}", "{f3}", "{f4}" 及 "{f5}" 字段', lambda *a, **kw: None
+)
+_register_all_given_variants(
+    "状态自动同步存入 Redis Checkpoint Store", lambda tc: _then_redis_sync(tc)
+)
+_register_all_given_variants(
+    "第二条消息应当为静态 Tool Definitions", lambda tc: _then_second_tools(tc)
+)
+_register_all_given_variants(
+    "消息末尾固定追加包含当前 Step 数的 <agent_status> StatusBar 挂钩",
+    lambda tc: _then_statusbar_tail(tc),
+)
+_register_all_given_variants(
+    "主 Agent 的 build_context() 中绝对不包含子 Worker 的 2048 字节中间日志",
+    lambda tc: _then_parent_not_leak(tc),
+)
+_register_all_given_variants(
+    "主 Agent 仅接收到 Worker 显式提交的结构化产物 Artifact", lambda tc: _then_artifact_only(tc)
+)
+_register_all_given_variants(
+    '状态机状态变更为 "AWAITING_HUMAN_APPROVAL"', lambda tc: _then_status_awaiting(tc)
+)
+_register_all_given_variants(
+    '返回错误上下文 "{expected}"', lambda tc, expected: _then_verify_context(tc, expected)
+)
+_register_all_given_variants("自由度为 1 的 p-value < 0.05", lambda tc: _when_pvalue_check(tc))
 
 
 def _step_init_harness(test_context: dict[str, Any]) -> None:
@@ -141,35 +177,65 @@ def _step_init_harness(test_context: dict[str, Any]) -> None:
         tools_config=dict(
             builtins=[],
             define_tools=[
-                dict(name="bash", description="Run a shell command.",
-                     parameters=dict(type="object",
-                                     properties=dict(command=dict(type="string")),
-                                     required=["command"])),
-                dict(name="git-push", description="Push to git remote.",
-                     parameters=dict(type="object",
-                                     properties=dict(commit_msg=dict(type="string")),
-                                     required=[])),
-                dict(name="read-file", description="Read a file.",
-                     parameters=dict(type="object",
-                                     properties=dict(path=dict(type="string")),
-                                     required=["path"])),
+                dict(
+                    name="bash",
+                    description="Run a shell command.",
+                    parameters=dict(
+                        type="object",
+                        properties=dict(command=dict(type="string")),
+                        required=["command"],
+                    ),
+                ),
+                dict(
+                    name="git-push",
+                    description="Push to git remote.",
+                    parameters=dict(
+                        type="object", properties=dict(commit_msg=dict(type="string")), required=[]
+                    ),
+                ),
+                dict(
+                    name="read-file",
+                    description="Read a file.",
+                    parameters=dict(
+                        type="object", properties=dict(path=dict(type="string")), required=["path"]
+                    ),
+                ),
             ],
-            tools_schema=json.dumps([
-                dict(name="bash", description="Run shell commands.",
-                     parameters=dict(type="object",
-                                     properties=dict(command=dict(type="string")),
-                                     required=["command"])),
-                dict(name="git-push", description="Git push to origin.",
-                     parameters=dict(type="object", properties={})),
-                dict(name="read-file", description="Read filesystem path.",
-                     parameters=dict(type="object",
-                                     properties=dict(path=dict(type="string")),
-                                     required=["path"])),
-            ], ensure_ascii=False, indent=2),
+            tools_schema=json.dumps(
+                [
+                    dict(
+                        name="bash",
+                        description="Run shell commands.",
+                        parameters=dict(
+                            type="object",
+                            properties=dict(command=dict(type="string")),
+                            required=["command"],
+                        ),
+                    ),
+                    dict(
+                        name="git-push",
+                        description="Git push to origin.",
+                        parameters=dict(type="object", properties={}),
+                    ),
+                    dict(
+                        name="read-file",
+                        description="Read filesystem path.",
+                        parameters=dict(
+                            type="object",
+                            properties=dict(path=dict(type="string")),
+                            required=["path"],
+                        ),
+                    ),
+                ],
+                ensure_ascii=False,
+                indent=2,
+            ),
         ),
         harness_config=dict(
             constrain=dict(require_approval=[], forbidden_commands=[], workspace_root=None),
-            verify=dict(json_schema=False, linter_check=False, test_runner=None, reviewer_agent=None),
+            verify=dict(
+                json_schema=False, linter_check=False, test_runner=None, reviewer_agent=None
+            ),
             correct=dict(max_retries=3, circuit_breaker=5, on_failure="abort"),
         ),
         context_config=dict(memory_policy=None, status_bar=dict(step_count=True)),
@@ -177,38 +243,49 @@ def _step_init_harness(test_context: dict[str, Any]) -> None:
     test_context["harness_ready"] = True
     test_context["harness"] = harness
 
+
 _register_all_given_variants("已经初始化 BaseAgentHarnessV2 运行时", _step_init_harness)
 _register_all_given_variants("已经实例化 BaseAgentHarnessV2 运行时", _step_init_harness)
 _register_all_given_variants("已经初始化 BaseAgentHarnessV2 上下文构建器", _step_init_harness)
-_register_all_given_variants("Harness 配置的最大重试上限 max_retries 为 3",
-                             lambda tc: _step_max_retries(tc, 3))
-_register_all_given_variants('Span 属性中应包含 "{f1}", "{f2}", "{f3}", "{f4}" 标签',
-                             lambda tc, f1="", f2="", f3="", f4="":
-                                 _then_span_attrs(tc, '"' + '","'.join([f1, f2, f3, f4]) + '"'))
-_register_all_given_variants('将 Span 异步发送至 Jaeger (localhost:4317)',
-                             lambda tc: _then_jaeger_endpoint(tc, "localhost:4317"))
-_register_all_given_variants('数据流中应实时推送 "{e1}", "{e2}", "{e3}" 数据包',
-                             lambda tc, e1="", e2="", e3="":
-                                 _then_sse_event_names(tc, '"' + '","'.join([e1, e2, e3]) + '"'))
-
-
+_register_all_given_variants(
+    "Harness 配置的最大重试上限 max_retries 为 3", lambda tc: _step_max_retries(tc, 3)
+)
+_register_all_given_variants(
+    'Span 属性中应包含 "{f1}", "{f2}", "{f3}", "{f4}" 标签',
+    lambda tc, f1="", f2="", f3="", f4="": _then_span_attrs(
+        tc, '"' + '","'.join([f1, f2, f3, f4]) + '"'
+    ),
+)
+_register_all_given_variants(
+    "将 Span 异步发送至 Jaeger (localhost:4317)",
+    lambda tc: _then_jaeger_endpoint(tc, "localhost:4317"),
+)
+_register_all_given_variants(
+    '数据流中应实时推送 "{e1}", "{e2}", "{e3}" 数据包',
+    lambda tc, e1="", e2="", e3="": _then_sse_event_names(tc, '"' + '","'.join([e1, e2, e3]) + '"'),
+)
 
 
 def _step_two_blocks(test_context: dict[str, Any], first_block: str, second_block: str) -> None:
     first_block = first_block.strip().strip('"').strip("'")
     second_block = second_block.strip().strip('"').strip("'")
     header = "(define-agent bdd-demo "
-    blocks = (f"{first_block} {second_block} "
-              "(:context :auto) (:tools [bash]) "
-              "(:harness (:constrain :require-human-approval (bash) "
-              ":forbidden-commands (\"git pull\")) "
-              "(:verify :reviewer-agent \"judge\") "
-              "(:correct :max-retries 3 :circuit-breaker 5 :on-failure ask-human)))")
+    blocks = (
+        f"{first_block} {second_block} "
+        "(:context :auto) (:tools [bash]) "
+        "(:harness (:constrain :require-human-approval (bash) "
+        ':forbidden-commands ("git pull")) '
+        '(:verify :reviewer-agent "judge") '
+        "(:correct :max-retries 3 :circuit-breaker 5 :on-failure ask-human)))"
+    )
     test_context["al_source"] = header + blocks + ")"
     test_context["al_first_block"] = first_block
     test_context["al_second_block"] = second_block
 
-_register_all_given_variants("DSL 源码中包含声明块 {first_block} 与 {second_block}", _step_two_blocks)
+
+_register_all_given_variants(
+    "DSL 源码中包含声明块 {first_block} 与 {second_block}", _step_two_blocks
+)
 
 
 def _step_sideeffect_tool(test_context: dict[str, Any], tool: str) -> None:
@@ -223,18 +300,25 @@ def _step_sideeffect_tool(test_context: dict[str, Any], tool: str) -> None:
     test_context["al_source"] = src
     test_context["sideeffect_tool"] = tool
 
+
 _register_all_given_variants('DSL 源码中声明了具副作用本地工具 "{tool}"', _step_sideeffect_tool)
 
 
 def _step_no_harness(test_context: dict[str, Any]) -> None:
     test_context["expect_unguarded"] = True
 
-_register_all_given_variants('但是 该工具配置中没有声明 ":harness" 门控且没有 ":require-approval" 标注', _step_no_harness)
-_register_all_given_variants('该工具配置中没有声明 ":harness" 门控且没有 ":require-approval" 标注', _step_no_harness)
+
+_register_all_given_variants(
+    '但是 该工具配置中没有声明 ":harness" 门控且没有 ":require-approval" 标注', _step_no_harness
+)
+_register_all_given_variants(
+    '该工具配置中没有声明 ":harness" 门控且没有 ":require-approval" 标注', _step_no_harness
+)
 
 
 def _step_parent_tool(test_context: dict[str, Any], parent_tool: str) -> None:
     test_context.setdefault("scoped_tools", {})["parent"] = [parent_tool]
+
 
 _register_all_given_variants('主 Agent 声明了工具 "{parent_tool}"', _step_parent_tool)
 
@@ -242,7 +326,10 @@ _register_all_given_variants('主 Agent 声明了工具 "{parent_tool}"', _step_
 def _step_worker_same_name(test_context: dict[str, Any], worker: str, same_tool: str) -> None:
     test_context.setdefault("scoped_tools", {})[worker] = [same_tool]
 
-_register_all_given_variants('子 Agent "{worker}" 再次声明了同名工具 "{same_tool}"', _step_worker_same_name)
+
+_register_all_given_variants(
+    '子 Agent "{worker}" 再次声明了同名工具 "{same_tool}"', _step_worker_same_name
+)
 
 
 def _step_repair_al(test_context: dict[str, Any], file: str, code: str) -> None:
@@ -258,11 +345,13 @@ def _step_repair_al(test_context: dict[str, Any], file: str, code: str) -> None:
     test_context["repair_al_code"] = code
     test_context["al_source"] = bad_src
 
+
 _register_all_given_variants('带有语序错误的源码 "{file}" 触发了 "{code}"', _step_repair_al)
 
 
 def _step_forbidden_cmd(test_context: dict[str, Any], forbidden_pattern: str) -> None:
     from runtime.base_harness_v2 import BaseHarnessV2
+
     h: BaseHarnessV2 = test_context["harness"]
     constrain_cfg = dict(h.harness_config.get("constrain") or {})
     existing = list(constrain_cfg.get("forbidden_commands") or [])
@@ -274,17 +363,24 @@ def _step_forbidden_cmd(test_context: dict[str, Any], forbidden_pattern: str) ->
         correct=h.harness_config.get("correct") or {},
     )
 
-_register_all_given_variants('Harness 负面清单配置了规则 "{forbidden_pattern}"', _step_forbidden_cmd)
+
+_register_all_given_variants(
+    'Harness 负面清单配置了规则 "{forbidden_pattern}"', _step_forbidden_cmd
+)
 
 
 def _step_observation(test_context: dict[str, Any], stdout: str, exit_code: int) -> None:
     test_context["observation"] = dict(exit_code=exit_code, stdout=stdout, stderr="")
 
-_register_all_given_variants("工具执行返回了 stdout {stdout} 且 exit_code 为 {exit_code:d}", _step_observation)
+
+_register_all_given_variants(
+    "工具执行返回了 stdout {stdout} 且 exit_code 为 {exit_code:d}", _step_observation
+)
 
 
 def _step_retries(test_context: dict[str, Any], retry_count: int) -> None:
     test_context["retry_count"] = retry_count
+
 
 _register_all_given_variants("Verify 断言连续失败次数为 {retry_count:d}", _step_retries)
 _register_all_given_variants('Verify 断言连续失败次数为 "1"', lambda tc: _step_retries(tc, 1))
@@ -294,6 +390,7 @@ _register_all_given_variants('Verify 断言连续失败次数为 "3"', lambda tc
 
 def _step_max_retries(test_context: dict[str, Any], max_retries: int) -> None:
     from runtime.base_harness_v2 import BaseHarnessV2
+
     h: BaseHarnessV2 = test_context["harness"]
     correct = dict(h.harness_config.get("correct") or {})
     correct["max_retries"] = max_retries
@@ -304,11 +401,15 @@ def _step_max_retries(test_context: dict[str, Any], max_retries: int) -> None:
     )
     test_context["max_retries"] = max_retries
 
-_register_all_given_variants("Harness 配置的最大重试上限 max_retries 为 {max_retries:d}", _step_max_retries)
+
+_register_all_given_variants(
+    "Harness 配置的最大重试上限 max_retries 为 {max_retries:d}", _step_max_retries
+)
 
 
 def _step_workspace_root(test_context: dict[str, Any], root: str) -> None:
     from runtime.base_harness_v2 import BaseHarnessV2
+
     h: BaseHarnessV2 = test_context["harness"]
     constrain = dict(h.harness_config.get("constrain") or {})
     constrain["workspace_root"] = root
@@ -318,11 +419,13 @@ def _step_workspace_root(test_context: dict[str, Any], root: str) -> None:
         correct=h.harness_config.get("correct") or {},
     )
 
+
 _register_all_given_variants('工作区根目录指定为 "{root}"', _step_workspace_root)
 
 
 def _step_require_approval_tool(test_context: dict[str, Any], tool_name: str) -> None:
     from runtime.base_harness_v2 import BaseHarnessV2
+
     h: BaseHarnessV2 = test_context["harness"]
     constrain = dict(h.harness_config.get("constrain") or {})
     existing = list(constrain.get("require_approval") or [])
@@ -337,11 +440,15 @@ def _step_require_approval_tool(test_context: dict[str, Any], tool_name: str) ->
     )
     test_context["pending_tool_name"] = tool_name
 
-_register_all_given_variants('工具 "{tool_name}" 被标记为 ":require-approval"', _step_require_approval_tool)
+
+_register_all_given_variants(
+    '工具 "{tool_name}" 被标记为 ":require-approval"', _step_require_approval_tool
+)
 
 
 def _step_memory_files(test_context: dict[str, Any]) -> None:
     test_context["memory_files_present"] = True
+
 
 _register_all_given_variants("记忆库根目录下存在 SOUL.md 与 MEMORY.md", _step_memory_files)
 
@@ -349,18 +456,25 @@ _register_all_given_variants("记忆库根目录下存在 SOUL.md 与 MEMORY.md"
 def _step_enter_worker_scope(test_context: dict[str, Any], worker: str) -> None:
     test_context.setdefault("worker_stack", []).append(worker)
 
-_register_all_given_variants("主 Agent 创建并进入了子 Agent {worker} 作用域", _step_enter_worker_scope)
+
+_register_all_given_variants(
+    "主 Agent 创建并进入了子 Agent {worker} 作用域", _step_enter_worker_scope
+)
 
 
 def _step_worker_log(test_context: dict[str, Any], cmd: str) -> None:
     test_context["worker_debug_cmd"] = cmd
     test_context["worker_log_size"] = 2048
 
-_register_all_given_variants("子 Worker 内部执行了包含 2048 字节日志的调试命令 {cmd}", _step_worker_log)
+
+_register_all_given_variants(
+    "子 Worker 内部执行了包含 2048 字节日志的调试命令 {cmd}", _step_worker_log
+)
 
 
 def _step_sample(test_context: dict[str, Any], sample_id: str) -> None:
     test_context["sample_id"] = sample_id
+
 
 _register_all_given_variants("测试样本 {sample_id} 执行完成", _step_sample)
 
@@ -368,17 +482,23 @@ _register_all_given_variants("测试样本 {sample_id} 执行完成", _step_samp
 def _step_contingency(test_context: dict[str, Any]) -> None:
     test_context.setdefault("contingency", (70, 2, 15, 13))
 
-_register_all_given_variants("收集到了 旧版本 (A) 与 新版本 (B) 在 100 个 τ²-bench 样本上的二元结果矩阵 (Contingency Matrix)", _step_contingency)
+
+_register_all_given_variants(
+    "收集到了 旧版本 (A) 与 新版本 (B) 在 100 个 τ²-bench 样本上的二元结果矩阵 (Contingency Matrix)",
+    _step_contingency,
+)
 
 
 def _step_mount_workspace_and_forbidden(test_context: dict[str, Any]) -> None:
     from runtime.base_harness_v2 import BaseHarnessV2
+
     if "harness" not in test_context:
         _step_init_harness(test_context)
     h: BaseHarnessV2 = test_context["harness"]
     constrain_cfg = dict(h.harness_config.get("constrain") or {})
     constrain_cfg.setdefault("forbidden_commands", [])
     import tempfile
+
     constrain_cfg.setdefault("workspace_root", tempfile.mkdtemp(prefix="bdd-ws-"))
     h.harness_config = dict(
         constrain=constrain_cfg,
@@ -386,37 +506,46 @@ def _step_mount_workspace_and_forbidden(test_context: dict[str, Any]) -> None:
         correct=h.harness_config.get("correct") or {},
     )
 
-_register_all_given_variants("挂载了工作区沙箱锁与配置了负面清单规则", _step_mount_workspace_and_forbidden)
+
+_register_all_given_variants(
+    "挂载了工作区沙箱锁与配置了负面清单规则", _step_mount_workspace_and_forbidden
+)
 
 
 def _step_mount_memory_fs(test_context: dict[str, Any]) -> None:
     from runtime.base_harness_v2 import BaseHarnessV2
+
     if "harness" not in test_context:
         _step_init_harness(test_context)
     h: BaseHarnessV2 = test_context["harness"]
     if getattr(h, "memory_fs", None) is None:
         try:
             from runtime.memory_fs import MemoryFS
+
             h.memory_fs = MemoryFS()
         except Exception:
             pass
+
 
 _register_all_given_variants("挂载了 MarkdownFS 记忆模块", _step_mount_memory_fs)
 
 
 def _step_host_temporal_sdk(test_context: dict[str, Any]) -> None:
     from host.workflow import InMemoryHITLRunner
+
     if "harness" not in test_context:
         _step_init_harness(test_context)
     if "pending_tool_name" not in test_context:
         test_context["pending_tool_name"] = "git-push"
     test_context.setdefault("hitl_runner", InMemoryHITLRunner())
 
+
 _register_all_given_variants("宿主系统已集成 Temporal Workflow SDK", _step_host_temporal_sdk)
 
 
 def _step_dual_lock_sandbox(test_context: dict[str, Any]) -> None:
     from runtime.base_harness_v2 import BaseHarnessV2
+
     if "harness" not in test_context:
         _step_init_harness(test_context)
     h: BaseHarnessV2 = test_context["harness"]
@@ -430,7 +559,10 @@ def _step_dual_lock_sandbox(test_context: dict[str, Any]) -> None:
     )
     test_context["dual_lock_enabled"] = True
 
-_register_all_given_variants("配置了双重沙箱锁 (PurePosix + Symlink Path.resolve)", _step_dual_lock_sandbox)
+
+_register_all_given_variants(
+    "配置了双重沙箱锁 (PurePosix + Symlink Path.resolve)", _step_dual_lock_sandbox
+)
 
 
 def _step_otel_jaeger(test_context: dict[str, Any]) -> None:
@@ -438,15 +570,18 @@ def _step_otel_jaeger(test_context: dict[str, Any]) -> None:
         _step_init_harness(test_context)
     test_context["jaeger_endpoint"] = "http://localhost:4317"
 
+
 _register_all_given_variants("运行时连接到了 Jaeger OTLP 4317 采集器", _step_otel_jaeger)
 
 
 def _step_gateway_routes(test_context: dict[str, Any]) -> None:
     try:
         from host.gateway_sse import create_app  # type: ignore
+
         test_context["gateway_app"] = create_app()
     except Exception:
         test_context["gateway_app"] = None
+
 
 _register_all_given_variants("FastAPI 已经挂载了 AgentLisp 网关路由", _step_gateway_routes)
 
@@ -454,65 +589,84 @@ _register_all_given_variants("FastAPI 已经挂载了 AgentLisp 网关路由", _
 def _step_t2_dataset(test_context: dict[str, Any]) -> None:
     test_context["t2_dataset_version"] = "v1.0"
 
+
 _register_all_given_variants("已经加载数据集 t2-bench@v1.0", _step_t2_dataset)
 
 
 def _step_t2_evaluators(test_context: dict[str, Any]) -> None:
     try:
         from scripts.bench.run_t2_bench import T2BenchEvaluator
+
         test_context["t2_evaluator"] = T2BenchEvaluator()
     except Exception:
+
         class _StubEvaluator:
             def evaluate_sample(self, sample_id: str, result: dict[str, Any]) -> bool:
-                return bool(result.get("rubric_score", 0.0) >= 0.8
-                            and result.get("pytest_passed", True)
-                            and result.get("runtime_error_rate", 1.0) == 0.0)
+                return bool(
+                    result.get("rubric_score", 0.0) >= 0.8
+                    and result.get("pytest_passed", True)
+                    and result.get("runtime_error_rate", 1.0) == 0.0
+                )
 
             @staticmethod
             def calculate_mcnemar_test(contingency: tuple[int, int, int, int]) -> dict[str, Any]:
-                a, b, c, d = contingency
+                _a, b, c, _d = contingency
                 denom = max(1, (b + c))
                 chi2 = ((abs(b - c) - 1) ** 2) / denom
                 return dict(chi2=chi2, p_significant_p_lt_005=chi2 >= 3.841)
 
         test_context["t2_evaluator"] = _StubEvaluator()
 
-_register_all_given_variants("评估套件集成了 Pytest 真值验证器与 LLM-as-a-Judge 打分器", _step_t2_evaluators)
+
+_register_all_given_variants(
+    "评估套件集成了 Pytest 真值验证器与 LLM-as-a-Judge 打分器", _step_t2_evaluators
+)
 
 
 def _step_literal_syntaxerr_observation(test_context: dict[str, Any]) -> None:
     _step_observation(test_context, "SyntaxError: invalid syntax", 1)
 
-_register_all_given_variants('工具执行返回了 stdout "SyntaxError: invalid syntax" 且 exit_code 为 1', _step_literal_syntaxerr_observation)
+
+_register_all_given_variants(
+    '工具执行返回了 stdout "SyntaxError: invalid syntax" 且 exit_code 为 1',
+    _step_literal_syntaxerr_observation,
+)
 
 
 def _step_literal_maxretries_3(test_context: dict[str, Any]) -> None:
     _step_max_retries(test_context, 3)
 
-_register_all_given_variants("Harness 配置的最大重试上限 max_retries 为 3", _step_literal_maxretries_3)
+
+_register_all_given_variants(
+    "Harness 配置的最大重试上限 max_retries 为 3", _step_literal_maxretries_3
+)
 
 
 # ---------------------------------------------------------------------------
 # When
 # ---------------------------------------------------------------------------
 
+
 def _when_exec_cmd(test_context: dict[str, Any], cmd: str) -> None:
     from runtime.base_harness_v2 import BaseHarnessV2
+
     h: BaseHarnessV2 = test_context["harness"]
     tool_call = dict(tool_name="bash", args=dict(command=cmd))
     ok, reason = h.constrain(tool_call)
     test_context["last_cmd"] = cmd
     test_context["constrain_result"] = (ok, reason)
 
+
 _register_all_when_variants("Agent 尝试执行命令 {cmd}", _when_exec_cmd)
 
 
 def _when_trigger_tool(test_context: dict[str, Any], tool_name: str) -> None:
     from host.workflow import InMemoryHITLRunner
-    from runtime.base_harness_v2 import BaseHarnessV2
-    h: BaseHarnessV2 = test_context["harness"]
+
+    test_context["harness"]  # 确保 harness 已初始化
     test_context["hitl_runner"] = InMemoryHITLRunner()
     test_context["pending_tool_name"] = tool_name
+
 
 _register_all_when_variants("Agent 触发调用 {tool_name}", _when_trigger_tool)
 
@@ -523,7 +677,14 @@ def _run_racket_check_on_src(test_context: dict[str, Any], src: str) -> None:
         f.write(src)
         tmp_path = f.name
     try:
-        cmd = ["racket", str(REPO_ROOT / "compiler" / "main.rkt"), "-i", tmp_path, *sorted(opts), "--json-errors"]
+        cmd = [
+            "racket",
+            str(REPO_ROOT / "compiler" / "main.rkt"),
+            "-i",
+            tmp_path,
+            *sorted(opts),
+            "--json-errors",
+        ]
         res = subprocess.run(cmd, capture_output=True, text=True, cwd=str(REPO_ROOT))
         test_context["racket_exit"] = res.returncode
         try:
@@ -547,6 +708,7 @@ def _run_racket_check_on_src(test_context: dict[str, Any], src: str) -> None:
 
 def _when_check_kv(test_context: dict[str, Any]) -> None:
     import re as _re
+
     src: str = test_context.get("al_source", "")
     tag_order: list[str] = _re.findall(r"\(:(\w+)", src)
     first = test_context.get("al_first_block", "")
@@ -577,23 +739,32 @@ def _when_check_kv(test_context: dict[str, Any]) -> None:
     test_context["check_result_code"] = code
     test_context["json_errors"] = []
     if status == "FAIL":
-        test_context["json_errors"].append({
-            "schema_version": "1.0.0",
-            "code": code,
-            "srs_id": "FR-CHECK-1" if code == "ERR_KV_ALIGNMENT_VIOLATION" else "",
-            "srcloc": {"source": test_context.get("repair_al_filename") or "bdd.al",
-                       "line": 2, "column": 1, "position": 10, "span": 40},
-            "hints": ["SRS §4.1.1 把 :context 移动到 :tools 之后即可修复"],
-            "message": f"[{code}] static block order violated.",
-        })
+        test_context["json_errors"].append(
+            {
+                "schema_version": "1.0.0",
+                "code": code,
+                "srs_id": "FR-CHECK-1" if code == "ERR_KV_ALIGNMENT_VIOLATION" else "",
+                "srcloc": {
+                    "source": test_context.get("repair_al_filename") or "bdd.al",
+                    "line": 2,
+                    "column": 1,
+                    "position": 10,
+                    "span": 40,
+                },
+                "hints": ["SRS §4.1.1 把 :context 移动到 :tools 之后即可修复"],
+                "message": f"[{code}] static block order violated.",
+            }
+        )
     # BDD Python-level 场景只验证静态逻辑；真实 Racket 编译集成由 AC-1 raco test 覆盖
     # 不调用 racket，避免 racket exit 0 无 JSON errors 误覆盖成 PASS
+
 
 _register_all_when_variants("编译器解析 AST 并校验块顺序", _when_check_kv)
 
 
 def _when_static_check(test_context: dict[str, Any]) -> None:
     import re as _re
+
     src: str = test_context.get("al_source", "")
     scoped = test_context.get("scoped_tools") or {}
     if scoped:
@@ -636,7 +807,9 @@ def _when_static_check(test_context: dict[str, Any]) -> None:
         m_fb = _re.search(r"forbidden-commands\s*\(([^)]*)\)", src)
         if m_fb and m_fb.group(1).strip():
             has_forbidden_nonempty = True
-        if _re.search(r":reviewer-agent\s+\"[^\"]+\"", src) or _re.search(r":test-runner\s+\"[^\"]+\"", src):
+        if _re.search(r":reviewer-agent\s+\"[^\"]+\"", src) or _re.search(
+            r":test-runner\s+\"[^\"]+\"", src
+        ):
             has_verify = True
         if not ((has_approval and has_forbidden_nonempty) or has_verify):
             status = "FAIL"
@@ -667,17 +840,21 @@ def _when_static_check(test_context: dict[str, Any]) -> None:
         {
             "schema_version": "1.0.0",
             "code": c,
-            "srs_id": ({
-                "ERR_KV_ALIGNMENT_VIOLATION": "FR-CHECK-1",
-                "ERR_UNGUARDED_TOOL_EXECUTION": "FR-CHECK-2",
-                "ERR_CONTEXT_LEAKAGE": "FR-CHECK-3",
-            }).get(c, ""),
+            "srs_id": (
+                {
+                    "ERR_KV_ALIGNMENT_VIOLATION": "FR-CHECK-1",
+                    "ERR_UNGUARDED_TOOL_EXECUTION": "FR-CHECK-2",
+                    "ERR_CONTEXT_LEAKAGE": "FR-CHECK-3",
+                }
+            ).get(c, ""),
             "srcloc": {"source": "bdd-demo.al", "line": 1, "column": 1, "position": 1, "span": 10},
             "hints": hints or ["See checker.rkt for invariant definition."],
             "message": test_context["check_result_message"],
-        } for c in codes
+        }
+        for c in codes
     ]
     # BDD Python-level 场景只验证静态逻辑；真实 Racket 编译集成由 AC-1 raco test 覆盖
+
 
 _register_all_when_variants("编译器执行 AST 静态校验", _when_static_check)
 _register_all_when_variants("编译器解析全局作用域语法树", _when_static_check)
@@ -691,7 +868,10 @@ def _when_run_cli(test_context: dict[str, Any], cmdline: str) -> None:
             f.write(src)
             tmp_path = f.name
         tokens = cmdline.split()
-        tokens = [tmp_path if (t.endswith(".al") and filename and filename.endswith(".al")) else t for t in tokens]
+        tokens = [
+            tmp_path if (t.endswith(".al") and filename and filename.endswith(".al")) else t
+            for t in tokens
+        ]
         if tokens[:2] == ["racket", "compiler/main.rkt"]:
             tokens = ["racket", str(REPO_ROOT / "compiler" / "main.rkt"), *tokens[2:]]
         try:
@@ -705,30 +885,37 @@ def _when_run_cli(test_context: dict[str, Any], cmdline: str) -> None:
             except OSError:
                 pass
     else:
-        test_context["cli_stdout"] = json.dumps(test_context.get("json_errors", []), ensure_ascii=False)
+        test_context["cli_stdout"] = json.dumps(
+            test_context.get("json_errors", []), ensure_ascii=False
+        )
         test_context["cli_stderr"] = ""
         test_context["cli_exit"] = 0 if not test_context.get("json_errors") else 1
+
 
 _register_all_when_variants('运行命令 "{cmdline}"', _when_run_cli)
 
 
 def _when_verify_observation(test_context: dict[str, Any]) -> None:
     from runtime.base_harness_v2 import BaseHarnessV2
+
     h: BaseHarnessV2 = test_context["harness"]
     obs = test_context.get("observation", {})
     ok, reason = h.verify(obs)
     test_context["verify_result"] = (ok, reason)
+
 
 _register_all_when_variants("执行 Harness Verify 门控断言", _when_verify_observation)
 
 
 def _when_correct(test_context: dict[str, Any]) -> None:
     from runtime.base_harness_v2 import BaseHarnessV2
+
     h: BaseHarnessV2 = test_context["harness"]
     retries = test_context["retry_count"]
     test_context["correct_action_result"] = asyncio.run(
         h.correct({"tool_name": "bash", "args": {}}, "Verify assertion failed", retries)
     )
+
 
 _register_all_when_variants("触发 Correct 纠错管道", _when_correct)
 
@@ -736,24 +923,29 @@ _register_all_when_variants("触发 Correct 纠错管道", _when_correct)
 def _when_one_react(test_context: dict[str, Any]) -> None:
     from runtime.base_harness_v2 import BaseHarnessV2
     from tests._bdd_helper import run_one_react_turn  # type: ignore
+
     h: BaseHarnessV2 = test_context["harness"]
     run = asyncio.run(run_one_react_turn(h, user_input="ping"))
     test_context["trace"] = run["trace"]
     test_context["spans"] = run.get("spans")
+
 
 _register_all_when_variants("Agent 完成一轮 ReAct 推理与工具执行", _when_one_react)
 
 
 def _when_build_ctx(test_context: dict[str, Any]) -> None:
     from runtime.base_harness_v2 import BaseHarnessV2
+
     h: BaseHarnessV2 = test_context["harness"]
     test_context["messages"] = h.build_context()
+
 
 _register_all_when_variants("调用 build_kv_aligned_context() 组装上下文消息列表", _when_build_ctx)
 
 
 def _when_load_memory(test_context: dict[str, Any], layer: str) -> None:
     from runtime.base_harness_v2 import BaseHarnessV2
+
     h: BaseHarnessV2 = test_context["harness"]
     test_context["requested_layer"] = layer
     mfs = getattr(h, "memory_fs", None)
@@ -761,7 +953,9 @@ def _when_load_memory(test_context: dict[str, Any], layer: str) -> None:
     if mfs is not None:
         # MemoryFS.put / list_layer 是 async 的，这里统一 await
         import inspect as _ins
+
         try:
+
             async def _populate() -> list:
                 put = mfs.put
                 if _ins.iscoroutinefunction(put):
@@ -773,22 +967,32 @@ def _when_load_memory(test_context: dict[str, Any], layer: str) -> None:
                     put("L1-Overview", "soul", "L1 Overview: mission statement")
                     put("L2-FullText", "soul", "L2 Full: appendices and hyperlinks")
                 ll = mfs.list_layer(layer)
-                if _ins.iscoroutinefunction(getattr(mfs, "list_layer", None)) or _ins.iscoroutine(ll):
+                if _ins.iscoroutinefunction(getattr(mfs, "list_layer", None)) or _ins.iscoroutine(
+                    ll
+                ):
                     return list(await ll)
                 return list(ll or [])
+
             layer_content = asyncio.run(_populate())
         except Exception:
             layer_content = ["L0 SOUL.md content", "L1 Overview line", "L2 FullText line"]
     else:
         # stub：没有 MemoryFS 时，返回一份伪造的 layer content 保证断言通过
-        layer_content = [f"{layer} soul SOUL.md", "L0 Abstract line", "L1 Overview line", "L2 FullText line"]
+        layer_content = [
+            f"{layer} soul SOUL.md",
+            "L0 Abstract line",
+            "L1 Overview line",
+            "L2 FullText line",
+        ]
     test_context["layer_content"] = layer_content
+
 
 _register_all_when_variants('请求记载记忆层级为 "{layer}"', _when_load_memory)
 
 
 def _when_exit_worker(test_context: dict[str, Any]) -> None:
     from runtime.base_harness_v2 import BaseHarnessV2
+
     h: BaseHarnessV2 = test_context["harness"]
     worker_stack: list[str] = test_context.get("worker_stack", [])
     worker_name = worker_stack[-1] if worker_stack else "code_repair_worker"
@@ -805,47 +1009,65 @@ def _when_exit_worker(test_context: dict[str, Any]) -> None:
     test_context["leaked_child_ref"] = leaked_ref["ref"]
     test_context["parent_messages"] = h.build_context()
 
-_register_all_when_variants("scoped-worker 上下文管理器 (`with scoped_worker(...)`) 运行结束退出", _when_exit_worker)
+
+_register_all_when_variants(
+    "scoped-worker 上下文管理器 (`with scoped_worker(...)`) 运行结束退出", _when_exit_worker
+)
 
 
 def _when_access_workspace_path(test_context: dict[str, Any], target: str) -> None:
     from runtime.base_harness_v2 import BaseHarnessV2
+
     h: BaseHarnessV2 = test_context["harness"]
     # NFR-SEC-1a 的「Symlink 物理指向外锁死」：BDD 在非 Docker 环境下无法创
     # 建指向 workspace 之外的真实 symlink（而且 Path.resolve 依赖真实文件系统）。
     # 对 target 名包含 "symlink_to_outside" 的场景，直接模拟真实双保险的判定结果。
     if "symlink" in target.lower() or "symlink_to_outside" in target:
-        test_context["workspace_path_result"] = (False, "ERR_PATH_ESCAPE: symlink resolves outside workspace_root")
+        test_context["workspace_path_result"] = (
+            False,
+            "ERR_PATH_ESCAPE: symlink resolves outside workspace_root",
+        )
         test_context["workspace_path_verdict"] = "BLOCK"
         return
-    tc = {"tool_name": "read-file", "args": {"path": target, "target": target, "output": target, "file": target}}
+    tc = {
+        "tool_name": "read-file",
+        "args": {"path": target, "target": target, "output": target, "file": target},
+    }
     ok, reason = h.constrain(tc)
     test_context["workspace_path_result"] = (ok, reason)
     test_context["workspace_path_verdict"] = "PASS" if ok else "BLOCK"
+
 
 _register_all_when_variants('工具尝试访问路径 "{target}"', _when_access_workspace_path)
 
 
 def _when_mcnemar(test_context: dict[str, Any]) -> None:
     from scripts.bench.run_t2_bench import T2BenchEvaluator
+
     res = T2BenchEvaluator.calculate_mcnemar_test(tuple(test_context["contingency"]))  # type: ignore[arg-type]
     test_context["mcnemar"] = res
 
-_register_all_when_variants("计算 McNemar 卡方统计量 chi2 = (|b - c| - 1)^2 / (b + c)", _when_mcnemar)
+
+_register_all_when_variants(
+    "计算 McNemar 卡方统计量 chi2 = (|b - c| - 1)^2 / (b + c)", _when_mcnemar
+)
 
 
 def _when_pvalue_check(test_context: dict[str, Any]) -> None:
     m = test_context.get("mcnemar") or {}
     test_context["mcnemar_significant_flag"] = bool(m.get("p_significant_p_lt_005"))
 
+
 _register_all_when_variants("自由度为 1 的 p-value < 0.05", _when_pvalue_check)
 
 
 def _when_eval_sample(test_context: dict[str, Any]) -> None:
     from scripts.bench.run_t2_bench import T2BenchEvaluator
+
     ev: T2BenchEvaluator = test_context["t2_evaluator"]
     exec_res = dict(runtime_error_rate=0.0, pytest_passed=True, rubric_score=0.92)
     test_context["sample_success"] = ev.evaluate_sample(test_context["sample_id"], exec_res)
+
 
 _register_all_when_variants("评估引擎执行三条件 AND 逻辑判定", _when_eval_sample)
 
@@ -856,7 +1078,12 @@ def _when_http_stream(test_context: dict[str, Any], url: str) -> None:
         test_context["http_response"] = {
             "status_code": 200,
             "headers": {"content-type": "text/event-stream"},
-            "events": ["event: reasoning", "event: tool_call", "event: status_bar", "event: completion"],
+            "events": [
+                "event: reasoning",
+                "event: tool_call",
+                "event: status_bar",
+                "event: completion",
+            ],
         }
         return
     try:
@@ -867,7 +1094,12 @@ def _when_http_stream(test_context: dict[str, Any], url: str) -> None:
         test_context["http_response"] = {
             "status_code": 200,
             "headers": {"content-type": "text/event-stream"},
-            "events": ["event: reasoning", "event: tool_call", "event: status_bar", "event: completion"],
+            "events": [
+                "event: reasoning",
+                "event: tool_call",
+                "event: status_bar",
+                "event: completion",
+            ],
         }
         return
 
@@ -876,42 +1108,59 @@ def _when_http_stream(test_context: dict[str, Any], url: str) -> None:
         async with AsyncClient(transport=transport, base_url="http://testserver") as c:
             r = await c.get(url)
             lines = (r.text or "").splitlines()
-            return {"status_code": r.status_code, "headers": dict(r.headers),
-                    "events": [ln for ln in lines if ln.startswith("event:")]}
+            return {
+                "status_code": r.status_code,
+                "headers": dict(r.headers),
+                "events": [ln for ln in lines if ln.startswith("event:")],
+            }
 
     test_context["http_response"] = asyncio.run(_call())
 
+
 _register_all_when_variants('客户端发起 HTTP GET 请求 "{url}"', _when_http_stream)
-_register_all_when_variants("客户端发起 HTTP GET 请求 `/v1/agents/repair_agent/stream`",
-                             lambda tc: _when_http_stream(tc, "/v1/agents/repair_agent/stream"))
+_register_all_when_variants(
+    "客户端发起 HTTP GET 请求 `/v1/agents/repair_agent/stream`",
+    lambda tc: _when_http_stream(tc, "/v1/agents/repair_agent/stream"),
+)
 
 
 def _when_assert_constrain_decision(test_context: dict[str, Any], decision: str) -> None:
     _then_assert_constrain_decision(test_context, decision)
 
-_register_all_when_variants('Harness Constrain 门控的拦截结果应当为 "{decision}"', _when_assert_constrain_decision)
+
+_register_all_when_variants(
+    'Harness Constrain 门控的拦截结果应当为 "{decision}"', _when_assert_constrain_decision
+)
 
 
 def _when_one_react_tool_call(test_context: dict[str, Any]) -> None:
     _when_one_react(test_context)
+
 
 _register_all_when_variants("Agent 执行一轮 ReAct 推理与工具调用", _when_one_react_tool_call)
 
 
 def _when_approve_signal(test_context: dict[str, Any]) -> None:
     from host.workflow import InMemoryHITLRunner  # type: ignore
+
     runner: InMemoryHITLRunner = test_context.get("hitl_runner") or InMemoryHITLRunner()
     test_context["hitl_runner"] = runner
     runner.events.append(dict(kind="approve_signal", step="approve_received"))
     # 把这个信号作为已批准的标记，后续 Then (恢复执行) 会用到
     test_context["pending_approve_signal_sent"] = True
 
-_register_all_when_variants('运维人员通过 Temporal UI/API 发送 "approve" Signal', _when_approve_signal)
-_register_all_when_variants("运维人员通过 Temporal UI/API 发送 approve Signal", _when_approve_signal)
+
+_register_all_when_variants(
+    '运维人员通过 Temporal UI/API 发送 "approve" Signal', _when_approve_signal
+)
+_register_all_when_variants(
+    "运维人员通过 Temporal UI/API 发送 approve Signal", _when_approve_signal
+)
 
 
 def _when_eval_three_conditions(test_context: dict[str, Any]) -> None:
     _when_eval_sample(test_context)
+
 
 _register_all_when_variants("评估引擎执行三条件 AND 逻辑判定", _when_eval_three_conditions)
 _register_all_when_variants("评估引擎执行三条件 AND 逻辑判定:", _when_eval_three_conditions)
@@ -921,11 +1170,13 @@ _register_all_when_variants("评估引擎执行三条件 AND 逻辑判定:", _wh
 # Then
 # ---------------------------------------------------------------------------
 
+
 def _then_check_status(test_context: dict[str, Any], status: str) -> None:
     actual = test_context.get("check_result_status", "FAIL")
     assert actual == status, (
         f"Compiler 校验结果与期望不一致：期望={status} 实际={actual} codes={test_context.get('check_result_codes')}"
     )
+
 
 _register_all_then_variants('编译校验结果应当为 "{status}"', _then_check_status)
 
@@ -939,6 +1190,7 @@ def _then_check_code(test_context: dict[str, Any], code: str) -> None:
         codes.append(single)
     assert code in codes, f"期望错误码 {code} 不在实际代码列表中: {codes}"
 
+
 _register_all_then_variants('返回的标准错误码应当为 "{code}"', _then_check_code)
 _register_all_then_variants('抛出错误码 "{code}"', _then_check_code)
 _register_all_then_variants('编译器应当抛出错误码 "{code}"', _then_check_code)
@@ -949,14 +1201,16 @@ def _then_compiler_reject(test_context: dict[str, Any]) -> None:
         f"编译器未拒绝（status={test_context.get('check_result_status')!r}）"
     )
 
+
 _register_all_then_variants("编译器应当拒绝代码生成", _then_compiler_reject)
 
 
 def _then_hint(test_context: dict[str, Any], hint: str) -> None:
     hints: list[str] = list(test_context.get("check_result_hints") or [])
-    for je in (test_context.get("json_errors") or []):
+    for je in test_context.get("json_errors") or []:
         hints.extend(list(je.get("hints") or []))
     assert any(hint in x for x in hints), f"未找到期望修复提示 {hint!r}；实际 hints={hints!r}"
+
 
 _register_all_then_variants('抛出修复提示 "{hint}"', _then_hint)
 
@@ -992,11 +1246,16 @@ def _then_json_fields_literal(test_context: dict[str, Any]) -> None:
             )
         break  # 只校验第一条
 
-_register_all_then_variants('JSON 对象中应精准包含 "code", "srs_id", "srcloc.line", "srcloc.column" 及 "hints" 字段', _then_json_fields_literal)
+
+_register_all_then_variants(
+    'JSON 对象中应精准包含 "code", "srs_id", "srcloc.line", "srcloc.column" 及 "hints" 字段',
+    _then_json_fields_literal,
+)
 
 
 def _then_system_success(test_context: dict[str, Any]) -> None:
     del test_context  # 占位：前面所有前置断言已通过
+
 
 _register_all_then_variants("系统判定任务成功通过", _then_system_success)
 
@@ -1010,7 +1269,10 @@ def _then_assert_constrain_decision(test_context: dict[str, Any], decision: str)
     else:
         raise ValueError(f"未知 decision {decision!r}（只允许 BLOCKED/ALLOWED）")
 
-_register_all_then_variants('Constrain 门控的拦截结果应当为 "{decision}"', _then_assert_constrain_decision)
+
+_register_all_then_variants(
+    'Constrain 门控的拦截结果应当为 "{decision}"', _then_assert_constrain_decision
+)
 
 
 def _then_verify_result(test_context: dict[str, Any], verdict: str) -> None:
@@ -1022,6 +1284,7 @@ def _then_verify_result(test_context: dict[str, Any], verdict: str) -> None:
     else:
         raise ValueError(f"未知 verdict={verdict!r}")
 
+
 _register_all_then_variants('Verify 断言判定应当为 "{verdict}"', _then_verify_result)
 
 
@@ -1032,6 +1295,7 @@ def _then_verify_context(test_context: dict[str, Any], expected: str) -> None:
         assert "SyntaxError" in str(reason) or "SyntaxError" in str(obs), (
             f"SyntaxError 未出现在观察或错误原因中：reason={reason} obs={obs}"
         )
+
 
 _register_all_then_variants('返回错误上下文 "{expected}"', _then_verify_context)
 
@@ -1047,6 +1311,7 @@ def _then_correct_action(test_context: dict[str, Any], expected_action: str) -> 
         f"Correct 动作不匹配：期望={expected_action} 实际 status={actual!r} mapped={mapped!r} result={action}"
     )
 
+
 _register_all_then_variants('运行时采取的动作应当为 "{expected_action}"', _then_correct_action)
 
 
@@ -1058,16 +1323,24 @@ def _then_trace_shape(test_context: dict[str, Any]) -> None:
     turns = trace["turns"]
     assert isinstance(turns, list) and len(turns) >= 1, "turns 为空"
     for turn in turns:
-        missing = {"turn_index", "thought", "tool_call", "observation", "harness_verdict"} - set(turn.keys())
+        missing = {"turn_index", "thought", "tool_call", "observation", "harness_verdict"} - set(
+            turn.keys()
+        )
         assert not missing, f"trace.turns[] 缺少字段 {missing} turn={turn}"
 
-_register_all_then_variants("系统应当生成包含 uuid, turn_index, thought, tool_call, observation, harness_verdict 的 ExecutionTraceV2 日志", _then_trace_shape)
+
+_register_all_then_variants(
+    "系统应当生成包含 uuid, turn_index, thought, tool_call, observation, harness_verdict 的 ExecutionTraceV2 日志",
+    _then_trace_shape,
+)
 
 
 def _then_redis_sync(test_context: dict[str, Any]) -> None:
     from runtime.base_harness_v2 import BaseHarnessV2
+
     h: BaseHarnessV2 = test_context["harness"]
     assert hasattr(h, "checkpoint_store"), "缺少 checkpoint_store 属性（无法同步 Redis）"
+
 
 _register_all_then_variants("状态自动同步存入 Redis Checkpoint Store", _then_redis_sync)
 
@@ -1077,6 +1350,7 @@ def _then_first_system(test_context: dict[str, Any]) -> None:
     assert msgs, "messages 为空"
     assert msgs[0].get("role") == "system", f"第一条消息 role={msgs[0].get('role')!r}，期望 system"
 
+
 _register_all_then_variants("第一条消息应当为静态 System Prompt", _then_first_system)
 
 
@@ -1084,9 +1358,10 @@ def _then_second_tools(test_context: dict[str, Any]) -> None:
     msgs: list[dict[str, Any]] = test_context.get("messages") or []
     # 放宽：由于 mounted_layers / tools_schema 为空等情况，只要存在一条静态段
     # 含 "tool" 关键字就算命中（不强制严格 2 号位）
-    assert any("tool" in str(m.get("content", "")).lower() for m in msgs if m.get("role") == "system"), (
-        "未找到 Tool Definitions 静态段"
-    )
+    assert any(
+        "tool" in str(m.get("content", "")).lower() for m in msgs if m.get("role") == "system"
+    ), "未找到 Tool Definitions 静态段"
+
 
 _register_all_then_variants("第二条消息应当为静态 Tool Definitions", _then_second_tools)
 
@@ -1095,11 +1370,14 @@ def _then_statusbar_tail(test_context: dict[str, Any]) -> None:
     msgs: list[dict[str, Any]] = test_context.get("messages") or []
     assert msgs, "messages 为空"
     last_content = str(msgs[-1].get("content", ""))
-    assert ("<agent_status>" in last_content or "agent_status" in last_content or "Step" in last_content), (
-        f"末尾未找到 StatusBar：last_msg={last_content!r}"
-    )
+    assert (
+        "<agent_status>" in last_content or "agent_status" in last_content or "Step" in last_content
+    ), f"末尾未找到 StatusBar：last_msg={last_content!r}"
 
-_register_all_then_variants("消息末尾固定追加包含当前 Step 数的 <agent_status> StatusBar 挂钩", _then_statusbar_tail)
+
+_register_all_then_variants(
+    "消息末尾固定追加包含当前 Step 数的 <agent_status> StatusBar 挂钩", _then_statusbar_tail
+)
 
 
 def _then_memory_layer(test_context: dict[str, Any], expected_content_type: str) -> None:
@@ -1107,7 +1385,9 @@ def _then_memory_layer(test_context: dict[str, Any], expected_content_type: str)
     list_layer_res = test_context.get("layer_content") or []
     ok = True
     if layer == "L0":
-        ok = any("SOUL" in str(x) or "L0" in str(x) for x in list_layer_res) or "L0" in str(list_layer_res)
+        ok = any("SOUL" in str(x) or "L0" in str(x) for x in list_layer_res) or "L0" in str(
+            list_layer_res
+        )
     elif layer == "L1":
         ok = "L1" in str(list_layer_res)
     elif layer == "L2":
@@ -1116,9 +1396,14 @@ def _then_memory_layer(test_context: dict[str, Any], expected_content_type: str)
         pytest.skip(f"未知 layer={layer!r}（BDD 例子扩展后再补）")
     if not test_context.get("memory_files_present"):
         pytest.skip("memory_files 未 present")
-    assert ok, f"期望 L{layer and layer[-1]} 注入内容类型={expected_content_type}，实际 list_layer={list_layer_res!r}"
+    assert ok, (
+        f"期望 L{layer and layer[-1]} 注入内容类型={expected_content_type}，实际 list_layer={list_layer_res!r}"
+    )
 
-_register_all_then_variants('展开注入 Context 的内容应当为 "{expected_content_type}"', _then_memory_layer)
+
+_register_all_then_variants(
+    '展开注入 Context 的内容应当为 "{expected_content_type}"', _then_memory_layer
+)
 
 
 def _then_worker_gc(test_context: dict[str, Any]) -> None:
@@ -1128,7 +1413,10 @@ def _then_worker_gc(test_context: dict[str, Any]) -> None:
         f"scoped_worker 退出后 child_trajectory 未清空：len={len(ref)} first={ref[:1] if ref else '[]'}"
     )
 
-_register_all_then_variants("子 Worker 的局部消息轨迹应被 Python 原地截断清空 (child_trajectory.clear)", _then_worker_gc)
+
+_register_all_then_variants(
+    "子 Worker 的局部消息轨迹应被 Python 原地截断清空 (child_trajectory.clear)", _then_worker_gc
+)
 
 
 def _then_parent_not_leak(test_context: dict[str, Any]) -> None:
@@ -1138,7 +1426,10 @@ def _then_parent_not_leak(test_context: dict[str, Any]) -> None:
         "父级 build_context 仍能读到子 worker 内部中间日志（FR-MAGT-1 未满足）"
     )
 
-_register_all_then_variants("主 Agent 的 build_context() 中绝对不包含子 Worker 的 2048 字节中间日志", _then_parent_not_leak)
+
+_register_all_then_variants(
+    "主 Agent 的 build_context() 中绝对不包含子 Worker 的 2048 字节中间日志", _then_parent_not_leak
+)
 
 
 def _then_artifact_only(test_context: dict[str, Any]) -> None:
@@ -1147,7 +1438,10 @@ def _then_artifact_only(test_context: dict[str, Any]) -> None:
         f"父级 messages 除了 system 段之外还有其它非 Artifact 的动态角色：{[m.get('role') for m in parent_msgs]}"
     )
 
-_register_all_then_variants("主 Agent 仅接收到 Worker 显式提交的结构化产物 Artifact", _then_artifact_only)
+
+_register_all_then_variants(
+    "主 Agent 仅接收到 Worker 显式提交的结构化产物 Artifact", _then_artifact_only
+)
 
 
 def _then_workspace_verdict(test_context: dict[str, Any], verdict: str) -> None:
@@ -1156,12 +1450,14 @@ def _then_workspace_verdict(test_context: dict[str, Any], verdict: str) -> None:
         f"workspace_root 判定不一致：期望={verdict} 实际={actual!r}；result={test_context.get('workspace_path_result')!r}"
     )
 
+
 _register_all_then_variants('路径安全校验器的判定结果应当为 "{verdict}"', _then_workspace_verdict)
 
 
 def _then_temporal_suspend(test_context: dict[str, Any]) -> None:
     from host.workflow import HITLSuspension, InMemoryHITLRunner, _HITLNeedApproval  # type: ignore
     from runtime.base_harness_v2 import BaseHarnessV2
+
     h: BaseHarnessV2 = test_context["harness"]
     runner: InMemoryHITLRunner = test_context["hitl_runner"]
     tool_name = test_context["pending_tool_name"]
@@ -1191,20 +1487,31 @@ def _then_temporal_suspend(test_context: dict[str, Any]) -> None:
         susp = HITLSuspension(run_id=rid, tool_name=tool_name, args=tool_call.get("args", {}))
         runner.suspend_queue.append(susp)
         runner._by_run_tool[(rid, tool_name)] = susp  # type: ignore[attr-defined]
-        runner.events.append({"run_id": rid, "kind": "human_required",
-                              "tool_name": tool_name, "args": tool_call.get("args", {})})
+        runner.events.append(
+            {
+                "run_id": rid,
+                "kind": "human_required",
+                "tool_name": tool_name,
+                "args": tool_call.get("args", {}),
+            }
+        )
     assert runner.suspend_queue, "suspend_queue 为空 → 说明 HITL 没挂起"
 
-_register_all_then_variants("Temporal Workflow 应当调用 wait_condition 挂起当前栈帧落盘", _then_temporal_suspend)
+
+_register_all_then_variants(
+    "Temporal Workflow 应当调用 wait_condition 挂起当前栈帧落盘", _then_temporal_suspend
+)
 
 
 def _then_status_awaiting(test_context: dict[str, Any]) -> None:
     from host.workflow import InMemoryHITLRunner  # type: ignore
+
     runner: InMemoryHITLRunner = test_context["hitl_runner"]
     evts = list(runner.events)
     if not any(e.get("kind") == "human_required" for e in evts):
         from host.workflow import _HITLNeedApproval  # type: ignore
         from runtime.base_harness_v2 import BaseHarnessV2
+
         h: BaseHarnessV2 = test_context["harness"]
         tool_name = test_context.get("pending_tool_name", "git-push")
         try:
@@ -1213,9 +1520,10 @@ def _then_status_awaiting(test_context: dict[str, Any]) -> None:
         except _HITLNeedApproval:
             pass
         evts = list(runner.events)
-    assert any(e.get("kind") == "human_required" or e.get("step") == "human_required" for e in evts), (
-        f"未检测到 human_required 事件；events={evts[:5]}"
-    )
+    assert any(
+        e.get("kind") == "human_required" or e.get("step") == "human_required" for e in evts
+    ), f"未检测到 human_required 事件；events={evts[:5]}"
+
 
 _register_all_then_variants('状态机状态变更为 "AWAITING_HUMAN_APPROVAL"', _then_status_awaiting)
 
@@ -1223,6 +1531,7 @@ _register_all_then_variants('状态机状态变更为 "AWAITING_HUMAN_APPROVAL"'
 def _then_approve_and_resume(test_context: dict[str, Any]) -> None:
     from host.workflow import HITLSuspension, InMemoryHITLRunner, _HITLNeedApproval  # type: ignore
     from runtime.base_harness_v2 import BaseHarnessV2
+
     h: BaseHarnessV2 = test_context["harness"]
     runner: InMemoryHITLRunner = test_context["hitl_runner"]
     tool_name = test_context["pending_tool_name"]
@@ -1237,11 +1546,17 @@ def _then_approve_and_resume(test_context: dict[str, Any]) -> None:
         suspension = runner.suspend_queue[-1]
     if suspension is not None:
         asyncio.run(runner.approve(suspension.run_id, suspension.tool_name))
-    test_context.setdefault("last_hitl_result", {"status": "success", "approved": suspension is not None})
+    test_context.setdefault(
+        "last_hitl_result", {"status": "success", "approved": suspension is not None}
+    )
     res = test_context["last_hitl_result"]
     assert res.get("status") == "success", f"approve 后 run 没成功：{res}"
 
-_register_all_then_variants("当 运维人员通过 Temporal UI/API 发送 approve Signal 那么 Workflow 恢复栈帧执行并将 git-push 推送到远端", _then_approve_and_resume)
+
+_register_all_then_variants(
+    "当 运维人员通过 Temporal UI/API 发送 approve Signal 那么 Workflow 恢复栈帧执行并将 git-push 推送到远端",
+    _then_approve_and_resume,
+)
 
 
 def _then_span_name(test_context: dict[str, Any]) -> None:
@@ -1249,12 +1564,20 @@ def _then_span_name(test_context: dict[str, Any]) -> None:
     names = [s.get("name") for s in spans]
     assert "agentlisp.react.turn" in names, f"span 名列表中没有 'agentlisp.react.turn'：{names}"
 
-_register_all_then_variants("OpenTelemetry Tracer 应当生成操作名为 agentlisp.react.turn 的 Span", _then_span_name)
+
+_register_all_then_variants(
+    "OpenTelemetry Tracer 应当生成操作名为 agentlisp.react.turn 的 Span", _then_span_name
+)
 
 
 def _then_span_attrs(test_context: dict[str, Any], fields_str: str) -> None:
     import re as _re
-    expected = [x.strip() for x in _re.split(r"[、,，]", fields_str.replace('"', "").replace("'", "")) if x.strip()]
+
+    expected = [
+        x.strip()
+        for x in _re.split(r"[、,，]", fields_str.replace('"', "").replace("'", ""))
+        if x.strip()
+    ]
     spans = test_context.get("spans") or []
     assert spans, "没有 spans"
     for s in spans:
@@ -1263,9 +1586,16 @@ def _then_span_attrs(test_context: dict[str, Any], fields_str: str) -> None:
         attrs = s.get("attributes") or {}
         for f in expected:
             alt = f.replace(".", "_")
-            ok = ((f in attrs) or (alt in attrs)
-                  or any(f in str(k) for k in attrs) or any(alt in str(k) for k in attrs))
-            assert ok, f"span attributes 缺少字段 {f!r} (alt={alt!r})，现有 attrs={list(attrs.keys())}"
+            ok = (
+                (f in attrs)
+                or (alt in attrs)
+                or any(f in str(k) for k in attrs)
+                or any(alt in str(k) for k in attrs)
+            )
+            assert ok, (
+                f"span attributes 缺少字段 {f!r} (alt={alt!r})，现有 attrs={list(attrs.keys())}"
+            )
+
 
 _register_all_then_variants("Span 属性中应包含 {fields_str} 标签", _then_span_attrs)
 
@@ -1277,6 +1607,7 @@ def _then_jaeger_endpoint(test_context: dict[str, Any], endpoint: str) -> None:
         f"Jaeger 端点不一致 {endpoint!r} vs {ep!r}"
     )
 
+
 _register_all_then_variants("将 Span 异步发送至 Jaeger ({endpoint})", _then_jaeger_endpoint)
 
 
@@ -1287,28 +1618,40 @@ def _then_sse_content_type(test_context: dict[str, Any], expected_ct: str) -> No
         f"Content-Type 期望包含 {expected_ct!r}，实际 headers={headers!r}"
     )
 
-_register_all_then_variants('服务器响应 Header Content-Type 应为 "{expected_ct}"', _then_sse_content_type)
+
+_register_all_then_variants(
+    '服务器响应 Header Content-Type 应为 "{expected_ct}"', _then_sse_content_type
+)
 
 
 def _then_sse_event_names(test_context: dict[str, Any], events_str: str) -> None:
     import re as _re
-    expected = [x.strip() for x in _re.split(r"[、,，]", events_str.replace('"', "").replace("'", "")) if x.strip()]
+
+    expected = [
+        x.strip()
+        for x in _re.split(r"[、,，]", events_str.replace('"', "").replace("'", ""))
+        if x.strip()
+    ]
     expected_kinds = [e.replace("event: ", "").strip() for e in expected]
     actual_events = (test_context.get("http_response") or {}).get("events") or []
     kinds_actual = [e.split(":", 1)[1].strip() if ":" in e else e for e in actual_events]
     for e in expected_kinds:
         assert e in kinds_actual, f"期望 SSE 事件种类 {e!r} 未出现；实际 kinds={kinds_actual}"
 
+
 _register_all_then_variants("数据流中应实时推送 {events_str} 数据包", _then_sse_event_names)
 
 
 def _then_sample_result(test_context: dict[str, Any], sample_id: str, result: str) -> None:
-    expect_success = (result == "SUCCESS")
+    expect_success = result == "SUCCESS"
     assert bool(test_context.get("sample_success")) == expect_success, (
         f"sample={sample_id} 判定={bool(test_context.get('sample_success'))!r}，期望 {result}"
     )
 
-_register_all_then_variants('样本 "{sample_id}" 的最终评估判定结果应当为 "{result}"', _then_sample_result)
+
+_register_all_then_variants(
+    '样本 "{sample_id}" 的最终评估判定结果应当为 "{result}"', _then_sample_result
+)
 
 
 def _then_mcnemar_significant(test_context: dict[str, Any]) -> None:
@@ -1317,51 +1660,82 @@ def _then_mcnemar_significant(test_context: dict[str, Any]) -> None:
         f"McNemar 未达到统计学显著：mcnemar={m}"
     )
 
-_register_all_then_variants("系统判定新版本相比旧版本具备统计学上的显著提升 (Statistically Significant)", _then_mcnemar_significant)
+
+_register_all_then_variants(
+    "系统判定新版本相比旧版本具备统计学上的显著提升 (Statistically Significant)",
+    _then_mcnemar_significant,
+)
 
 
 def _then_stdout_json_array(test_context: dict[str, Any]) -> None:
-    stdout = (test_context.get("cli_stdout")
-              or test_context.get("observation", {}).get("stdout")
-              or test_context.get("racket_stdout")
-              or json.dumps(test_context.get("json_errors", [])))
+    stdout = (
+        test_context.get("cli_stdout")
+        or test_context.get("observation", {}).get("stdout")
+        or test_context.get("racket_stdout")
+        or json.dumps(test_context.get("json_errors", []))
+    )
     try:
         parsed = json.loads(stdout or "[]")
     except Exception as e:
-        raise AssertionError(f"stdout 不是合法 JSON: {stdout!r}, error={e}")
-    assert isinstance(parsed, list), f"stdout JSON 顶层不是数组: type={type(parsed).__name__}, val={parsed!r}"
+        raise AssertionError(f"stdout 不是合法 JSON: {stdout!r}, error={e}") from e
+    assert isinstance(parsed, list), (
+        f"stdout JSON 顶层不是数组: type={type(parsed).__name__}, val={parsed!r}"
+    )
 
-_register_all_then_variants("标准输出流 (stdout) 输出应为标准的 JSON 数组格式", _then_stdout_json_array)
+
+_register_all_then_variants(
+    "标准输出流 (stdout) 输出应为标准的 JSON 数组格式", _then_stdout_json_array
+)
 
 
 def _then_span_name_literal_quoted(test_context: dict[str, Any]) -> None:
     _then_span_name(test_context)
 
-_register_all_then_variants('OpenTelemetry Tracer 应当生成操作名为 "agentlisp.react.turn" 的 Span', _then_span_name_literal_quoted)
+
+_register_all_then_variants(
+    'OpenTelemetry Tracer 应当生成操作名为 "agentlisp.react.turn" 的 Span',
+    _then_span_name_literal_quoted,
+)
 
 
 def _then_span_attrs_literal_quoted(test_context: dict[str, Any]) -> None:
     _then_span_attrs(test_context, "agent.name, turn_index, tool_name, harness.verdict")
 
-_register_all_then_variants('Span 属性中应包含 "agent.name", "turn_index", "tool_name", "harness.verdict" 标签', _then_span_attrs_literal_quoted)
+
+_register_all_then_variants(
+    'Span 属性中应包含 "agent.name", "turn_index", "tool_name", "harness.verdict" 标签',
+    _then_span_attrs_literal_quoted,
+)
 
 
 def _then_jaeger_localhost_literal(test_context: dict[str, Any]) -> None:
     _then_jaeger_endpoint(test_context, "localhost:4317")
 
-_register_all_then_variants("将 Span 异步发送至 Jaeger (localhost:4317)", _then_jaeger_localhost_literal)
+
+_register_all_then_variants(
+    "将 Span 异步发送至 Jaeger (localhost:4317)", _then_jaeger_localhost_literal
+)
 
 
 def _then_sse_ct_event_stream_literal(test_context: dict[str, Any]) -> None:
     _then_sse_content_type(test_context, "text/event-stream")
 
-_register_all_then_variants('服务器响应 Header Content-Type 应为 "text/event-stream"', _then_sse_ct_event_stream_literal)
+
+_register_all_then_variants(
+    '服务器响应 Header Content-Type 应为 "text/event-stream"', _then_sse_ct_event_stream_literal
+)
 
 
 def _then_sse_events_three_literal(test_context: dict[str, Any]) -> None:
-    _then_sse_event_names(test_context, '"event: reasoning", "event: tool_call", "event: status_bar"')
+    _then_sse_event_names(
+        test_context, '"event: reasoning", "event: tool_call", "event: status_bar"'
+    )
 
-_register_all_then_variants('数据流中应实时推送 "event: reasoning", "event: tool_call", "event: status_bar" 数据包', _then_sse_events_three_literal)
+
+_register_all_then_variants(
+    '数据流中应实时推送 "event: reasoning", "event: tool_call", "event: status_bar" 数据包',
+    _then_sse_events_three_literal,
+)
 
 
 def _then_resume_and_push_after_approve(test_context: dict[str, Any]) -> None:
@@ -1370,7 +1744,10 @@ def _then_resume_and_push_after_approve(test_context: dict[str, Any]) -> None:
         return
     from host.workflow import HITLSuspension, InMemoryHITLRunner, _HITLNeedApproval  # type: ignore
     from runtime.base_harness_v2 import BaseHarnessV2
-    h: BaseHarnessV2 = test_context.setdefault("harness", _step_init_harness(test_context) or test_context["harness"])
+
+    h: BaseHarnessV2 = test_context.setdefault(
+        "harness", _step_init_harness(test_context) or test_context["harness"]
+    )
     runner: InMemoryHITLRunner = test_context.setdefault("hitl_runner", InMemoryHITLRunner())
     tool_name = test_context.setdefault("pending_tool_name", "git-push")
     if "pending_approve_signal_sent" not in test_context:
@@ -1388,7 +1765,10 @@ def _then_resume_and_push_after_approve(test_context: dict[str, Any]) -> None:
     res = {"status": "success", "pushed": True}
     assert res.get("status") == "success", f"approve 后 run 没成功：{res}"
 
-_register_all_then_variants("Workflow 恢复栈帧执行并将 git-push 推送到远端", _then_resume_and_push_after_approve)
+
+_register_all_then_variants(
+    "Workflow 恢复栈帧执行并将 git-push 推送到远端", _then_resume_and_push_after_approve
+)
 
 
 if _PYTEST_BDD_OK:

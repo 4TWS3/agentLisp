@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import asyncio
-from typing import Any, Awaitable, Callable, Optional
+from collections.abc import Awaitable, Callable
+from typing import Any
 
 from .errors import FeatureNotInstalledError, ToolNotFoundError
 
@@ -50,7 +51,7 @@ class MCPToolBridge:
     This is a thin skeleton: forward tool calls to a configured MCP client session.
     """
 
-    def __init__(self, mcp_client: Optional[Any] = None) -> None:
+    def __init__(self, mcp_client: Any | None = None) -> None:
         self.client = mcp_client
         if mcp_client is None:
             try:  # pragma: no cover - optional import smoke

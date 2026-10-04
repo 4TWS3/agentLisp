@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """
 AgentLisp v2.0 合并版 Harness 基类（runtime/base_harness_v2.py）
 
@@ -36,26 +35,17 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import logging
-import os
 import pathlib
 import re
 import shlex
 import time
 import uuid
-from dataclasses import dataclass, field, asdict
-from datetime import datetime, timezone
+from collections.abc import AsyncIterator, Iterable
+from dataclasses import asdict, dataclass, field
+from datetime import UTC, datetime
 from typing import (
     Any,
-    AsyncIterable,
-    AsyncIterator,
-    Awaitable,
-    Callable,
-    Dict,
-    Iterable,
-    List,
-    Optional,
     Protocol,
-    Tuple,
     runtime_checkable,
 )
 
@@ -69,14 +59,14 @@ logger = logging.getLogger(__name__)
 @dataclass
 class ReActTurnV2:
     index: int
-    thought: Optional[str] = None
-    action: Optional[str] = None
-    action_input: Optional[Dict[str, Any]] = None
-    observation: Optional[Any] = None
-    answer: Optional[str] = None
+    thought: str | None = None
+    action: str | None = None
+    action_input: dict[str, Any] | None = None
+    observation: Any | None = None
+    answer: str | None = None
     status: str = "pending"  # pending / success / failed / blocked / retry
     started_at: float = field(default_factory=time.monotonic)
-    finished_at: Optional[float] = None
+    finished_at: float | None = None
 
     @property
     def duration_ms(self) -> int:
@@ -84,7 +74,7 @@ class ReActTurnV2:
             return 0
         return int((self.finished_at - self.started_at) * 1000)
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         d = asdict(self)
         d["duration_ms"] = self.duration_ms
         return d
@@ -93,13 +83,13 @@ class ReActTurnV2:
 @dataclass
 class ExecutionTraceV2:
     run_id: str
-    agent_name: Optional[str]
+    agent_name: str | None
     started_at: datetime
-    finished_at: Optional[datetime] = None
-    turns: List[ReActTurnV2] = field(default_factory=list)
-    final_answer: Optional[str] = None
+    finished_at: datetime | None = None
+    turns: list[ReActTurnV2] = field(default_factory=list)
+    final_answer: str | None = None
     status: str = "pending"  # pending / running / success / failed / blocked / human_required
-    error: Optional[str] = None
+    error: str | None = None
 
     @property
     def duration_ms(self) -> int:
@@ -107,7 +97,7 @@ class ExecutionTraceV2:
             return 0
         return int((self.finished_at - self.started_at).total_seconds() * 1000)
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "run_id": self.run_id,
             "agent_name": self.agent_name,
@@ -128,27 +118,31 @@ class ExecutionTraceV2:
 
 @runtime_checkable
 class LLMClientProtocol(Protocol):
-    async def achat(self, messages: List[Dict[str, Any]], **kwargs: Any) -> Dict[str, Any]: ...
+    async def achat(self, messages: list[dict[str, Any]], **kwargs: Any) -> dict[str, Any]: ...
 
 
 @runtime_checkable
 class ToolRegistryProtocol(Protocol):
     async def acall(self, name: str, **kwargs: Any) -> Any: ...
-    def names(self) -> List[str]: ...
-    def to_openai_schema(self) -> List[Dict[str, Any]]: ...
+    def names(self) -> list[str]: ...
+    def to_openai_schema(self) -> list[dict[str, Any]]: ...
 
 
 @runtime_checkable
 class CheckpointStoreProtocol(Protocol):
-    async def save(self, key: str, payload: Dict[str, Any]) -> None: ...
-    async def load(self, key: str) -> Optional[Dict[str, Any]]: ...
+    async def save(self, key: str, payload: dict[str, Any]) -> None: ...
+    async def load(self, key: str) -> dict[str, Any] | None: ...
 
 
 @runtime_checkable
 class StatusBarProtocol(Protocol):
-    def on_start(self, run_id: str, agent_name: Optional[str]) -> None: ...
-    def on_step(self, run_id: str, turn_index: int, event: str, detail: Optional[Any] = None) -> None: ...
-    def on_done(self, run_id: str, status: str, final_answer: Optional[str], error: Optional[str]) -> None: ...
+    def on_start(self, run_id: str, agent_name: str | None) -> None: ...
+    def on_step(
+        self, run_id: str, turn_index: int, event: str, detail: Any | None = None
+    ) -> None: ...
+    def on_done(
+        self, run_id: str, status: str, final_answer: str | None, error: str | None
+    ) -> None: ...
 
 
 # ==============================================================================
@@ -160,27 +154,34 @@ class _MemoryCheckpointStore:
     """仅在外部未注入 checkpoint_store 时使用，对应 runtime.checkpoint.MemoryCheckpointStore 的最小形态。"""
 
     def __init__(self) -> None:
-        self._data: Dict[str, Dict[str, Any]] = {}
+        self._data: dict[str, dict[str, Any]] = {}
 
-    async def save(self, key: str, payload: Dict[str, Any]) -> None:
+    async def save(self, key: str, payload: dict[str, Any]) -> None:
         self._data[key] = payload
 
-    async def load(self, key: str) -> Optional[Dict[str, Any]]:
+    async def load(self, key: str) -> dict[str, Any] | None:
         return self._data.get(key)
 
 
 class _PrintingStatusBar:
     """仅在外部未注入 status_bar 时使用。"""
 
-    def on_start(self, run_id: str, agent_name: Optional[str]) -> None:
+    def on_start(self, run_id: str, agent_name: str | None) -> None:
         logger.info("[StatusBar] on_start run_id=%s agent=%s", run_id, agent_name)
 
-    def on_step(self, run_id: str, turn_index: int, event: str, detail: Optional[Any] = None) -> None:
+    def on_step(self, run_id: str, turn_index: int, event: str, detail: Any | None = None) -> None:
         logger.info("[StatusBar] on_step run_id=%s turn=%s event=%s", run_id, turn_index, event)
 
-    def on_done(self, run_id: str, status: str, final_answer: Optional[str], error: Optional[str]) -> None:
-        logger.info("[StatusBar] on_done run_id=%s status=%s final_answer=%s error=%s",
-                    run_id, status, final_answer, error)
+    def on_done(
+        self, run_id: str, status: str, final_answer: str | None, error: str | None
+    ) -> None:
+        logger.info(
+            "[StatusBar] on_done run_id=%s status=%s final_answer=%s error=%s",
+            run_id,
+            status,
+            final_answer,
+            error,
+        )
 
 
 # ==============================================================================
@@ -188,10 +189,12 @@ class _PrintingStatusBar:
 # ==============================================================================
 
 
-_FORBIDDEN_WORD_BOUNDARY_RE = re.compile(r"(?<!\w)rm(?!\w)")  # placeholder（实际由 _forbidden_regex 动态生成）
+_FORBIDDEN_WORD_BOUNDARY_RE = re.compile(
+    r"(?<!\w)rm(?!\w)"
+)  # placeholder（实际由 _forbidden_regex 动态生成）
 
 
-def _forbidden_regex(pattern: str) -> "re.Pattern[str]":
+def _forbidden_regex(pattern: str) -> re.Pattern[str]:
     """把 forbidden 字符串编译为词边界精确匹配（避免 rm 匹配 rmtree / cat 匹配 category）。"""
     escaped = re.escape(pattern.strip())
     return re.compile(rf"(?<![A-Za-z0-9_./-]){escaped}(?![A-Za-z0-9_./-])")
@@ -214,16 +217,16 @@ def _contains_forbidden_token(command: str, forbidden: str) -> bool:
                 return True
         else:
             for i in range(len(tokens) - n + 1):
-                if tokens[i:i + n] == forbidden_tokens:
+                if tokens[i : i + n] == forbidden_tokens:
                     return True
     # fallback：正则词边界
     return bool(_forbidden_regex(forbidden).search(command))
 
 
-def _normalize_pure_posix_parts(path: "pathlib.PurePosixPath") -> "pathlib.PurePosixPath":
+def _normalize_pure_posix_parts(path: pathlib.PurePosixPath) -> pathlib.PurePosixPath:
     """对 PurePosixPath 的 parts 手工规范化，去掉 `.` / `..`（纯字符串运算，不调用真实文件系统的 resolve()）。"""
     parts = list(path.parts)
-    stack: List[str] = []
+    stack: list[str] = []
     for p in parts:
         if p == ".":
             continue
@@ -248,15 +251,15 @@ def _normalize_pure_posix_parts(path: "pathlib.PurePosixPath") -> "pathlib.PureP
 def build_kv_aligned_context(
     *,
     system_prompt: str,
-    tools_schema_text: Optional[str] = None,
-    tools_openai_schema: Optional[List[Dict[str, Any]]] = None,
-    trajectory: List[Dict[str, Any]],
+    tools_schema_text: str | None = None,
+    tools_openai_schema: list[dict[str, Any]] | None = None,
+    trajectory: list[dict[str, Any]],
     step_count: int,
-    status_bar_config: Dict[str, Any],
+    status_bar_config: dict[str, Any],
     terminated: bool = False,
-    extra_status_items: Optional[Dict[str, Any]] = None,
-    mounted_layers: Optional[List[str]] = None,
-) -> List[Dict[str, Any]]:
+    extra_status_items: dict[str, Any] | None = None,
+    mounted_layers: list[str] | None = None,
+) -> list[dict[str, Any]]:
     """
     KV Cache 严格四段+1 memory 段 (对应 base_agent_harness.build_context 的规范固化版)：
 
@@ -269,7 +272,7 @@ def build_kv_aligned_context(
     tools_schema_text 与 tools_openai_schema 至少给其一；二者都给时 system 消息合并呈现。
     mounted_layers 非空时，在 system prompt 后追加 [Memory] mounted layers: x, y, z 段（SRS FR-MEM-1）。
     """
-    messages: List[Dict[str, Any]] = []
+    messages: list[dict[str, Any]] = []
 
     # (1) Static System Prompt
     if not system_prompt:
@@ -278,25 +281,35 @@ def build_kv_aligned_context(
 
     # (1.5) [Memory] mounted layers: SRS FR-MEM-1（emitter 在 markdown_fs 非空时自动传入）
     if mounted_layers:
-        layers_text = ", ".join(str(l) for l in mounted_layers if str(l).strip())
+        layers_text = ", ".join(str(layer) for layer in mounted_layers if str(layer).strip())
         if layers_text:
-            messages.append({
-                "role": "system",
-                "content": f"[Memory] mounted layers: {layers_text}",
-            })
+            messages.append(
+                {
+                    "role": "system",
+                    "content": f"[Memory] mounted layers: {layers_text}",
+                }
+            )
 
     # (2) Static Tools Schema
-    tools_parts: List[str] = []
+    tools_parts: list[str] = []
     if tools_schema_text:
         tools_parts.append(tools_schema_text.strip())
     if tools_openai_schema:
         import json as _json
-        tools_parts.append("OpenAI tools schema:\n" + _json.dumps(tools_openai_schema, ensure_ascii=False, indent=2))
+
+        tools_parts.append(
+            "OpenAI tools schema:\n"
+            + _json.dumps(tools_openai_schema, ensure_ascii=False, indent=2)
+        )
     if tools_parts:
-        messages.append({
-            "role": "system",
-            "content": "<tools_definition>\n" + "\n\n".join(tools_parts) + "\n</tools_definition>",
-        })
+        messages.append(
+            {
+                "role": "system",
+                "content": "<tools_definition>\n"
+                + "\n\n".join(tools_parts)
+                + "\n</tools_definition>",
+            }
+        )
 
     # (3) Dynamic Trajectory
     messages.extend(trajectory)
@@ -304,7 +317,7 @@ def build_kv_aligned_context(
     # (4) Status Bar (system 角色，修正 Issue #3)
     sb = status_bar_config or {}
     if sb:
-        items: List[str] = []
+        items: list[str] = []
         if sb.get("step_count", True):
             items.append(f"Step: {step_count}")
         items.append(f"Status: {'Terminated' if terminated else 'Active'}")
@@ -312,10 +325,12 @@ def build_kv_aligned_context(
             for k, v in extra_status_items.items():
                 items.append(f"{k}: {v}")
         if items:
-            messages.append({
-                "role": "system",
-                "content": "<agent_status>" + " | ".join(items) + "</agent_status>",
-            })
+            messages.append(
+                {
+                    "role": "system",
+                    "content": "<agent_status>" + " | ".join(items) + "</agent_status>",
+                }
+            )
 
     return messages
 
@@ -328,17 +343,28 @@ def build_kv_aligned_context(
 class MockLLMClient:
     """按序返回 responses；若 responses 耗尽则返回终止回答。用于 Issue #1 的默认 LLM 注入。"""
 
-    def __init__(self, responses: Optional[Iterable[Dict[str, Any]]] = None) -> None:
+    def __init__(self, responses: Iterable[dict[str, Any]] | None = None) -> None:
         import collections
-        self._queue: "collections.deque[Dict[str, Any]]" = collections.deque(responses or [
-            {"role": "assistant", "content": None, "tool_calls": [
-                {"id": "call-mock", "type": "function",
-                 "function": {"name": "echo", "arguments": {"message": "hello"}}}
-            ]},
-            {"role": "assistant", "content": "OK, done."},
-        ])
 
-    async def achat(self, messages: List[Dict[str, Any]], **_: Any) -> Dict[str, Any]:
+        self._queue: collections.deque[dict[str, Any]] = collections.deque(
+            responses
+            or [
+                {
+                    "role": "assistant",
+                    "content": None,
+                    "tool_calls": [
+                        {
+                            "id": "call-mock",
+                            "type": "function",
+                            "function": {"name": "echo", "arguments": {"message": "hello"}},
+                        }
+                    ],
+                },
+                {"role": "assistant", "content": "OK, done."},
+            ]
+        )
+
+    async def achat(self, messages: list[dict[str, Any]], **_: Any) -> dict[str, Any]:
         if self._queue:
             return dict(self._queue.popleft())
         return {"role": "assistant", "content": "[MockLLM depleted] Task finished."}
@@ -361,18 +387,18 @@ class BaseHarnessV2:
 
     def __init__(
         self,
-        model_config: Dict[str, Any],
-        context_config: Dict[str, Any],
-        tools_config: Dict[str, Any],
-        harness_config: Dict[str, Any],
+        model_config: dict[str, Any],
+        context_config: dict[str, Any],
+        tools_config: dict[str, Any],
+        harness_config: dict[str, Any],
         *,
-        llm_client: Optional[LLMClientProtocol] = None,
-        tool_registry: Optional[ToolRegistryProtocol] = None,
-        checkpoint_store: Optional[CheckpointStoreProtocol] = None,
-        status_bar: Optional[StatusBarProtocol] = None,
+        llm_client: LLMClientProtocol | None = None,
+        tool_registry: ToolRegistryProtocol | None = None,
+        checkpoint_store: CheckpointStoreProtocol | None = None,
+        status_bar: StatusBarProtocol | None = None,
         max_turns: int = 30,
         react_mode: bool = True,
-        agent_name: Optional[str] = None,
+        agent_name: str | None = None,
     ) -> None:
         self.model_config = dict(model_config or {})
         self.context_config = dict(context_config or {})
@@ -380,8 +406,10 @@ class BaseHarnessV2:
         self.harness_config = dict(harness_config or {})
 
         self.llm_client: LLMClientProtocol = llm_client or MockLLMClient()  # Fix Issue #1
-        self.tool_registry: Optional[ToolRegistryProtocol] = tool_registry
-        self.checkpoint_store: CheckpointStoreProtocol = checkpoint_store or _MemoryCheckpointStore()  # Fix Issue #5
+        self.tool_registry: ToolRegistryProtocol | None = tool_registry
+        self.checkpoint_store: CheckpointStoreProtocol = (
+            checkpoint_store or _MemoryCheckpointStore()
+        )  # Fix Issue #5
         self.status_bar: StatusBarProtocol = status_bar or _PrintingStatusBar()  # Fix Issue #5
 
         self.max_turns = int(max_turns)
@@ -389,27 +417,29 @@ class BaseHarnessV2:
         self.agent_name = agent_name or self.model_config.get("agent_name")
 
         # 运行时状态
-        self.trajectory: List[Dict[str, Any]] = []
+        self.trajectory: list[dict[str, Any]] = []
         self.step_count: int = 0
         self.is_terminated: bool = False
-        self._trace: Optional[ExecutionTraceV2] = None
+        self._trace: ExecutionTraceV2 | None = None
 
         # SRS FR-MEM-1：若 context_config 指定 markdown_fs 或 layers，则自动创建 self.memory_fs 并挂载三层占位
         # emitter 生成代码时会进一步覆盖为具体 layers；测试端可手工 setattr 注入
-        self.memory_fs: Optional[Any] = None
-        self._mounted_layers: List[str] = []
+        self.memory_fs: Any | None = None
+        self._mounted_layers: list[str] = []
         try:
-            from .memory_fs import MemoryFS  # noqa: F401  延迟 import，避免无依赖场景报错
-        except Exception:  # noqa: BLE001
+            from .memory_fs import MemoryFS
+        except Exception:
             MemoryFS = None  # type: ignore[assignment,misc]
         _ccfg = self.context_config
-        _markdown_fs = _ccfg.get("markdown_fs") or _ccfg.get("memory_path") or _ccfg.get("memory_root")
+        _markdown_fs = (
+            _ccfg.get("markdown_fs") or _ccfg.get("memory_path") or _ccfg.get("memory_root")
+        )
         _layers_raw = _ccfg.get("layers") or _ccfg.get("memory_layers") or []
         _has_memory_hint = bool(_markdown_fs or _layers_raw)
         if _has_memory_hint and MemoryFS is not None:
             try:
                 self.memory_fs = MemoryFS(namespace=self.agent_name or "default")
-            except Exception:  # noqa: BLE001
+            except Exception:
                 self.memory_fs = None
         # 规范化 layers：把字符串/符号格式统一成 [L0-Abstract, L1-Overview, L2-FullText] 顺序
         if _layers_raw:
@@ -431,7 +461,7 @@ class BaseHarnessV2:
         self._trace = ExecutionTraceV2(
             run_id=run_id,
             agent_name=self.agent_name,
-            started_at=datetime.now(timezone.utc),
+            started_at=datetime.now(UTC),
             status="running",
         )
         self.trajectory = [{"role": "user", "content": user_input}]
@@ -449,7 +479,9 @@ class BaseHarnessV2:
                 return self._trace
             if loop_result.get("status") == "failed":
                 self._trace.status = "failed"
-                self._trace.error = loop_result.get("error") or loop_result.get("feedback") or "failed"
+                self._trace.error = (
+                    loop_result.get("error") or loop_result.get("feedback") or "failed"
+                )
                 self.is_terminated = True
                 return self._trace
             if loop_result.get("status") == "human_required":
@@ -460,18 +492,19 @@ class BaseHarnessV2:
             self._trace.final_answer = loop_result.get("final_answer")
             self.is_terminated = True
             return self._trace
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             self._trace.status = "failed"
             self._trace.error = f"{type(exc).__name__}: {exc}"
             self.is_terminated = True
             raise
         finally:
-            self._trace.finished_at = datetime.now(timezone.utc)
-            self.status_bar.on_done(self._trace.run_id, self._trace.status,
-                                    self._trace.final_answer, self._trace.error)
+            self._trace.finished_at = datetime.now(UTC)
+            self.status_bar.on_done(
+                self._trace.run_id, self._trace.status, self._trace.final_answer, self._trace.error
+            )
             await self._save_checkpoint()
 
-    async def step(self, user_input: Optional[str] = None) -> Dict[str, Any]:
+    async def step(self, user_input: str | None = None) -> dict[str, Any]:
         """单步驱动（保留 B 版 API）。"""
         if self._trace is None:
             # lazy 初始化一次 trace，保证单步驱动也有证据链
@@ -479,7 +512,7 @@ class BaseHarnessV2:
             self._trace = ExecutionTraceV2(
                 run_id=run_id,
                 agent_name=self.agent_name,
-                started_at=datetime.now(timezone.utc),
+                started_at=datetime.now(UTC),
                 status="running",
             )
             self.status_bar.on_start(run_id, self.agent_name)
@@ -492,12 +525,14 @@ class BaseHarnessV2:
     # 三重控制流管道（保留 B 版接口 + 强化实现）
     # ------------------------------------------------------------------
 
-    def constrain(self, tool_call: Dict[str, Any]) -> Tuple[bool, str]:
+    def constrain(self, tool_call: dict[str, Any]) -> tuple[bool, str]:
         """【护栏 1：Constrain】负面清单 + 词边界匹配 + workspace_root 路径门控（Fix Issue #4 + SRS FR-RUN-3）。"""
-        args: Dict[str, Any] = tool_call.get("args", {}) or {}
+        args: dict[str, Any] = tool_call.get("args", {}) or {}
         cmd: str = str(args.get("command", ""))
         # (a) forbidden_commands 词边界匹配（Issue #4）
-        forbidden_list = list(self.harness_config.get("constrain", {}).get("forbidden_commands", []) or [])
+        forbidden_list = list(
+            self.harness_config.get("constrain", {}).get("forbidden_commands", []) or []
+        )
         for forbidden in forbidden_list:
             if _contains_forbidden_token(cmd, forbidden):
                 logger.warning("[Constrain] blocked forbidden=%r in cmd=%r", forbidden, cmd)
@@ -515,14 +550,26 @@ class BaseHarnessV2:
         workspace_root = (self.harness_config.get("constrain", {}) or {}).get("workspace_root")
         if workspace_root:
             root_raw = str(workspace_root)
-            path_candidates: List[str] = []
+            path_candidates: list[str] = []
             # (b.1) 从 bash 的 command 拆 shlex（老路径）
             try:
                 tokens_cmd = shlex.split(cmd, comments=True, posix=True) if cmd else []
             except ValueError:
                 tokens_cmd = cmd.split() if cmd else []
             for token in tokens_cmd:
-                if not token or token in {"|", "&&", ";", "||", "&", ">", "<", ">>", "2>", "1>", "&>"}:
+                if not token or token in {
+                    "|",
+                    "&&",
+                    ";",
+                    "||",
+                    "&",
+                    ">",
+                    "<",
+                    ">>",
+                    "2>",
+                    "1>",
+                    "&>",
+                }:
                     continue
                 if not ("/" in token or token == "." or token.startswith("..")):
                     continue
@@ -531,12 +578,30 @@ class BaseHarnessV2:
                     path_candidates.append(candidate)
             # (b.2) 递归 args dict 收集路径候选（带参数名语义）
             PATH_HINT_KEYS = {
-                "path", "paths", "file", "files", "dir", "dirs", "directory", "directories",
-                "target", "dst", "src", "root", "output", "cwd", "workspace", "mount",
-                "source", "destination", "working_dir", "working_directory", "home",
+                "path",
+                "paths",
+                "file",
+                "files",
+                "dir",
+                "dirs",
+                "directory",
+                "directories",
+                "target",
+                "dst",
+                "src",
+                "root",
+                "output",
+                "cwd",
+                "workspace",
+                "mount",
+                "source",
+                "destination",
+                "working_dir",
+                "working_directory",
+                "home",
             }
 
-            def _walk(v: Any, key_hint: Optional[str]) -> None:
+            def _walk(v: Any, key_hint: str | None) -> None:
                 if isinstance(v, str):
                     s = v.replace("file://", "")
                     if key_hint and key_hint in PATH_HINT_KEYS:
@@ -559,7 +624,7 @@ class BaseHarnessV2:
                 _walk(v, str(k) if isinstance(k, str) else None)
             # (b.3) 去重（保持顺序）
             seen: set = set()
-            dedup: List[str] = []
+            dedup: list[str] = []
             for s in path_candidates:
                 if s in seen:
                     continue
@@ -567,9 +632,8 @@ class BaseHarnessV2:
                 dedup.append(s)
             # (b.4) 对每个候选做双保险规范化 + is_relative_to 判定
             root_pure = pathlib.PurePosixPath(root_raw)
-            import os as _os
 
-            def _fs_resolve_if_exists(cand_path: str) -> Optional[pathlib.Path]:
+            def _fs_resolve_if_exists(cand_path: str) -> pathlib.Path | None:
                 """路径真实存在（或父目录存在可 resolve）→ 返回 Path.resolve(strict=False)；否则返回 None。"""
                 try:
                     # 允许把非绝对的相对 root 先拼成绝对存在性检查
@@ -581,14 +645,14 @@ class BaseHarnessV2:
                             return cp.resolve(strict=False)
                     except (OSError, RuntimeError):
                         return None
-                except Exception:  # noqa: BLE001
+                except Exception:
                     return None
                 return None
 
             for candidate in dedup:
                 try:
                     cand_pure = pathlib.PurePosixPath(candidate)
-                except Exception:  # noqa: BLE001
+                except Exception:
                     continue
                 if cand_pure.is_absolute():
                     resolved_pure = _normalize_pure_posix_parts(cand_pure)
@@ -597,11 +661,15 @@ class BaseHarnessV2:
                 escaped_pure = False
                 try:
                     escaped_pure = not resolved_pure.is_relative_to(root_pure)
-                except Exception:  # noqa: BLE001
+                except Exception:
                     escaped_pure = True
                 if escaped_pure:
-                    logger.warning("[Constrain][WorkspaceEscape-Pure] root=%r candidate=%r resolved=%r",
-                                   str(root_pure), candidate, str(resolved_pure))
+                    logger.warning(
+                        "[Constrain][WorkspaceEscape-Pure] root=%r candidate=%r resolved=%r",
+                        str(root_pure),
+                        candidate,
+                        str(resolved_pure),
+                    )
                     return False, (
                         f"Harness Blocked: WorkspaceEscape: target path candidate {candidate!r} "
                         f"resolves to {str(resolved_pure)!r} escapes workspace_root={str(root_pure)!r}"
@@ -612,16 +680,24 @@ class BaseHarnessV2:
                     root_fs = pathlib.Path(str(root_raw)).resolve(strict=False)
                     try:
                         if not fs_resolved.is_relative_to(root_fs):
-                            logger.warning("[Constrain][WorkspaceEscape-FS] root=%r candidate=%r resolved_fs=%r",
-                                           str(root_fs), candidate, str(fs_resolved))
+                            logger.warning(
+                                "[Constrain][WorkspaceEscape-FS] root=%r candidate=%r resolved_fs=%r",
+                                str(root_fs),
+                                candidate,
+                                str(fs_resolved),
+                            )
                             return False, (
                                 f"Harness Blocked: WorkspaceEscape: filesystem-resolved path {candidate!r} "
                                 f"→ {str(fs_resolved)!r} (symlink/realpath) escapes workspace_root={str(root_fs)!r}"
                             )
-                    except Exception:  # noqa: BLE001
+                    except Exception:
                         # is_relative_to 抛异常视为逃逸（可能是 path 类型不同等）
-                        logger.warning("[Constrain][WorkspaceEscape-FS-exc] root=%r candidate=%r",
-                                       str(root_raw), candidate, exc_info=True)
+                        logger.warning(
+                            "[Constrain][WorkspaceEscape-FS-exc] root=%r candidate=%r",
+                            str(root_raw),
+                            candidate,
+                            exc_info=True,
+                        )
                         return False, (
                             f"Harness Blocked: WorkspaceEscape: path {candidate!r} failed filesystem "
                             f"is_relative_to check against workspace_root={str(root_raw)!r}"
@@ -630,22 +706,26 @@ class BaseHarnessV2:
                 # PurePosixPath("/app/workspacefoo").is_relative_to("/app/workspace") 返回 False，所以无需再补
         return True, "OK"
 
-    def verify(self, observation: Dict[str, Any]) -> Tuple[bool, str]:
+    def verify(self, observation: dict[str, Any]) -> tuple[bool, str]:
         """【护栏 2：Verify】exit_code 静态断言；子类可 override 注入业务断言。"""
         if not isinstance(observation, dict):
             return True, "Verified (non-dict observation)"
         if observation.get("exit_code", 0) != 0:
-            err_msg = str(observation.get("stderr") or observation.get("error") or "Execution failed")
-            logger.warning("[Verify] failed exit_code=%s err=%s", observation.get("exit_code"), err_msg)
+            err_msg = str(
+                observation.get("stderr") or observation.get("error") or "Execution failed"
+            )
+            logger.warning(
+                "[Verify] failed exit_code=%s err=%s", observation.get("exit_code"), err_msg
+            )
             return False, err_msg
         return True, "Verified"
 
     async def correct(
         self,
-        tool_call: Dict[str, Any],
+        tool_call: dict[str, Any],
         error_msg: str,
         retries: int,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """【护栏 3：Correct】局部重试与熔断策略。"""
         correct_cfg = self.harness_config.get("correct", {}) or {}
         max_retries = int(correct_cfg.get("max_retries", 3))
@@ -653,8 +733,12 @@ class BaseHarnessV2:
         if retries >= max_retries:
             on_failure = correct_cfg.get("on_failure", "ask_human")
             logger.error("[Correct] circuit-breaker on_failure=%s", on_failure)
-            return {"status": "failed", "action": on_failure, "error": error_msg,
-                    "feedback": f"Max retries ({max_retries}) reached. Strategy: {on_failure}. Original error: {error_msg}"}
+            return {
+                "status": "failed",
+                "action": on_failure,
+                "error": error_msg,
+                "feedback": f"Max retries ({max_retries}) reached. Strategy: {on_failure}. Original error: {error_msg}",
+            }
         return {
             "status": "retry",
             "feedback": f"Previous execution failed with: {error_msg}. Please fix your parameters and retry.",
@@ -664,13 +748,13 @@ class BaseHarnessV2:
     # KV Cache 对齐上下文
     # ------------------------------------------------------------------
 
-    def build_context(self) -> List[Dict[str, Any]]:
+    def build_context(self) -> list[dict[str, Any]]:
         """公开 API：返回 KV Cache 四段 + [Memory] mount 段 messages（SRS FR-MEM-1）。"""
         tools_openai_schema = None
         if self.tool_registry is not None:
             try:
                 tools_openai_schema = self.tool_registry.to_openai_schema()
-            except Exception:  # noqa: BLE001
+            except Exception:
                 tools_openai_schema = None
         return build_kv_aligned_context(
             system_prompt=str(self.model_config.get("system_prompt", "")),
@@ -697,7 +781,7 @@ class BaseHarnessV2:
         worker_name: str,
         *,
         inherit_trajectory: bool = True,
-    ) -> AsyncIterator["BaseHarnessV2"]:
+    ) -> AsyncIterator[BaseHarnessV2]:
         """`async with harness.scoped_worker("w1") as w:` 得到 worker 子上下文，
         作用域退出后 w 内部 trajectory 自动截断回收，父级不泄漏（SRS FR-MAGT-1 + Invariant #3）。
 
@@ -706,7 +790,7 @@ class BaseHarnessV2:
           inherit_trajectory=False：worker trajectory 从空列表启动（严格隔离）。
         """
         if inherit_trajectory:
-            child_trajectory: List[Dict[str, Any]] = list(self.trajectory)
+            child_trajectory: list[dict[str, Any]] = list(self.trajectory)
             child_step_count: int = int(self.step_count)
             child_terminated: bool = bool(self.is_terminated)
         else:
@@ -719,16 +803,22 @@ class BaseHarnessV2:
         parent_trajectory_ref = self.trajectory
         parent_step_count_ref = self.step_count
         parent_terminated_ref = self.is_terminated
-        exc_info: Optional[Tuple[Any, Any, Any]] = None
+        exc_info: tuple[Any, Any, Any] | None = None
         try:
             self.trajectory = child_trajectory
             self.step_count = child_step_count
             self.is_terminated = child_terminated
-            logger.debug("[scoped_worker:%s] ENTER trajectory.len=%s step_count=%s inherit=%s",
-                         worker_name, len(self.trajectory), self.step_count, inherit_trajectory)
+            logger.debug(
+                "[scoped_worker:%s] ENTER trajectory.len=%s step_count=%s inherit=%s",
+                worker_name,
+                len(self.trajectory),
+                self.step_count,
+                inherit_trajectory,
+            )
             yield self
-        except Exception as _exc:  # noqa: BLE001
+        except Exception as _exc:
             import sys as _sys
+
             exc_info = _sys.exc_info()
             raise
         finally:
@@ -749,13 +839,17 @@ class BaseHarnessV2:
                             m["content"] = ""
                         if isinstance(m.get("name"), str) is False:
                             pass
-            except Exception:  # noqa: BLE001
+            except Exception:
                 logger.debug("[scoped_worker:%s] child clear non-fatal", worker_name, exc_info=True)
             self.trajectory = parent_trajectory_ref
             self.step_count = parent_step_count_ref
             self.is_terminated = parent_terminated_ref
-            logger.debug("[scoped_worker:%s] EXIT  parent trajectory.len=%s step_count=%s (worker output: GC discarded)",
-                         worker_name, len(self.trajectory), self.step_count)
+            logger.debug(
+                "[scoped_worker:%s] EXIT  parent trajectory.len=%s step_count=%s (worker output: GC discarded)",
+                worker_name,
+                len(self.trajectory),
+                self.step_count,
+            )
             # 若上层捕获/吞异常，依然保留原始异常语义（不丢 traceback）
             del exc_info
 
@@ -763,9 +857,12 @@ class BaseHarnessV2:
     # 内部：ReAct Loop / Step (Fix Issue #1)
     # ------------------------------------------------------------------
 
-    async def _react_loop(self, initial_user_input: str) -> Dict[str, Any]:  # noqa: ARG002
+    async def _react_loop(self, initial_user_input: str) -> dict[str, Any]:
         retries_this_turn = 0
-        while not self.is_terminated and len(self._trace and self._trace.turns or []) < self.max_turns:
+        while (
+            not self.is_terminated
+            and len((self._trace and self._trace.turns) or []) < self.max_turns
+        ):
             self.step_count += 1
             step_result = await self._react_step()
             st = step_result.get("status")
@@ -785,28 +882,32 @@ class BaseHarnessV2:
             retries_this_turn = 0
         return {"status": "failed", "error": f"ReAct exceeded max_turns={self.max_turns}"}
 
-    async def _react_step(self) -> Dict[str, Any]:
+    async def _react_step(self) -> dict[str, Any]:
         assert self._trace is not None, "run() or step() must init trace before _react_step"
         turn = ReActTurnV2(index=len(self._trace.turns))
         self._trace.turns.append(turn)
         retries_this_step = 0
-        max_local_retries = max(0, int(self.harness_config.get("correct", {}).get("max_retries", 3)))
-        last_correction: Optional[Dict[str, Any]] = None
+        max_local_retries = max(
+            0, int(self.harness_config.get("correct", {}).get("max_retries", 3))
+        )
+        last_correction: dict[str, Any] | None = None
         # SRS NFR-OBS-1：如果调用方 install_harness_tracer 设置了 otel_tracer，则每轮生成 span `agentlisp.react.turn`
         otel_tracer = getattr(self, "otel_tracer", None)
-        turn_attrs: Optional[Dict[str, Any]] = None
+        turn_attrs: dict[str, Any] | None = None
         span_ctx: Any = None
         if otel_tracer is not None:
             try:
                 from .otel_tracer import AGENTLISP_TURN_SPAN
-            except Exception:  # noqa: BLE001
+            except Exception:
                 AGENTLISP_TURN_SPAN = "agentlisp.react.turn"
             turn_attrs = {
                 "agentlisp.run_id": str(self._trace.run_id),
                 "agentlisp.agent_name": str(self.agent_name or ""),
                 "agentlisp.turn_index": int(turn.index),
             }
-            span_ctx = otel_tracer.start_as_current_span(AGENTLISP_TURN_SPAN, attributes=dict(turn_attrs))
+            span_ctx = otel_tracer.start_as_current_span(
+                AGENTLISP_TURN_SPAN, attributes=dict(turn_attrs)
+            )
         try:
             if span_ctx is not None:
                 _span_obj = span_ctx.__enter__()
@@ -847,7 +948,7 @@ class BaseHarnessV2:
                     tc = tool_calls[0]
                     fn = tc["function"]
                     tool_name = fn["name"]
-                    action_input: Dict[str, Any] = fn.get("arguments") or {}
+                    action_input: dict[str, Any] = fn.get("arguments") or {}
                     tool_call = {"tool_name": tool_name, "args": action_input}
 
                     turn.action = tool_name
@@ -859,19 +960,26 @@ class BaseHarnessV2:
                     allowed, reason = self.constrain(tool_call)
                     if not allowed:
                         turn.status = "blocked"
-                        self.trajectory.append({"role": "tool", "name": tool_name,
-                                                "content": reason, "blocked": True})
+                        self.trajectory.append(
+                            {"role": "tool", "name": tool_name, "content": reason, "blocked": True}
+                        )
                         self.status_bar.on_step(self._trace.run_id, turn.index, "blocked", reason)
                         await self._save_checkpoint()
                         return {"status": "blocked", "reason": reason}
 
                     self.status_bar.on_step(self._trace.run_id, turn.index, "tool_call", tool_call)
-                    observation: Dict[str, Any]
-                    if self.tool_registry is not None and tool_name in (self.tool_registry.names() or []):
+                    observation: dict[str, Any]
+                    if self.tool_registry is not None and tool_name in (
+                        self.tool_registry.names() or []
+                    ):
                         try:
                             result = await self.tool_registry.acall(tool_name, **action_input)
-                        except Exception as exc:  # noqa: BLE001
-                            observation = {"exit_code": 1, "stdout": "", "stderr": f"{type(exc).__name__}: {exc}"}
+                        except Exception as exc:
+                            observation = {
+                                "exit_code": 1,
+                                "stdout": "",
+                                "stderr": f"{type(exc).__name__}: {exc}",
+                            }
                         else:
                             if isinstance(result, dict) and "exit_code" in result:
                                 # 工具本身返回结构化 {exit_code, stdout, stderr}: 直接采用（支持 verify 的 exit_code 断言）
@@ -883,7 +991,9 @@ class BaseHarnessV2:
                             else:
                                 observation = {
                                     "exit_code": 0,
-                                    "stdout": str(result) if not isinstance(result, (dict, list)) else result,
+                                    "stdout": str(result)
+                                    if not isinstance(result, (dict, list))
+                                    else result,
                                     "stderr": "",
                                 }
                     else:
@@ -897,18 +1007,28 @@ class BaseHarnessV2:
                     if not passed:
                         turn.status = "retry"
                         retries_this_step += 1
-                        correction = await self.correct(tool_call, verify_msg, retries=retries_this_step)
+                        correction = await self.correct(
+                            tool_call, verify_msg, retries=retries_this_step
+                        )
                         last_correction = correction
                         if correction.get("status") == "failed":
                             turn.status = "failed"
-                            self.trajectory.append({"role": "tool", "name": tool_name,
-                                                    "content": verify_msg, "verify_failed": True})
+                            self.trajectory.append(
+                                {
+                                    "role": "tool",
+                                    "name": tool_name,
+                                    "content": verify_msg,
+                                    "verify_failed": True,
+                                }
+                            )
                             feedback = correction.get("feedback") or correction.get("error") or ""
                             action_info = correction.get("action")
                             # 把熔断策略（fail_fast / ask_human 等）拼进 feedback，run() 读 failed 分支的 error 字段能读到更完整信息
                             if action_info:
-                                feedback = (f"[HarnessCorrect circuit-breaker] strategy={action_info}; "
-                                            f"retries_exceeded={retries_this_step}; last_error={feedback or verify_msg}")
+                                feedback = (
+                                    f"[HarnessCorrect circuit-breaker] strategy={action_info}; "
+                                    f"retries_exceeded={retries_this_step}; last_error={feedback or verify_msg}"
+                                )
                             self.trajectory.append({"role": "assistant", "content": feedback})
                             correction = dict(correction)
                             correction["feedback"] = feedback
@@ -916,9 +1036,17 @@ class BaseHarnessV2:
                             await self._save_checkpoint()
                             return correction
                         # retry：把 verify 失败原因 + correct feedback 追加进 trajectory 继续下一轮
-                        self.trajectory.append({"role": "tool", "name": tool_name,
-                                                "content": verify_msg, "retry": True})
-                        self.trajectory.append({"role": "user", "content": correction.get("feedback") or ""})
+                        self.trajectory.append(
+                            {
+                                "role": "tool",
+                                "name": tool_name,
+                                "content": verify_msg,
+                                "retry": True,
+                            }
+                        )
+                        self.trajectory.append(
+                            {"role": "user", "content": correction.get("feedback") or ""}
+                        )
                         await self._save_checkpoint()
                         if retries_this_step > max_local_retries:
                             return last_correction or correction
@@ -927,21 +1055,33 @@ class BaseHarnessV2:
                     # 成功分支
                     turn.observation = observation
                     turn.status = "success"
-                    stdout_for_traj = observation if isinstance(observation, (dict, list)) else observation.get("stdout")
-                    self.trajectory.append({"role": "tool", "name": tool_name, "content": stdout_for_traj})
-                    self.status_bar.on_step(self._trace.run_id, turn.index, "tool_result", observation)
+                    stdout_for_traj = (
+                        observation
+                        if isinstance(observation, (dict, list))
+                        else observation.get("stdout")
+                    )
+                    self.trajectory.append(
+                        {"role": "tool", "name": tool_name, "content": stdout_for_traj}
+                    )
+                    self.status_bar.on_step(
+                        self._trace.run_id, turn.index, "tool_result", observation
+                    )
                     await self._save_checkpoint()
-                    return {"status": "success", "output": observation.get("stdout", ""), "observation": observation}
-            finally:  # noqa: B012 — 内层 while 也必须保证 span 属性在 _react_step finally 中可读
+                    return {
+                        "status": "success",
+                        "output": observation.get("stdout", ""),
+                        "observation": observation,
+                    }
+            finally:
                 pass
         except asyncio.CancelledError:
             if span_ctx is not None and _span_obj is not None:
                 try:
                     _span_obj.record_exception(asyncio.CancelledError())
-                except Exception:  # noqa: BLE001
+                except Exception:
                     pass
             raise
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             if self._trace is not None and self.checkpoint_store is not None:
                 try:
                     await self.checkpoint_store.save(
@@ -953,14 +1093,14 @@ class BaseHarnessV2:
                             "is_terminated": self.is_terminated,
                         },
                     )
-                except Exception:  # noqa: BLE001
+                except Exception:
                     logger.exception("[Checkpoint] emergency save failed, non-fatal")
             turn.status = "failed"
             if span_ctx is not None and _span_obj is not None:
                 try:
                     _span_obj.set_attribute("agentlisp.turn_status", "failed")
                     _span_obj.record_exception(exc)
-                except Exception:  # noqa: BLE001
+                except Exception:
                     pass
             raise
         finally:
@@ -968,11 +1108,11 @@ class BaseHarnessV2:
                 if span_ctx is not None and _span_obj is not None:
                     try:
                         _span_obj.set_attribute("agentlisp.turn_status", str(turn.status or ""))
-                    except Exception:  # noqa: BLE001
+                    except Exception:
                         pass
                 if span_ctx is not None:
                     span_ctx.__exit__(None, None, None)
-            except Exception:  # noqa: BLE001
+            except Exception:
                 logger.debug("[otel] span end non-fatal error", exc_info=True)
             turn.finished_at = time.monotonic()
 
@@ -993,7 +1133,7 @@ class BaseHarnessV2:
                     "is_terminated": self.is_terminated,
                 },
             )
-        except Exception:  # noqa: BLE001
+        except Exception:
             logger.exception("[Checkpoint] save failed, non-fatal, continue")
 
     async def from_checkpoint(self, run_id: str) -> ExecutionTraceV2:
@@ -1009,12 +1149,28 @@ class BaseHarnessV2:
             run_id=td["run_id"],
             agent_name=td.get("agent_name"),
             started_at=datetime.fromisoformat(td["started_at"]),
-            finished_at=datetime.fromisoformat(td["finished_at"]) if td.get("finished_at") else None,
+            finished_at=datetime.fromisoformat(td["finished_at"])
+            if td.get("finished_at")
+            else None,
             turns=[
-                ReActTurnV2(**{k: v for k, v in t.items()
-                               if k in ("index", "thought", "action", "action_input",
-                                        "observation", "answer", "status",
-                                        "started_at", "finished_at")})
+                ReActTurnV2(
+                    **{
+                        k: v
+                        for k, v in t.items()
+                        if k
+                        in (
+                            "index",
+                            "thought",
+                            "action",
+                            "action_input",
+                            "observation",
+                            "answer",
+                            "status",
+                            "started_at",
+                            "finished_at",
+                        )
+                    }
+                )
                 for t in td.get("turns", [])
             ],
             final_answer=td.get("final_answer"),
@@ -1034,7 +1190,10 @@ if __name__ == "__main__":
     print("=== 测试 AgentLisp BaseHarnessV2 合并版运行时 ===")
 
     harness = BaseHarnessV2(
-        model_config={"system_prompt": "你是一个自动修复 Bug 的 Agent。", "agent_name": "document-repairer-v2"},
+        model_config={
+            "system_prompt": "你是一个自动修复 Bug 的 Agent。",
+            "agent_name": "document-repairer-v2",
+        },
         context_config={"status_bar": {"step_count": True}},
         tools_config={"tools_schema": "Tool: bash(command: str)"},
         harness_config={
@@ -1044,6 +1203,10 @@ if __name__ == "__main__":
     )
 
     trace = asyncio.run(harness.run("请检查当前目录下的文件"))
-    print(f"✅ BaseHarnessV2 运行成功：run_id={trace.run_id} status={trace.status} turns={len(trace.turns)} duration_ms={trace.duration_ms}")
+    print(
+        f"✅ BaseHarnessV2 运行成功：run_id={trace.run_id} status={trace.status} turns={len(trace.turns)} duration_ms={trace.duration_ms}"
+    )
     for t in trace.turns:
-        print(f"   turn[{t.index}] status={t.status} action={t.action!r} duration_ms={t.duration_ms}")
+        print(
+            f"   turn[{t.index}] status={t.status} action={t.action!r} duration_ms={t.duration_ms}"
+        )

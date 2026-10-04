@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """
 AgentLisp v2.0 Temporal 长流程与人在回路 (HITL) 引擎 (host/workflow_temporal.py)
 符合 IF-TEMPORAL-1 规约：
@@ -7,21 +6,23 @@ AgentLisp v2.0 Temporal 长流程与人在回路 (HITL) 引擎 (host/workflow_te
 
 import asyncio
 import logging
-from typing import Dict, Any, Optional
+from typing import Any
 
 try:
-    from temporalio import workflow, activity
+    from temporalio import activity, workflow
     from temporalio.client import Client
+
     TEMPORAL_AVAILABLE = True
 except ImportError:
     TEMPORAL_AVAILABLE = False
 
 logger = logging.getLogger("AgentLisp.TemporalEngine")
 
+
 class AgentLispTemporalEngine:
     def __init__(self, temporal_host: str = "localhost:7233"):
         self.temporal_host = temporal_host
-        self.client: Optional[Any] = None
+        self.client: Any | None = None
 
     async def connect(self):
         if not TEMPORAL_AVAILABLE:
@@ -33,9 +34,11 @@ class AgentLispTemporalEngine:
         except Exception as e:
             logger.warning(f"⚠️ 无法连接 Temporal 服务端 ({e})，降级为本地内存调度。")
 
+
 if TEMPORAL_AVAILABLE:
+
     @activity.defn(name="agentlisp_execute_tool_activity")
-    async def execute_tool_activity(params: Dict[str, Any]) -> Dict[str, Any]:
+    async def execute_tool_activity(params: dict[str, Any]) -> dict[str, Any]:
         """Temporal Activity：执行受 Harness 门控保护的工具动作"""
         tool_name = params.get("tool_name")
         cmd = params.get("args", {}).get("command", "")
@@ -55,12 +58,14 @@ if TEMPORAL_AVAILABLE:
             self.approval_decision = decision
 
         @workflow.run
-        async def run(self, agent_request: Dict[str, Any]) -> Dict[str, Any]:
+        async def run(self, agent_request: dict[str, Any]) -> dict[str, Any]:
             tool_name = agent_request.get("tool_name", "git-push")
             requires_approval = agent_request.get("requires_approval", True)
 
             if requires_approval:
-                logger.info(f"⏸ [Temporal HITL 挂起] 工具 '{tool_name}' 需要人类审批，等待 Signal 唤醒...")
+                logger.info(
+                    f"⏸ [Temporal HITL 挂起] 工具 '{tool_name}' 需要人类审批，等待 Signal 唤醒..."
+                )
                 # 栈帧挂起落盘，绝不占用物理内存和线程
                 await workflow.wait_condition(lambda: self.approval_signal_received)
 
@@ -68,11 +73,11 @@ if TEMPORAL_AVAILABLE:
                     logger.warning(f"❌ [Temporal HITL 拒绝] 审批结果: {self.approval_decision}")
                     return {"status": "rejected", "reason": "Human reviewer rejected execution."}
 
-            logger.info(f"▶ [Temporal HITL 恢复] 审批通过，继续执行 Activity...")
+            logger.info("▶ [Temporal HITL 恢复] 审批通过，继续执行 Activity...")
             res = await workflow.execute_activity(
                 execute_tool_activity,
                 agent_request,
-                start_to_close_timeout=asyncio.get_event_loop().time() + 60
+                start_to_close_timeout=asyncio.get_event_loop().time() + 60,
             )
             return {"status": "success", "result": res}
 

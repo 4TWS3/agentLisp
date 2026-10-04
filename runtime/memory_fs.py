@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import os
+from collections.abc import AsyncIterable
 from pathlib import Path
-from typing import Any, AsyncIterable, Optional, Protocol
+from typing import Protocol
 
 L0_ATOMIC = "atomic"
 L1_CONCEPT = "concept"
@@ -13,7 +14,7 @@ LAYERS = (L0_ATOMIC, L1_CONCEPT, L2_RULE)
 
 
 class MemoryFSBackend(Protocol):
-    async def read(self, rel_path: str) -> Optional[str]: ...
+    async def read(self, rel_path: str) -> str | None: ...
     async def write(self, rel_path: str, content: str) -> None: ...
     async def list(self, rel_dir: str = "") -> list[str]: ...
 
@@ -27,7 +28,7 @@ class LocalFSBackend:
         rel = rel.removeprefix("/").removeprefix("\\")
         return self.root / rel
 
-    async def read(self, rel_path: str) -> Optional[str]:
+    async def read(self, rel_path: str) -> str | None:
         f = self._full(rel_path)
         if not f.is_file():
             return None
@@ -49,7 +50,7 @@ class MemoryBackend:
     def __init__(self) -> None:
         self.store: dict[str, str] = {}
 
-    async def read(self, rel_path: str) -> Optional[str]:
+    async def read(self, rel_path: str) -> str | None:
         return self.store.get(rel_path)
 
     async def write(self, rel_path: str, content: str) -> None:
@@ -57,11 +58,11 @@ class MemoryBackend:
 
     async def list(self, rel_dir: str = "") -> list[str]:
         prefix = rel_dir.rstrip("/") + "/" if rel_dir else ""
-        return sorted(k for k in self.store.keys() if not prefix or k.startswith(prefix))
+        return sorted(k for k in self.store if not prefix or k.startswith(prefix))
 
 
 class MemoryFS:
-    def __init__(self, backend: Optional[MemoryFSBackend] = None, namespace: str = "default") -> None:
+    def __init__(self, backend: MemoryFSBackend | None = None, namespace: str = "default") -> None:
         self.backend: MemoryFSBackend = backend or MemoryBackend()
         self.ns = namespace
 
@@ -73,13 +74,13 @@ class MemoryFS:
     async def put(self, layer: str, key: str, content: str) -> None:
         await self.backend.write(self._layer_path(layer, key), content)
 
-    async def get(self, layer: str, key: str) -> Optional[str]:
+    async def get(self, layer: str, key: str) -> str | None:
         return await self.backend.read(self._layer_path(layer, key))
 
     async def list_layer(self, layer: str) -> list[str]:
         prefix = f"{self.ns}/{layer}/"
         paths = await self.backend.list(f"{self.ns}/{layer}")
-        return [p[len(prefix):] for p in paths if p.startswith(prefix)]
+        return [p[len(prefix) :] for p in paths if p.startswith(prefix)]
 
     async def iter_all(self) -> AsyncIterable[tuple[str, str, str]]:
         for layer in LAYERS:
