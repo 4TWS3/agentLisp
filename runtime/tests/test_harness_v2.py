@@ -862,3 +862,89 @@ def test_t2_bench_mcnemar_significant_field_ships_in_report() -> None:  # type: 
         f"McNemar 矩阵 (200,30,60,210) 必须显著；actual chi2={r.get('chi2')} p={r.get('p_value')}"
     )
     assert {"a", "b", "c", "d"}.issubset((r.get("contingency_matrix") or {}).keys())
+
+
+# 11. CR-18 P2-2：Release 产物 wheel + sdist 文件非空 (A)
+def test_release_artifacts_python_wheel_sdist_nonempty() -> None:  # type: ignore[no-untyped-def]
+    """CR-18 P2-2 (A)：对齐 release.yml 三 OS build 在 python/dist/ 下的产物，
+    验证 uv build 完成后 whl + sdist 两文件均 size>0 且文件名符合 PEP 427/PEP 517。
+    """
+    import os
+
+    REPO = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    DIST = os.path.join(REPO, "python", "dist")
+    files = os.listdir(DIST) if os.path.isdir(DIST) else []
+    whl = [f for f in files if f.endswith(".whl") and not f.startswith(".")]
+    tgz = [f for f in files if f.endswith(".tar.gz") and not f.startswith(".")]
+    assert len(whl) == 1, f"python/dist 下应恰好存在 1 个 whl；actual={whl!r}"
+    assert len(tgz) == 1, f"python/dist 下应恰好存在 1 个 tar.gz；actual={tgz!r}"
+    assert whl[0].endswith("-py3-none-any.whl"), (
+        f"PEP 427: universal pure Python wheel 必须以 -py3-none-any.whl 结尾；actual={whl[0]}"
+    )
+    whl_path = os.path.join(DIST, whl[0])
+    tgz_path = os.path.join(DIST, tgz[0])
+    assert os.path.getsize(whl_path) > 0, f"whl 不应为空：{whl[0]}"
+    assert os.path.getsize(tgz_path) > 0, f"sdist 不应为空：{tgz[0]}"
+
+
+# 12. CR-18 P2-2：SHA256SUMS 每行与文件 hashlib 哈希 (B)
+def test_release_sha256sums_matches_files_hashes() -> None:  # type: ignore[no-untyped-def]
+    """CR-18 P2-2 (B)：验证 python/dist/SHA256SUMS 每行
+    `<hex>  <basename>` 与逐文件 hashlib.sha256 对齐。
+    """
+    import hashlib
+    import os
+
+    REPO = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    DIST = os.path.join(REPO, "python", "dist")
+    sums_path = os.path.join(DIST, "SHA256SUMS")
+    assert os.path.isfile(sums_path), f"SHA256SUMS 必须存在：{sums_path}"
+    with open(sums_path, encoding="utf-8") as f:
+        lines = [ln.rstrip("\n") for ln in f if ln.strip() != ""]
+    rows: list[tuple[str, str]] = []
+    for ln in lines:
+        parts = ln.split(None, 1)
+        assert len(parts) == 2, f"SHA256SUMS 行必须 `<hex>  <basename>` 格式；actual={ln!r}"
+        hex_digest, basename = parts
+        basename = basename.lstrip("*")
+        rows.append((hex_digest, basename))
+    assert len(rows) >= 2, f"SHA256SUMS 应至少 2 行（whl + sdist）；actual={len(rows)}"
+    for expected_hex, basename in rows:
+        fpath = os.path.join(DIST, basename)
+        assert os.path.isfile(fpath), f"SHA256SUMS 中列出的文件必须真实存在：{basename}"
+        with open(fpath, "rb") as rf:
+            actual_hex = hashlib.sha256(rf.read()).hexdigest()
+        assert actual_hex.lower() == expected_hex.lower(), (
+            f"SHA256 不匹配：{basename} expected={expected_hex} actual={actual_hex}"
+        )
+
+
+# 13. CR-18 P2-2：Dockerfile ARG/ENTRYPOINT/CMD 文本结构 (C)
+def test_dockerfile_has_expected_args_and_labels_metadata() -> None:  # type: ignore[no-untyped-def]
+    """CR-18 P2-2 (C)：验证 docker/Dockerfile 文本结构断言
+    ARG PYTHON_VERSION=3.12 / RACKET_VERSION=8.12 / UV_VERSION=0.4.0
+    ENTRYPOINT ["/app/docker/entrypoint.sh"] / CMD ["agentlisp", "--help"]。
+    """
+    import os
+    import re
+
+    REPO = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    df_path = os.path.join(REPO, "docker", "Dockerfile")
+    assert os.path.isfile(df_path), f"docker/Dockerfile 必须存在：{df_path}"
+    with open(df_path, encoding="utf-8") as f:
+        text = f.read()
+    asserts = [
+        ("PYTHON_VERSION_312", re.compile(r"^ARG\s+PYTHON_VERSION\s*=\s*3\.12\s*$", re.MULTILINE)),
+        ("RACKET_VERSION_812", re.compile(r"^ARG\s+RACKET_VERSION\s*=\s*8\.12\s*$", re.MULTILINE)),
+        ("UV_VERSION_040", re.compile(r"^ARG\s+UV_VERSION\s*=\s*0\.4\.0\s*$", re.MULTILINE)),
+        (
+            "ENTRYPOINT",
+            re.compile(r'^ENTRYPOINT\s*\[\s*"/app/docker/entrypoint\.sh"\s*\]\s*$', re.MULTILINE),
+        ),
+        (
+            "CMD_AGENTLISP_HELP",
+            re.compile(r'^CMD\s*\[\s*"agentlisp"\s*,\s*"--help"\s*\]\s*$', re.MULTILINE),
+        ),
+    ]
+    for name, pat in asserts:
+        assert pat.search(text), f"docker/Dockerfile 缺失断言 {name}: pattern={pat.pattern!r}"

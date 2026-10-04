@@ -1,6 +1,6 @@
 ARG PYTHON_VERSION=3.12
 ARG RACKET_VERSION=8.12
-ARG UV_VERSION=0.4
+ARG UV_VERSION=0.4.0
 ARG DEBIAN_VERSION=bookworm
 
 FROM python:${PYTHON_VERSION}-slim-${DEBIAN_VERSION} AS python-base
@@ -14,7 +14,8 @@ FROM python-base AS builder-base
 
 ARG UV_VERSION
 ENV VIRTUAL_ENV=/app/.venv \
-    PATH="/root/.local/bin:/app/.venv/bin:$PATH"
+    UV_PROJECT_ENVIRONMENT=/app/.venv \
+    PATH="/root/.cargo/bin:/root/.local/bin:/app/.venv/bin:$PATH"
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
@@ -30,8 +31,7 @@ RUN sh /install-uv.sh
 FROM python-base AS racket-base
 
 ARG RACKET_VERSION
-ARG DEBIAN_VERSION
-ARG RACKET_INSTALLER="racket-minimal-${RACKET_VERSION}-x86_64-linux-${DEBIAN_VERSION}.sh"
+ARG RACKET_INSTALLER="racket-minimal-${RACKET_VERSION}-x86_64-linux-bc.sh"
 ARG RACKET_URL="https://download.racket-lang.org/releases/${RACKET_VERSION}/installers/${RACKET_INSTALLER}"
 
 RUN apt-get update \

@@ -2,7 +2,7 @@
 name = "agentlisp-runtime"
 version = "0.1.0"
 description = "Python runtime engine for Agent DSL - executes Scheme-defined agent behaviors"
-readme = "README.md"
+readme = { text = "# agentlisp-runtime\n\nPython runtime engine for the AgentLisp DSL - executes Scheme-defined agent workflows.\nSee repository root for full README.md.\n", content-type = "text/markdown" }
 requires-python = ">=3.12"
 license = { text = "MIT" }
 authors = [
