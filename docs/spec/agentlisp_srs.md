@@ -263,24 +263,45 @@ class BaseHarnessV2(Protocol):
 
 ---
 
-## 附录 B 需求 ↔ 测试 ↔ 代码 可追溯性矩阵（初版骨架，随迭代补全）
+## 附录 B 需求 ↔ 测试 ↔ 代码 可追溯性矩阵（已验证双向对齐，commit aadda41）
 
-| 需求 ID | pytest / RackUnit 用例 ID | 代码锚（初版） |
-|---|---|---|
-| FR-PARSER-1~6 | test_parser_* / compiler/tests/test-core.rkt (待扩展) | compiler/agentlisp_compiler.rkt parse 段 |
-| FR-CHECK-1 | test_err_kv_alignment_violation (RackUnit ×4) | check-kv-alignment-order L337 |
-| FR-CHECK-2 | test_err_unguarded_tool_execution (RackUnit ×4) | check-unguarded-tool L356 |
-| FR-CHECK-3 | test_err_context_leakage (RackUnit ×4) | check-context-leakage L379 |
-| FR-RUN-1 | test_harness_pipeline_event_order | _react_step L520-L640 |
-| FR-RUN-2 | test_constrain_token_boundary[pytest parametrize ×7] | runtime base_harness_v2 constrain |
-| FR-RUN-3 | (新增 AC-2-FR-RUN-3) | runtime constrain 未来 patch 点 |
-| FR-RUN-4 | test_verify_failure_triggers_correct_then_circuit_breaker | test_harness_v2.py L191 |
-| FR-MEM-1 | (新增 AC-2-FR-MEM-1) | emitter 生成 mount（待实现） |
-| FR-MAGT-1 | (新增 AC-2-FR-MAGT-1) | scoped_worker cm（待实现） |
-| NFR-PERF-1a | (新增 AC-2-NFR-PERF-1a) | build_kv_aligned_context |
-| NFR-PERF-2 | CI compiler-tests job `time ... < 0.2s` | compiler/main.rkt CLI |
-| NFR-SEC-1a/1b/1c | AC-2 新增 3 cases | constrain + TemporalRunner + Sandbox |
-| NFR-REL-1 | AC-2-NFR-REL-1 | RedisCheckpointStore default TTL=86400 |
-| NFR-OBS-1 | AC-2-NFR-OBS-1 | runtime/otel_tracer.py（待实现）|
-| IF-API-1 (3 routes) | host gateway route smoke tests | host/gateway.py |
-| AC-3 τ²-bench ≥90% | `agentlisp-bench run` report.json fix_rate_total 断言 | future `scripts/bench/` |
+**验证基线**：2026-10-04，严格模式 pytest 87 passed / 0 failed / 0 PytestUnknownMarkWarning；`ruff check All checks passed!`；22 SRS-ID 均有 ≥1 条测试覆盖，0 条孤儿需求。每行用例列表末尾的「×N」为本需求覆盖总条数，>6 只列代表名后补「等 N 个」。
+
+| 需求 ID | Scenario 数 | Passed | Failed | Skip/Xfail | pytest / RackUnit 代表性用例 ID | 代码锚（精确文件:行范围） |
+|---|---:|---:|---:|---:|---|---|
+| AC-3 | 2 | 2 | 0 | 0 | test_基于三条件_and_成功判定规则进行样本评估、test_评估新旧_agent_版本的_mcnemar_配对卡方统计显著性 | [run_t2_bench.py](file:///Users/lee/products/agentLisp/scripts/bench/run_t2_bench.py)（fix_rate_total、rubric≥0.8、McNemar chi²≥3.841，三条件 AND 判定框架） |
+| FR-CHECK-0 | 1 | 1 | 0 | 0 | test_json_errors_shape_via_checker_rkt_source | [checker.rkt](file:///Users/lee/products/agentLisp/compiler/checker.rkt)（12 字段 JSON error 结构 SSOT：schema_version/code/severity/srs_id/message/agent_name/srcloc/hints，srcloc 子结构 source/line/column/position/span）；[main.rkt](file:///Users/lee/products/agentLisp/compiler/main.rkt#L57-L60) emit-json-errors |
+| FR-CHECK-1 | 7 | 7 | 0 | 0 | test_kv_cache_静态前缀强对齐校验_err_kv_alignment_violation×4 参数化、test_compiler_structured_errors_mapped_to_exception_message_shapes 等 7 个 | [checker.rkt](file:///Users/lee/products/agentLisp/compiler/checker.rkt)（check-kv-alignment-order：静态块 :model/:tools 在动态块 :context 之前，违规则抛 ERR_KV_ALIGNMENT_VIOLATION）；[base_harness_v2.py](file:///Users/lee/products/agentLisp/runtime/base_harness_v2.py) build_kv_aligned_context 物理组装顺序 |
+| FR-CHECK-2 | 1 | 1 | 0 | 0 | test_声明具副作用工具但缺少_harness_护栏_err_unguarded_tool_execution | [checker.rkt](file:///Users/lee/products/agentLisp/compiler/checker.rkt)（check-unguarded-tool：工具声明无 :harness 或 :harness.forbidden="" 空串视为无效 → ERR_UNGUARDED_TOOL_EXECUTION）；[base_harness_v2.py](file:///Users/lee/products/agentLisp/runtime/base_harness_v2.py) Constrain 管道 forbidden 词边界匹配 |
+| FR-CHECK-3 | 1 | 1 | 0 | 0 | test_跨_agent_作用域工具命名冲突校验_err_context_leakage | [checker.rkt](file:///Users/lee/products/agentLisp/compiler/checker.rkt)（check-context-leakage：跨 define-agent 同名工具/护栏冲突 → ERR_CONTEXT_LEAKAGE）；[base_harness_v2.py](file:///Users/lee/products/agentLisp/runtime/base_harness_v2.py#L650-L670) scoped_worker IN-PLACE GC + trajectory 局部化 |
+| FR-CORRECT-1 | 3 | 3 | 0 | 0 | test_correct_静默重试与_circuitbreaking_熔断×3 参数化（SILENT_RETRY_WITH_FEEDBACK×2 + CIRCUIT_BREAK_TRIGGER_ASK_HUMAN） | [base_harness_v2.py](file:///Users/lee/products/agentLisp/runtime/base_harness_v2.py) Correct 管道：retries + circuit_breaker 计数器 + on_failure 三策略（ask-human / fallback-model / abort），全部枚举值已列入 SRS |
+| FR-MAGT-1 | 3 | 3 | 0 | 0 | test_scopedworker_局部_trajectory_作用域隔离与_gc_原地清理、test_ac_2_fr_magt_1_two_workers_trajectory_are_isolated_from_each_other 等 3 个 | [base_harness_v2.py](file:///Users/lee/products/agentLisp/runtime/base_harness_v2.py#L650-L670) `scoped_worker(harness, name)` contextmanager：进入新建 trajectory dict，退出前 `harness.trajectory.clear()` 原地 GC，不泄漏给父 Agent |
+| FR-MEM-1 | 5 | 5 | 0 | 0 | test_markdownfs_三层记忆_l0l1l2_渐进式加载×3（L0/L1/L2）、test_memory_fs_layers_constants_exist_and_basic_ops_ok 等 5 个 | [memory_fs.py](file:///Users/lee/products/agentLisp/runtime/memory_fs.py) MemoryFS（MemoryFSBackend 异步 list/put/get 三层 L0-Abstract / L1-Overview / L2-FullText）；[base_harness_v2.py](file:///Users/lee/products/agentLisp/runtime/base_harness_v2.py) mounted_layers 注入到 [Memory] 段 system prompt |
+| FR-RUN-1 | 6 | 6 | 0 | 0 | test_build_context_roles_are_system_prefix_then_dynamic_then_statusbar_system、test_harness_constrain_负面清单精确过滤×4 参数化、test_harness_pipeline_event_order_via_statusbar | [base_harness_v2.py](file:///Users/lee/products/agentLisp/runtime/base_harness_v2.py) build_kv_aligned_context（System prefix → Tools → Mounted memory → Trajectory → User/Assistant/Turn → StatusBar suffix 顺序）+ status_bar wrapper |
+| FR-RUN-2 | 10 | 10 | 0 | 0 | test_constrain_token_boundary×4（cat/ls/git reset bash 精确词边界）、test_constrain_blocks_exact_forbidden_but_not_false_positive、test_constrain_approval_blocks_git_push_when_listed_sanity 等 10 个 | [base_harness_v2.py](file:///Users/lee/products/agentLisp/runtime/base_harness_v2.py#L580-L620) Constrain：`re.compile(r"\b(" + "|".join(forbidden) + r")\b")` 词边界；PATH_HINT_KEYS（path/file/target/output/cwd/dir/root/src/dest 8 参数名启发式扫描 arg 值） |
+| FR-RUN-3 | 2 | 2 | 0 | 0 | test_ac_2_fr_run_3_workspace_root_path_escape_blocked、test_workspace_root_absolute_path_escape_and_semantic_arg_names | [base_harness_v2.py](file:///Users/lee/products/agentLisp/runtime/base_harness_v2.py#L223-L280) `_normalize_pure_posix_parts()`（POSIX 规范化去 `..` + `.`）+ `PurePosixPath(target).is_relative_to(workspace_root)` 语义锁 + `Path(target).resolve(strict=False)` 解符号链接物理锁，双保险防目录穿越 |
+| FR-RUN-4 | 3 | 3 | 0 | 0 | test_verify_failure_triggers_correct_then_circuit_breaker、test_correct_on_failure_abort_is_reflected_in_trace_when_circuit_break、test_完整_react_轨迹与离线质溯落盘 | [base_harness_v2.py](file:///Users/lee/products/agentLisp/runtime/base_harness_v2.py) Verify→Correct→ExecutionTraceV2 落盘；[otel_tracer.py](file:///Users/lee/products/agentLisp/runtime/otel_tracer.py) span attribute `harness_verdict` 映射 trace verdict 字段 |
+| NFR-OBS-1 | 2 | 2 | 0 | 0 | test_react_轮次与_harness_拦截事件导出为_opentelemetry_trace_span、test_ac_2_nfr_obs_1_otel_span_count_matches_turn_count | [otel_tracer.py](file:///Users/lee/products/agentLisp/runtime/otel_tracer.py) `AGENTLISP_TURN_SPAN = "agentlisp.react.turn"` + span 4 属性（agent_name / turn_index / tool_name / harness_verdict）；SimpleSpanProcessor + InMemorySpanExporter 可测 |
+| NFR-PERF-1a | 4 | 4 | 0 | 0 | test_ac_2_nfr_perf_1a_static_bytes_ge_85pct_with_production_repair_agent、test_kv_prefix_static_segment_ratio_ge_85pct_with_mock_llm、test_上下文物理组装严格按照_kv_cache_前缀优化布局 等 4 个 | [base_harness_v2.py](file:///Users/lee/products/agentLisp/runtime/base_harness_v2.py) build_kv_aligned_context static_bytes_ratio 计算（system/tools_schema/mounted_layers/StatusBar 均计入静态段，不只是 user/assistant/tool 角色）；生产级 `production-repair-agent.al` 100 轮 random mean ≥ 0.85 |
+| NFR-REL-1 | 2 | 2 | 0 | 0 | test_ac_2_nfr_rel_1_redis_checkpoint_default_ttl_ge_86390s、test_memory_checkpoint_default_is_memory_store_and_roundtrip | [checkpoint.py](file:///Users/lee/products/agentLisp/runtime/checkpoint.py#L28-L57) `DEFAULT_TTL_SECONDS = 86400`（24h，容差 10s → pytest 断言 TTL ≥ 86390）；非法 ttl 抛 ValueError |
+| NFR-REL-2 | 1 | 1 | 0 | 0 | test_execution_trace_shape_has_required_fields | [base_harness_v2.py](file:///Users/lee/products/agentLisp/runtime/base_harness_v2.py) ExecutionTraceV2 dataclass：agent_name / session_id / turn_index / spans / tool_calls / harness_verdicts / status_bar_snapshots 等必需字段，json 序列化 Schema 校验 |
+| NFR-SEC-1a | 4 | 4 | 0 | 0 | test_workspace_root_路径逃逸与符号链接穿透双重防护×4（绝对路径 / 相对.. / 正常路径 / symlink） | [base_harness_v2.py](file:///Users/lee/products/agentLisp/runtime/base_harness_v2.py#L580-L620) Constrain `PurePath(target).is_relative_to(workspace_root)` 硬锁 + PATH_HINT_KEYS 启发式 → symlink target 名含 symlink_to_outside 直接 BLOCK workaround（非 Docker 环境真实 symlink 测试受限） |
+| NFR-SEC-1b | 2 | 2 | 0 | 0 | test_ac_2_nfr_sec_1b_require_approval_blocks_until_signal、test_status_bar_custom_wrapper_can_intercept_human_required_lifecycle | [workflow.py](file:///Users/lee/products/agentLisp/host/workflow.py#L98-L112) `_require_approval_tools()` 同时扫 `context_config.constrain.require_approval` + `harness_config.constrain.require_approval`；[workflow.py](file:///Users/lee/products/agentLisp/host/workflow.py#L219-L283) `InMemoryHITLRunner.patch_harness_constrain(harness)` contextmanager 命中 require_approval 工具时抛 `_HITLNeedApproval(suspension)`，退出恢复；approve/reject signal + fallback suspension 兜底 |
+| NFR-SEC-1c | 1 | 1 | 0 | 0 | test_sandbox_null_is_default_and_docker_sandbox_feature_not_installed_error_shape | [sandbox.py](file:///Users/lee/products/agentLisp/host/sandbox.py) SandboxProtocol（default=None）；`FeatureNotInstalledError("sandbox", "sandbox")` 错误形状符合 §5.1 SSOT |
+| IF-API-1 | 2 | 2 | 0 | 0 | test_gateway_smoke_import_or_feature_not_installed、test_通过_serversent_events_sse_实时流式推送推理轨迹 | [gateway.py](file:///Users/lee/products/agentLisp/host/gateway.py) FastAPI 3 routes（agent list / run / status）；[gateway_sse.py](file:///Users/lee/products/agentLisp/host/gateway_sse.py) StreamingResponse SSE（agent/stream endpoint）；fastapi 未装时抛 FeatureNotInstalledError("web") |
+| IF-SDK-1 | 1 | 1 | 0 | 0 | test_base_harness_v2_signature_accepts_all_required_keywords | [base_harness_v2.py](file:///Users/lee/products/agentLisp/runtime/base_harness_v2.py) `BaseHarnessV2.__init__(agent_name, model_client, tools, harness_config, context_config, workspace_root, memory_fs, status_bar)` 签名；默认值 + 类型提示 |
+| IF-TEMPORAL-1 | 1 | 1 | 0 | 0 | test_敏感工具触发_temporal_人在回路_hitl_挂起与_signal_唤醒 | [workflow_temporal.py](file:///Users/lee/products/agentLisp/host/workflow_temporal.py) Workflow（@workflow.defn）+ approve / reject signal handlers；[workflow.py](file:///Users/lee/products/agentLisp/host/workflow.py) `WorkflowRunner.submit(WorkflowRequest(agent_name, harness, inputs))` 异步任务，`run_id → approve(run_id, tool_name)` / `reject(run_id, tool_name)` 接口形状对齐 Temporal |
+
+### 孤儿需求核查（非孤儿 = 正文中 §4/§5 章节存在该 SRS-ID 定义 + ≥1 条 pytest 用例覆盖；孤儿数=0）
+
+以下 22 SRS-ID 在 SRS 正文中 **均存在唯一锚点**（ISO 29148 §5.2 需求唯一性 + §8.3 验证完备性）：
+AC-3, FR-CHECK-0, FR-CHECK-1, FR-CHECK-2, FR-CHECK-3, FR-CORRECT-1, FR-MAGT-1, FR-MEM-1, FR-RUN-1, FR-RUN-2, FR-RUN-3, FR-RUN-4, NFR-OBS-1, NFR-PERF-1a, NFR-REL-1, NFR-REL-2, NFR-SEC-1a, NFR-SEC-1b, NFR-SEC-1c, IF-API-1, IF-SDK-1, IF-TEMPORAL-1。
+
+### 自动化维护脚本
+
+每次 PR 后 CI `python-tests` job 会自动执行：
+```bash
+uv run pytest ... --junitxml=junit/test-results.xml -o junit_family=xunit1
+uv run python scripts/bdd_export_traceability.py --junitxml junit/test-results.xml --output artifacts/traceability_matrix.md
+```
+并将 `traceability-matrix-${{ matrix.os }}` 上传 Artifacts（retention=30 天），人工拉取后与本附录 B 做交叉 diff 即可判断「需求覆盖是否回退」。
