@@ -213,6 +213,14 @@ jobs:
             --junitxml junit/test-results.xml \
             --output artifacts/traceability_matrix.md
 
+      - name: Roadmap traceability compliance gate (O2 · 34-ID + baseline + 32-rows)
+        if: matrix.os == 'ubuntu-latest'
+        shell: bash
+        run: |
+          uv run python scripts/check_roadmap_traceability.py \
+            --srs docs/spec/agentlisp_srs.md \
+            --pytest-junitxml junit/test-results.xml
+
       - name: Upload coverage
         if: matrix.os == 'ubuntu-latest'
         uses: actions/upload-artifact@v4

@@ -386,3 +386,13 @@ uv run python scripts/bdd_export_traceability.py --junitxml junit/test-results.x
 3. **B-1 = P3-5**：emit context `:auto-append → auto_append_episodic` 下划线映射 + pytest 绑定 FR-PARSER-3 ✅ DONE（CR-26 已闭环）
 
 完成 TOP3 后再按优先级 B-2 → B-3 → B-4 → C-2 → C-1（释放 gh）→ C-3（打 tag）执行。
+
+---
+
+### 类别 D：非阻塞性可选优化任务（O 类，不计入 11 项总基线；独立 CR 推进，不阻塞 C-1/C-3 顺位）
+
+> 本区块为 O 类可选优化池；每启动一个 O 类任务必须先回写「状态列」= `in_progress（CR-XX）`，完成后写 `✅ Completed（CR-XX）`；不准先改代码再回写本区块。
+
+| ID | 缺口 / 优化摘要 | 阻塞原因 | 交付形态 | 验收 PASS 判据 · 状态 |
+|---|---|---|---|---|
+| **CR-31 = O2** | `scripts/check_roadmap_traceability.py` 路线图合规核查脚本 + CI 门禁（消除 Reviewer 手工 heredoc 成本）| 无（可选优化，不阻塞 11 项 Roadmap）| ①脚本 stdlib 零依赖 CLI；② pytest 3 smoke 用例；③ ci.yml python-tests ubuntu step；④制度化 T0 第一写（本文件该行）| 34-ID 全等 + 基线整数四向全等 + 32 行 Scn=Pas 全核查；严格基线 127；CI step 无 continue-on-error · **✅ Completed（CR-31）** |
