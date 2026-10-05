@@ -138,13 +138,22 @@
 
 - CR-30 交付人（自动化 Agent）：**CR-30 C-2 automation（本会话 Spec Mode 5 阶段全流程 Agent）**
 - Handoff 文档 hash fill 时间：**2026-10-05 17:09:03**（交接当时真实时间；验证命令：`date -r docs/handoff/20261005_cr30_c2_traceability_matrix_align_124_handoff.md '+%Y-%m-%d %H:%M:%S'`）
-- 关联 CR-30 核心交付 commit hash：**1183556454fdff36cec07a69e65fdbfb02a892a4**（HEAD~1；真实值已与 `git ls-remote origin main HEAD~1` 字节全等）
-- 关联 Handoff hash fill 微小 commit hash：**52a8e21760fae63355ef682e89c829d8c294b2d0**（HEAD；制度化 CR-28/29 同款 2 commit 结构；真实值已与 `git ls-remote origin main` HEAD 字节全等）
+- 关联 CR-30 核心交付 commit hash：**1183556454fdff36cec07a69e65fdbfb02a892a4**（HEAD~2；真长 hash 最终版；验证：`git show --name-only 1183556` 首行 = CR-30 C-2 核心对齐 pytest）
+- 关联 Handoff hash fill 微小 commit hash（第 1 次）：**52a8e21760fae63355ef682e89c829d8c294b2d0**（HEAD~1；制度化 CR-28/29 同款 2 commit 结构）
+- 关联 Handoff hash fill 微小 commit hash（第 2 次·交接真 hash 终版）：**a0a16b9396610b7e8c45aa6b0b47cd1609f80991**（HEAD；最终真长 hash 已与 `git ls-remote origin main` HEAD 字节全等 1:1）
 
 ```
 下一接手 Agent 必做 4 步（制度化零思考，与 CR-26/27/28/29 同款步骤）：
-  1. git pull origin main                                     # 拉取本 CR-30 两次 commit（核心 1183556 + 本移交 hash fill commit）
-  2. 检查 HEAD hash = 本 CR-30 手交 hash fill 后的 HEAD       # 确认 2 commits 均在远端
-  3. 跑 4 硬指标（pytest 124 + ruff 双绿 + GetDiagnostics 0）  # 严格基线保持 124 不回退
-  4. Roadmap 顺位：只剩 C-1 BLOCKED + C-3 release；          # 若用户终端执行了 gh 三命令则启动 C-1 真跑 1000 样本；否则等用户操作；不准先启动 C-3 跳项！
+  1. git pull origin main                                     # 拉取本 CR-30 三次 commit（核心 1183556 + hash fill 52a8e21 + 最终真 hash a0a16b9 · HEAD = a0a16b9）
+  2. 检查 HEAD hash = a0a16b9396610b7e8c45aa6b0b47cd1609f80991  # 等于本移交 §7 末尾「最终真 hash 终版」
+  3. 跑 4 硬指标（pytest 124 + ruff 双绿 + GetDiagnostics 0）  # 严格基线保持 124 不回退；34-ID 全等 0 drift；孤儿 L315 全等
+  4. Roadmap 顺位：只剩 C-1 BLOCKED + C-3 release；          # 若用户终端执行了 gh 三命令启动 C-1 τ² 真跑 1000 样本；不准先启动 C-3 跳项！
+                                                            # 若用户说「我要创建新任务（非 Roadmap 11 项）」→ 走第 5 条额外 SPECIFY 流程
+  5. [用户说「创建新任务」专用] 非 Roadmap 新任务启动 SPECIFY 前置硬步骤（不满足不准进入 Plan/Implement）：
+        a) 读 docs/handoff/* 最新移交文档本 §6.2 / §7，确认 Roadmap 剩余任务
+        b) 新建目录 mkdir -p .trae/specs/cr31_<新任务简称>   # CR 编号严格递增 CR-30 → CR-31，不准跳号
+        c) 写 spec.md 7 AC（6 rule + 1 rubric AC-6 忠实范围 0-2 阈值=2）· 开放问题 Q1~Qn 全部关闭
+        d) **制度化 T0 第一写（必做·不准跳）**：Edit docs/spec/agentlisp_srs.md 附录 C 末尾新增一「额外任务」行：ID=「CR-31=新任务名」，状态列从空 → 「in_progress（CR-31）」
+        e) 写 tasks.md 5 原子任务串行依赖图 + Task-local TR 槽位 + AC→Task→TR 映射表（覆盖性核查）
+        f) NotifyUser 审批 spec.md + tasks.md 两工件 → 用户显式说「approved/继续」才进入 Implement
 ```
