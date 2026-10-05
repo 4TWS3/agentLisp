@@ -396,3 +396,194 @@ uv run python scripts/bdd_export_traceability.py --junitxml junit/test-results.x
 | ID | 缺口 / 优化摘要 | 阻塞原因 | 交付形态 | 验收 PASS 判据 · 状态 |
 |---|---|---|---|---|
 | **CR-31 = O2** | `scripts/check_roadmap_traceability.py` 路线图合规核查脚本 + CI 门禁（消除 Reviewer 手工 heredoc 成本）| 无（可选优化，不阻塞 11 项 Roadmap）| ①脚本 stdlib 零依赖 CLI；② pytest 3 smoke 用例；③ ci.yml python-tests ubuntu step；④制度化 T0 第一写（本文件该行）| 34-ID 全等 + 基线整数四向全等 + 32 行 Scn=Pas 全核查；严格基线 127；CI step 无 continue-on-error · **✅ Completed（CR-31）** |
+| **CR-32 = O3** | τ²-bench v1.0 外部数据集下载+缓存 5 段可追溯说明文档（解除 C-1 gh 阻塞前先固化路径/结构/校验规则，减少下轮 Reviewer 手工记忆成本）| 无（可选优化，不阻塞 11 项 Roadmap）| ① 附录 D 新建 5 段说明（路径结构/samples.jsonl schema/校验命令/CI τ²-bench job 集成/常见问题）；②制度化 T0 第一写（本文件该行）；③ 下轮 C-1 解除阻塞后用 O3 三命令验证（sha256/schema/行数 1000）| 附录 D 5 段齐全；samples.jsonl 10 schema 字段断言脚本 VERBATIM；三校验命令独立可复现；严格基线保持 127 零增长；SRS 数字列零触碰 · **✅ Completed（CR-32）** |
+
+---
+
+## 附录 D：τ²-bench v1.0 数据集下载 · 缓存 · 校验可追溯指南
+
+> 本附录写死 v1.0 版本；若未来发布 v1.1/v2.0，请开独立 O4/O5 类 CR 在本附录追加子段，不覆盖 D.1~D.5 原文。
+> 代码真相源（双向可追溯 clickable 链接）：
+> - [fetch_t2_dataset.py L33-L35 DEFAULT_CACHE_DIR](file:///Users/lee/products/agentLisp/scripts/bench/fetch_t2_dataset.py#L33-L35)
+> - [fetch_t2_dataset.py L38-L50 T2Sample @dataclass](file:///Users/lee/products/agentLisp/scripts/bench/fetch_t2_dataset.py#L38-L50)
+> - [fetch_t2_dataset.py L72-L103 LocalDirectoryResolver 三合法路径](file:///Users/lee/products/agentLisp/scripts/bench/fetch_t2_dataset.py#L72-L103)
+> - [run_t2_bench.py L16-L22 默认参数 --sample-range/--timeout/--report](file:///Users/lee/products/agentLisp/scripts/bench/run_t2_bench.py#L16-L22)
+
+### D.1 路径结构与锁文件
+
+**默认缓存根目录**（与 fetch_t2_dataset.py 常量字节全等）：
+```bash
+DEFAULT_CACHE_DIR="$HOME/.cache/agentlisp/t2-bench-v1.0"
+```
+
+**三合法样本存储形态**（LocalDirectoryResolver L82-88 的 OR 三选一；只要命中任一就视为「本地已有数据集」，不再触发 GitHubReleaseResolver 下载）：
+| 形态 | glob 模式 | 命中样本数阈值 |
+|---|---|---|
+| 单文件 | `$DEFAULT_CACHE_DIR/samples.jsonl` | wc -l = 1000（VERBATIM 见 D.3 命令 ③） |
+| 平铺多文件 | `$DEFAULT_CACHE_DIR/*.jsonl` | ls -1 | wc -l | awk '{s+=$1} END{print s}' = 1000 |
+| samples/ 子目录 | `$DEFAULT_CACHE_DIR/samples/*.jsonl` 或 `$DEFAULT_CACHE_DIR/**/samples.jsonl` | 同上求和 = 1000 |
+
+**锁文件**（GitHubReleaseResolver L129 写入，避免重复 gh release download）：
+- 路径：`$DEFAULT_CACHE_DIR/.fetched.ok`
+- 写入时机：`gh release download τ²-bench-v1.0` exit=0 成功后 `touch $DEFAULT_CACHE_DIR/.fetched.ok`
+- 删除重拉：FAQ D.5 Q1（强制清空锁 + 重新下载）
+
+### D.2 samples.jsonl Schema（9 字段 + fingerprint 规则 · 与 T2Sample dataclass 字节全等）
+
+| 字段名（首列顺序与 fetch_t2_dataset.py T2Sample dataclasses.field 顺序完全一致）| Python 类型 | 必填 | 说明 |
+|---|---|---|---|
+| **sample_id** | `str` | ✅ | 格式 `t2-v1_00001` ~ `t2-v1_01000`（补零 5 位；非法前缀或位数 schema 断言直接 FAIL，见 D.3 命令 ②）|
+| **baseline_a_pass** | `bool` | ✅ | Baseline A（旧模型 / 无修复 pipeline）能否通过该 bug 的 failed tests；真 = True / 假 = False，JSON bool 不准写成字符串 "true"/"False" |
+| **buggy_code** | `str` | ✅ | 真实开源项目 git diff 之前的 buggy 片段（非全文件；UTF-8 JSON 字符串可含换行；禁止 raw \x00 控制字符）|
+| **language** | `str` | ✅ | v1.0 允许列表 = `{python, racket, go, javascript, java, ruby, c, cpp, rust}`（9 种；严格 D.3 命令 ② 第 10 条断言；v1.1 扩语言必须先改 run_t2_bench.py 再改本 SRS 附录 D）|
+| **original_failed_tests** | `list[str]` | ✅ | 空列表合法；代表该 bug 触发失败的 pytest/RackUnit 测试路径 / 函数名数组；用于 τ²_pass(sample) 判定条件 ② |
+| **required_tools** | `list[str]` | ✅ | 空列表合法；该 bug 修复需额外调用的 builtin/MCP 工具名集合；用于 fingerprint_sha256() 拼接（见下方规则）|
+| **rubric_hints** | `list[str]` | ✅ | 空列表合法；Reviewer 打分时的提示（AC-3 判定条件 ③ rubric_score ≥ 0.8 时参考），纯字符串不参与哈希 |
+| **patch_hints** | `list[str]` | ✅ | 空列表合法；给 LLM generate 的 patch 生成提示（纯文本不参与哈希）|
+| **metadata** | `dict[str, Any]` | ❌（默认空 dict `{}`）| 开放字段：项目名 / commit hash / 文件路径 / license 等 v1.1 扩展元数据；schema 断言仅校验「存在且类型是 dict」，不约束 key 集合 |
+
+**fingerprint_sha256() 5 字段连接规则（VERBATIM 与 fetch_t2_dataset.py L60-L65 字节全等）**：
+> 用途：下轮 C-1 gh 下载真样本后，计算每条样本的指纹，与 τ²-bench-v1.0.zip SHA256SUMS 文件对比；dataset-integrity 防篡改校验。
+```
+payload = "||".join([
+    sample_id,
+    language,
+    buggy_code,
+    ",".join(sorted(set(original_failed_tests))),   # 去重 + 升序，消 list 序不稳定
+    ",".join(sorted(set(required_tools)))           # 去重 + 升序
+])
+fingerprint_sha256 = hashlib.sha256(payload.encode("utf-8")).hexdigest()
+```
+
+### D.3 三校验命令（独立可复现 · 每条 VERBATIM copy-paste 可直接跑 · 无真实 gh 数据时用 DryRun seed=42 n=1000 合成样本）
+
+> 环境变量只定义一次，三条命令统一引用，不准出现硬编码路径。
+```bash
+export CACHE="$HOME/.cache/agentlisp/t2-bench-v1.0"
+```
+
+**命令 ①：dry-run 合成 1000 条样本的 fingerprint_sha256 集合指纹单行 64 hex（exit=0 预期）**
+> 用途：在本地无 gh CLI / 无外网时，先验证 evaluator 三条件 AND 的数学性质不漂移；下轮 gh 下载真实样本后，把 `--mode dry-run` 替换成 `--mode local` 即可用同一命令对比。
+```bash
+CACHE="$HOME/.cache/agentlisp/t2-bench-v1.0" \
+python3 -c "
+from scripts.bench.fetch_t2_dataset import DryRunResolver
+r = DryRunResolver(n=1000, seed=42)
+hashes = sorted(s.fingerprint_sha256() for s in r.load(None))
+import hashlib as _h
+print(_h.sha256('\n'.join(hashes).encode('utf-8')).hexdigest())
+"  # exit=0 预期；stdout 恰 1 行 64 hex 字符（seed=42 n=1000 确定性常量；任何漂移立即暴露）
+```
+
+**命令 ②：10 字段 schema 断言（9 T2Sample 字段 + language ∈ 9 种允许列表；逐行逐字段，缺字段 / 类型错 / 非空约束不满足 → FAIL exit=1）**
+> 用途：下载真样本或 dry-run 合成 samples.jsonl 后，逐行 json.load 做 10 断言；heredoc 独立脚本，不依赖 project import。
+```bash
+CACHE="$HOME/.cache/agentlisp/t2-bench-v1.0"
+# 先用 dry-run 合成 samples.jsonl 到 /tmp 占位（真实样本时把 INPUT 换为 $CACHE/samples.jsonl）
+python3 -c "
+from scripts.bench.fetch_t2_dataset import DryRunResolver
+import json
+samples = DryRunResolver(n=1000, seed=42).load(None)
+with open('/tmp/t2_samples_check.jsonl','w') as f:
+    for s in samples:
+        print(json.dumps({
+            'sample_id': s.sample_id, 'baseline_a_pass': s.baseline_a_pass,
+            'buggy_code': s.buggy_code, 'language': s.language,
+            'original_failed_tests': s.original_failed_tests,
+            'required_tools': s.required_tools, 'rubric_hints': s.rubric_hints,
+            'patch_hints': s.patch_hints, 'metadata': s.metadata,
+        }), file=f)
+" && INPUT=/tmp/t2_samples_check.jsonl && export INPUT && \
+python3 - <<'PYEOF'
+import json, os, sys
+INPUT = os.environ["INPUT"]
+ALLOWED_LANG = {"python","racket","go","javascript","java","ruby","c","cpp","rust"}
+NINE = ("sample_id","baseline_a_pass","buggy_code","language","original_failed_tests","required_tools","rubric_hints","patch_hints","metadata")
+with open(INPUT) as f:
+    for i, line in enumerate(f, 1):
+        o = json.loads(line)
+        assert isinstance(o, dict), f"L{i} not JSON object"
+        for k in NINE:  assert k in o, f"L{i} missing field {k}"
+        assert isinstance(o["sample_id"], str) and o["sample_id"].startswith("t2-v1_") and len(o["sample_id"])==len("t2-v1_")+5, f"L{i} sample_id format"
+        assert isinstance(o["baseline_a_pass"], bool), f"L{i} baseline_a_pass not bool"
+        assert isinstance(o["buggy_code"], str) and o["buggy_code"], f"L{i} buggy_code empty"
+        assert isinstance(o["language"], str) and o["language"] in ALLOWED_LANG, f"L{i} language {o['language']!r} not in allowlist"
+        assert isinstance(o["original_failed_tests"], list) and all(isinstance(x,str) for x in o["original_failed_tests"]), f"L{i} original_failed_tests shape"
+        assert isinstance(o["required_tools"], list) and all(isinstance(x,str) for x in o["required_tools"]), f"L{i} required_tools shape"
+        assert isinstance(o["rubric_hints"], list) and all(isinstance(x,str) for x in o["rubric_hints"]), f"L{i} rubric_hints shape"
+        assert isinstance(o["patch_hints"], list) and all(isinstance(x,str) for x in o["patch_hints"]), f"L{i} patch_hints shape"
+        assert isinstance(o["metadata"], dict), f"L{i} metadata not dict"
+print(f"SCHEMA_OK total={i}")
+PYEOF
+# exit=0 预期；任何 assert fail 会抛 AssertionError，python3 默认 exit=1
+```
+
+**命令 ③：行数 1000 硬断言（wc -l + awk，真样本 1000 条 / dry-run 1000 条都会通过；!=1000 立即 exit=1 FAIL）**
+```bash
+CACHE="$HOME/.cache/agentlisp/t2-bench-v1.0"
+# dry-run 占位（真样本时换成 FILE="$CACHE/samples.jsonl"）
+FILE=/tmp/t2_samples_check.jsonl
+LINES=$(wc -l < "$FILE")
+echo "LINES=$LINES"
+[ "$LINES" -eq 1000 ] && echo ROW_COUNT_OK=1000 && exit 0
+echo "ROW_COUNT_FAIL got $LINES expected 1000" >&2 && exit 1
+# exit=0 预期；真样本 FILE 换成 $CACHE/samples.jsonl 后再次跑必须 exit=0
+```
+
+### D.4 CI τ²-bench job 集成说明（参考位；本轮 O3 不修改 ci.yml，下轮 C-1 gh 解阻塞后在独立 CR-33 实现 job）
+
+| 小条 | 字段 / 规则 | 与代码/附录 C VERBATIM 对齐 |
+|---|---|---|
+| 1. job 名 + runs-on | job 名 `t2-bench`（与附录 C C-1 段已写一致）；`runs-on: ubuntu-latest`（runner 成本最低）| [ci.yml jobs 顺序参考 perf-bench 之后 / release 之前](file:///Users/lee/products/agentLisp/.github/workflows/ci.yml#L150-L230) |
+| 2. 灰度 continue-on-error + 条件 | `if: always()`（即使 upstream python-tests / perf 失败也跑 τ²-bench 收集数据）；`continue-on-error: true`（C-1 初期允许失败，不阻塞 release.yml tag）| 附录 C C-1「灰度 continue-on-error: true」原文一致 |
+| 3. 拉数据集步骤 | `gh release download τ²-bench-v1.0 -R agentlisp/t2-bench -D $HOME/.cache/agentlisp/t2-bench-v1.0`（解除 gh CLI 阻塞后，与 D.1 路径全等）| fetch_t2_dataset.py GitHubReleaseResolver L124-L140 |
+| 4. 真跑 run_t2_bench.py | `uv run python scripts/bench/run_t2_bench.py --dataset t2-bench@v1.0 --sample-range 1..1000 --timeout 600s --report json --output artifacts/t2_report.json`（与 run_t2_bench.py L16-L22 默认参数 / --sample-range / --timeout 字节全等）| [run_t2_bench.py L16-L22 默认参数](file:///Users/lee/products/agentLisp/scripts/bench/run_t2_bench.py#L16-L22) |
+| 5. artifacts 上传 + retention | `uses: actions/upload-artifact@v4`；path=artifacts/t2_report.json + artifacts/t2_report.md；`retention-days: 90`（对齐 CR-31 O2 traceability matrix artifacts 30 天，τ²-bench 报告更久保留 90 天）| 附录 C C-1「report.json / report.md 归档到 Release Note」要求 |
+
+### D.5 FAQ（4 条真实坑点 Workaround；每条 Q/A/Workaround 三段齐全）
+
+#### Q1：.fetched.ok 锁文件损坏了怎么办？（GitHubReleaseResolver 异常中断 / sha256sums 校验失败后残留的脏锁）
+**Q**：`gh release download τ²-bench-v1.0` 中途 Ctrl+C / 磁盘写满 / 网络中断导致 `samples.jsonl` 半截，但 `.fetched.ok` 仍然存在 → 后续 run_t2_bench.py 命中 LocalDirectoryResolver 读半截数据直接 D.3 命令 ② schema 断言 FAIL，如何恢复？
+**A**：`.fetched.ok` 是 GitHubReleaseResolver 的「我已成功下载过」哨兵文件；任何 gh 下载异常中断 / sha256sums 校验失败 / 半截文件的场景，**必须先把 .fetched.ok 重命名/移除** 再重新 gh release download；否则 LocalDirectoryResolver 的三合法路径（D.1）命中 > GitHubReleaseResolver 锁检查跳过，永远读半截。
+**Workaround（强制重拉 VERBATIM）**：
+```bash
+CACHE="$HOME/.cache/agentlisp/t2-bench-v1.0"
+mv "$CACHE/.fetched.ok" /tmp/   # 先备份，方便事后 debug（mv .fetched.ok /tmp/ VERBATIM 强制重拉命令）
+gh release download τ²-bench-v1.0 -R agentlisp/t2-bench -D "$CACHE" && touch "$CACHE/.fetched.ok"
+# 然后立即跑 D.3 的 三命令 VERBATIM 验证完整性再走 C-1 AC-3
+```
+
+#### Q2：没装 gh CLI（C-1 真外部阻塞）但我手动从浏览器下载了 zip，解包到哪里才能被 LocalDirectoryResolver 识别？
+**Q**：公司 MacBook 无法装 brew / 外网受限无法装 `gh` CLI，但我从浏览器手动下载了 `t2-bench-v1.0.zip`，应该解包到哪个目录 / 文件名才能让 fetch_t2_dataset.py 的 LocalDirectoryResolver （D.1）命中，不需要改代码？
+**A**：浏览器下载的 `t2-bench-v1.0.zip` 解压后内部目录结构通常是 `t2-bench-v1.0/samples.jsonl + t2-bench-v1.0/SHA256SUMS`；直接把它**平铺**到 `$HOME/.cache/agentlisp/t2-bench-v1.0` 根即可（匹配 D.1 三合法路径形态 ①「单文件 samples.jsonl」）。若 zip 内含多级目录（samples/xxx.jsonl），也匹配 D.1 形态 ③。
+**Workaround（手动解包 VERBATIM）**：
+```bash
+CACHE="$HOME/.cache/agentlisp/t2-bench-v1.0"
+mkdir -p "$CACHE"
+unzip t2-bench-v1.0.zip -d $HOME/.cache/agentlisp/t2-bench-v1.0
+# 若解压后多了一级 t2-bench-v1.0/ 目录，把样本再平推一层：
+[ -f "$CACHE/t2-bench-v1.0/samples.jsonl" ] && mv "$CACHE"/t2-bench-v1.0/* "$CACHE"/ && touch "$CACHE/.fetched.ok"
+```
+
+#### Q3：DryRunResolver 合成样本能当正式 AC-3 指标吗？（project_memory 里写过 DryRun seed=42 n=1000 被误用来宣称 fix_rate≥0.90 的反例教训）
+**Q**：下轮 C-1 gh CLI 仍未安装时，能不能用 `DryRunResolver(n=1000, seed=42)` 合成的 1000 条样本跑 `run_t2_bench.py --sample-range 1..1000`，把输出的 `fix_rate_total` 当成 AC-3 指标写进 README / release note？
+**A**：**绝对不能！** DryRunResolver(seed=42) 的设计目标 = 「在 CI 无外网 / 无 gh / 无 τ²-bench v1.0 zip 时，验证 evaluator 三条件 AND 的**数学性质不漂移**」（比如 random.randint 分布 / rubric_score 函数 / McNemar 卡方显著性计算这些 deterministic 算法）。DryRun 样本的 buggy_code = 「`print('hello' + x)` 类型缺失参数 / 语法错误」，不是真实开源项目 bug；baseline_a_pass 也是 seed=42 伪随机生成的，完全不代表 τ²-bench v1.0 的真实难度分布。任何在 README / Release Note / handoff 文档中写「DryRun fix_rate≥0.90 = AC-3 PASS」的行为都是**严重造假违规**，立即在 review 阶段 BLOCK。
+**Workaround（DryRun 只能用在 D.3 三命令里的数学性质验证 VERBATIM）**：
+```python
+from scripts.bench.fetch_t2_dataset import DryRunResolver
+# DryRun 合法场景：只在 O3 文档 D.3 命令 ①/② 的单测 / 本地性质验证里使用
+# 任何真实 AC-3 指标必须：from scripts.bench.fetch_t2_dataset import GitHubReleaseResolver OR LocalDirectoryResolver
+# （禁止：DryRunResolver(..., seed=42) 作为 AC-3 fix_rate_total 的数据源）
+```
+
+#### Q4：Windows 下 $HOME/.cache/agentlisp/t2-bench-v1.0 等价路径是什么？（LocalDirectoryResolver 在 Windows 的跨平台兼容，fetch_t2_dataset.py L33 用 Path.home() 跨平台）
+**Q**：公司开发机是 Windows（没有 brew / sh），我在 `%USERPROFILE%` 下应该建哪个目录才能让 LocalDirectoryResolver 命中（macOS/Linux 的 `$HOME/.cache/agentlisp/t2-bench-v1.0` 等价路径是什么）？
+**A**：fetch_t2_dataset.py 的 DEFAULT_CACHE_DIR（L33）用的是 `Path.home() / ".cache" / "agentlisp" / "t2-bench-v1.0"`，Path.home() 在 Windows 下自动返回 `%USERPROFILE%`（通常 = `C:\Users\<YourName>`）；所以等价路径 = `%USERPROFILE%\.cache\agentlisp\t2-bench-v1.0`。PowerShell / cmd 里把 `$HOME/.cache` 改成 `%USERPROFILE%\.cache` 即可。
+**Workaround（Windows PowerShell 路径设置 VERBATIM）**：
+```powershell
+$CACHE = "$env:USERPROFILE\.cache\agentlisp\t2-bench-v1.0"
+New-Item -ItemType Directory -Force -Path $CACHE
+# 解包 zip：
+Expand-Archive -Path ~\Downloads\t2-bench-v1.0.zip -DestinationPath $CACHE -Force
+```
+
