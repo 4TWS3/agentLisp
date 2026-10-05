@@ -169,6 +169,22 @@ class DryRunResolver:
     def available(self) -> bool:
         return True
 
+    def fallback_message(self) -> str:
+        """AC-3 真实数据集不可用时的 DryRunResolver 降级提示（pytest skip + run_t2_bench.py 可直接展示）。
+
+        三段式：① 不可用原因（本地缺 cache + 缺 gh CLI）；② 一键拉取命令；③ 合成样本保证行为（t2-v1_{00001..N} sample_id 固定，seed 确定）。
+        """
+        fetch_cmd = f"gh release download {T2_V1_TAG!r} -R {T2_V1_REPO!r} -D {DEFAULT_CACHE_DIR}"
+        return (
+            "[AC-3 τ²-bench DRY-RUN FALLBACK] "
+            "True dataset not available (no local cache at "
+            f"{DEFAULT_CACHE_DIR} and no `gh` CLI in PATH). "
+            f"Fetch with: {fetch_cmd}. "
+            f"Using deterministic DryRunResolver(n={self.n}, seed={self.seed}) "
+            f"with sample_id range t2-v1_00001..t2-v1_{self.n:05d} "
+            f"(target_fix_rate={self.target_fix_rate:.2f}, target_baseline_rate={self.target_baseline_rate:.2f})."
+        )
+
     def load(self, sample_range: tuple[int, int] | None) -> list[T2Sample]:
         rng = random.Random(self.seed)
         samples: list[T2Sample] = []
