@@ -10,9 +10,7 @@ import pytest
 REPO_ROOT = pathlib.Path(__file__).resolve().parents[1]
 SCRIPT = REPO_ROOT / "scripts" / "check_roadmap_traceability.py"
 SRS_MD = REPO_ROOT / "docs" / "spec" / "agentlisp_srs.md"
-with tempfile.NamedTemporaryFile(
-    "w", suffix=".xml", delete=False, encoding="utf-8"
-) as FAKE_JUNIT:
+with tempfile.NamedTemporaryFile("w", suffix=".xml", delete=False, encoding="utf-8") as FAKE_JUNIT:
     FAKE_JUNIT.write(
         '<?xml version="1.0"?>'
         '<testsuites><testsuite tests="124" failures="0" errors="0" skipped="1">'
@@ -54,9 +52,7 @@ def test_check_roadmap_traceability_id_drift_exit_one_and_prefix_count_one():
         1,
     )
     assert drifted != content
-    with tempfile.NamedTemporaryFile(
-        "w", suffix=".md", delete=False, encoding="utf-8"
-    ) as tmp:
+    with tempfile.NamedTemporaryFile("w", suffix=".md", delete=False, encoding="utf-8") as tmp:
         tmp.write(drifted)
         tmp_srs = pathlib.Path(tmp.name)
     try:
@@ -74,9 +70,7 @@ def test_check_roadmap_traceability_baseline_mismatch_exit_one_and_prefix_count_
     content = SRS_MD.read_text(encoding="utf-8")
     drifted = content.replace("pytest 124 passed", "pytest 119 passed", 1)
     assert drifted != content
-    with tempfile.NamedTemporaryFile(
-        "w", suffix=".md", delete=False, encoding="utf-8"
-    ) as tmp:
+    with tempfile.NamedTemporaryFile("w", suffix=".md", delete=False, encoding="utf-8") as tmp:
         tmp.write(drifted)
         tmp_srs = pathlib.Path(tmp.name)
     try:
