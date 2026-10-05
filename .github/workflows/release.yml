@@ -185,6 +185,11 @@ jobs:
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
             type=raw,value=latest,enable={{is_default_branch}}
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.version=${{ github.ref_name }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.title=AgentLisp v2.0 Runtime Image
 
       - name: Build and push
         uses: docker/build-push-action@v5
@@ -194,5 +199,10 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            OCI_SOURCE=${{ github.server_url }}/${{ github.repository }}
+            OCI_VERSION=${{ github.ref_name }}
+            OCI_REVISION=${{ github.sha }}
+            OCI_TITLE=AgentLisp v2.0 Runtime Image
           cache-from: type=gha
           cache-to: type=gha,mode=max

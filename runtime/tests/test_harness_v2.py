@@ -919,11 +919,15 @@ def test_release_sha256sums_matches_files_hashes() -> None:  # type: ignore[no-u
         )
 
 
-# 13. CR-18 P2-2：Dockerfile ARG/ENTRYPOINT/CMD 文本结构 (C)
+# 13. CR-18 P2-2 / CR-24 P3-3：Dockerfile ARG + OCI 标注 5 labels + ENTRYPOINT/CMD 文本结构 (C)
 def test_dockerfile_has_expected_args_and_labels_metadata() -> None:  # type: ignore[no-untyped-def]
-    """CR-18 P2-2 (C)：验证 docker/Dockerfile 文本结构断言
+    """CR-18 P2-2 (C) + CR-24 P3-3：验证 docker/Dockerfile 文本结构断言
     ARG PYTHON_VERSION=3.12 / RACKET_VERSION=8.12 / UV_VERSION=0.4.0
-    ENTRYPOINT ["/app/docker/entrypoint.sh"] / CMD ["agentlisp", "--help"]。
+    ENTRYPOINT ["/app/docker/entrypoint.sh"] / CMD ["agentlisp", "--help"]
+    + OCI Image Format Specification 5 条 LABEL：
+      org.opencontainers.image.{source,version,revision,created,title}
+    + 顶部/底部 5 条 ARG OCI_* 声明（顶部默认值回退 + runtime-final 段再引入）。
+    由原来 5 条断言扩展为 10 条。
     """
     import os
     import re
@@ -934,6 +938,7 @@ def test_dockerfile_has_expected_args_and_labels_metadata() -> None:  # type: ig
     with open(df_path, encoding="utf-8") as f:
         text = f.read()
     asserts = [
+        # --- CR-18 baseline：5 条（保留不删，零回退）---
         ("PYTHON_VERSION_312", re.compile(r"^ARG\s+PYTHON_VERSION\s*=\s*3\.12\s*$", re.MULTILINE)),
         ("RACKET_VERSION_812", re.compile(r"^ARG\s+RACKET_VERSION\s*=\s*8\.12\s*$", re.MULTILINE)),
         ("UV_VERSION_040", re.compile(r"^ARG\s+UV_VERSION\s*=\s*0\.4\.0\s*$", re.MULTILINE)),
@@ -945,9 +950,80 @@ def test_dockerfile_has_expected_args_and_labels_metadata() -> None:  # type: ig
             "CMD_AGENTLISP_HELP",
             re.compile(r'^CMD\s*\[\s*"agentlisp"\s*,\s*"--help"\s*\]\s*$', re.MULTILINE),
         ),
+        # --- CR-24 P3-3 新增：顶部 5 条默认 OCI ARG（本地 build 回退值，不能空）---
+        (
+            "ARG_OCI_SOURCE_DEFAULT",
+            re.compile(
+                r'^ARG\s+OCI_SOURCE\s*=\s*"https://github\.com/4TWS3/agentLisp"\s*$', re.MULTILINE
+            ),
+        ),
+        (
+            "ARG_OCI_VERSION_DEFAULT",
+            re.compile(r'^ARG\s+OCI_VERSION\s*=\s*"0\.1\.0-dev"\s*$', re.MULTILINE),
+        ),
+        (
+            "ARG_OCI_REVISION_DEFAULT",
+            re.compile(r'^ARG\s+OCI_REVISION\s*=\s*"0{40}"\s*$', re.MULTILINE),
+        ),
+        (
+            "ARG_OCI_CREATED_DEFAULT",
+            re.compile(r'^ARG\s+OCI_CREATED\s*=\s*"1970-01-01T00:00:00Z"\s*$', re.MULTILINE),
+        ),
+        (
+            "ARG_OCI_TITLE_DEFAULT",
+            re.compile(r'^ARG\s+OCI_TITLE\s*=\s*"AgentLisp v2\.0 Runtime Image"\s*$', re.MULTILINE),
+        ),
+        # --- CR-24 P3-3 新增：runtime-final 段再次引入 5 ARG（保证多 stage build，label stage 能拿到）---
+        (
+            "RUNTIME_FINAL_REINTRO_ARG_OCI_SOURCE",
+            re.compile(
+                r"^FROM python-base AS runtime-final\s+.*ARG\s+OCI_SOURCE\s",
+                re.MULTILINE | re.DOTALL,
+            ),
+        ),
+        # --- CR-24 P3-3 新增：LABEL 块 5 键串联（org.opencontainers.image.5）---
+        (
+            "LABEL_OCI_SOURCE",
+            re.compile(
+                r'org\.opencontainers\.image\.source\s*=\s*"\$\{OCI_SOURCE\}"', re.MULTILINE
+            ),
+        ),
+        (
+            "LABEL_OCI_VERSION",
+            re.compile(
+                r'org\.opencontainers\.image\.version\s*=\s*"\$\{OCI_VERSION\}"', re.MULTILINE
+            ),
+        ),
+        (
+            "LABEL_OCI_REVISION",
+            re.compile(
+                r'org\.opencontainers\.image\.revision\s*=\s*"\$\{OCI_REVISION\}"', re.MULTILINE
+            ),
+        ),
+        (
+            "LABEL_OCI_CREATED",
+            re.compile(
+                r'org\.opencontainers\.image\.created\s*=\s*"\$\{OCI_CREATED\}"', re.MULTILINE
+            ),
+        ),
+        (
+            "LABEL_OCI_TITLE",
+            re.compile(r'org\.opencontainers\.image\.title\s*=\s*"\$\{OCI_TITLE\}"', re.MULTILINE),
+        ),
     ]
     for name, pat in asserts:
         assert pat.search(text), f"docker/Dockerfile 缺失断言 {name}: pattern={pat.pattern!r}"
+    # 额外形状校验：release.yml 的 build-push-action 段必须将 OCI_* 作为 build-args 注入
+    ryml_path = os.path.join(REPO, ".github", "workflows", "release.yml")
+    assert os.path.isfile(ryml_path), f".github/workflows/release.yml 必须存在：{ryml_path}"
+    with open(ryml_path, encoding="utf-8") as f:
+        ryml = f.read()
+    for arg_name in ("OCI_SOURCE", "OCI_VERSION", "OCI_REVISION", "OCI_TITLE"):
+        # OCI_CREATED 默认由 docker/metadata-action 自动注入到步骤 labels 中，未显式写 build-args 也 OK
+        assert arg_name in ryml, (
+            f"release.yml docker build-push-action build-args 应包含 {arg_name}，"
+            f"保证 Dockerfile 顶部默认值被 CI 的真实标签覆盖；当前 yml 未找到该字符串"
+        )
 
 
 # 14. CR-19 P1-4：CLI --version 暴露 __version__ = 0.1.0 与 pyproject.toml version 对齐 (IF-CLI-1)
