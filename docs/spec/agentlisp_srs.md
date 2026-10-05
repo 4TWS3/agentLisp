@@ -315,3 +315,66 @@ uv run pytest ... --junitxml=junit/test-results.xml -o junit_family=xunit1
 uv run python scripts/bdd_export_traceability.py --junitxml junit/test-results.xml --output artifacts/traceability_matrix.md
 ```
 并将 `traceability-matrix-${{ matrix.os }}` 上传 Artifacts（retention=30 天），人工拉取后与本附录 B 做交叉 diff 即可判断「需求覆盖是否回退」。
+
+---
+
+## 附录 C 剩余开发 Roadmap（SSOT · 基线 commit = `cf7ef33` · CR-24 P3-3 OCI 5 labels 交付后）
+
+> **角色**：本附录为 AgentLisp v2.0 从 `cf7ef33`（119 passed / 1 skipped / ruff 0 / diagnostics 0）到正式 `v2.0.0 GA` 的**唯一真值来源（Single Source of Truth）**。后续所有开发（代码 / pytest / CI / 文档矩阵回填）必须严格按本附录「优先级 + 交付形态 + 验收判定」执行；任何跳项、变更需求、提前 Release 必须**先回写本附录再开工**，禁止口头或 chat 历史替代 SSOT。
+>
+> **基线证据链（不可回退）**：
+> - 严格模式：`PYTHONDONTWRITEBYTECODE=1 AGENTLISP_DOCKER_INFRA=true pytest -x --strict-markers -q -p no:cacheprovider` → **119 passed / 1 skipped / 1 warning（8.08s）**
+> - 代码风格：`ruff check .` → All checks passed；`ruff format --check .` → 43 files already formatted
+> - IDE：GetDiagnostics → 0 files / 0 diagnostics
+> - Git HEAD：`cf7ef33`（`origin/main` = 13644c7 → cf7ef33，push 成功）
+> - Docker 基础设施健康：Redis 6379 / Temporal 7233 / Jaeger 4317 / Postgres 16（compose `infra/docker-compose.infra.yml`）
+
+### 判定总则（ISO/IEC/IEEE 29148 §8.3 验证完备性）
+
+正文每条需求 `SRS-ID`（§3 FR / §4 NFR / §5 IF / §6 AC）在开发推进过程中，必须同时满足两条才算「闭环」，否则视为本附录缺口继续保留：
+1. **矩阵首列存在**：附录 B 可追溯性矩阵首列含该 SRS-ID（已从 28 → 需扩 34）；
+2. **代表测试 ≥1**：附录 B 第 5 列「代表性 pytest / RackUnit 函数名」非空，且 `pytest -q` 实际通过的用例名与该列字符串一一对应；
+3. **Passed 合计对齐**：附录 B 各行「Passed」列求和 = 严格模式 pytest 报告的实际 passed 数（当前基准 119；任何新增 pytest 必须同时更新附录 B 合计与孤儿清单）。
+
+---
+
+### 类别 A：附录 B 可追溯性矩阵缺口（高优先级 · 纯文档 + 脚本 · 预计 6h · 无外部依赖）
+
+| ID | 缺口 | 证据（文件:行 + 原文摘录） | 交付形态 | 验收 PASS 判据 |
+|---|---|---|---|---|
+| **A-1** | 正文 34 ID vs 附录 B 28 ID 的 6 条缺口未入矩阵 | 正文 §4 [NFR-PERF-1b](file:///Users/lee/products/agentLisp/docs/spec/agentlisp_srs.md#L110-L110)、[NFR-PERF-2](file:///Users/lee/products/agentLisp/docs/spec/agentlisp_srs.md#L111-L111)；§5.1 [IF-CLI-1](file:///Users/lee/products/agentLisp/docs/spec/agentlisp_srs.md#L125-L141)；§5.5 [IF-MCP-1](file:///Users/lee/products/agentLisp/docs/spec/agentlisp_srs.md#L199-L201)；§6.1 [AC-1](file:///Users/lee/products/agentLisp/docs/spec/agentlisp_srs.md#L207-L224)；§6.2 [AC-2](file:///Users/lee/products/agentLisp/docs/spec/agentlisp_srs.md#L226-L239) 共 6 条，附录 B 矩阵 274~302 仅 28 行，无此 6 | 附录 B 矩阵插入 6 行，首列依次：`NFR-PERF-1b / NFR-PERF-2 / IF-CLI-1 / IF-MCP-1 / AC-1 / AC-2`；孤儿核查清单字符串 [L308](file:///Users/lee/products/agentLisp/docs/spec/agentlisp_srs.md#L308-L308) 追加 6 条 → 总数 34 | 孤儿核查清单共 34 个 ID，且 6 新行首列与正文 SRS-ID 大小写一致 |
+| **A-2** | 6 条新行「代表性 pytest / RackUnit ID」全空（ISO 29148 违规） | A-1 6 条矩阵行第 5 列当前为空；此外 `孤儿核查清单=0` 宣称不成立 | 为 6 行分别填入代表用例名：①NFR-PERF-1b=`test_nfr_perf_1b_first_token_latency_reduction_ge_50pct`；②NFR-PERF-2=`test_nfr_perf_2_compile_wall_clock_lt_200ms`；③IF-CLI-1=`test_cli_if_cli_1_all_flags_and_6_exit_code_encoding`；④IF-MCP-1=复用 `test_fr_parser_4_tools_4_combinations_and_mcp_scheme_whitelist`；⑤AC-1=`test_compiler_ac1_18_cases_kv_unguarded_leakage_roundtrip`；⑥AC-2=`runtime/tests/* 119 baseline 代表集` | 6 行第 5 列非空，且每个函数名对应 pytest 真实存在（`pytest --collect-only -q | grep -c` ≥1）|
+| **A-3** | `scripts/bdd_export_traceability.py` 自动化维护脚本本体未落地（CI 命令写死，但脚本可能不存在） | 附录 B `### 自动化维护脚本` [L312-L316](file:///Users/lee/products/agentLisp/docs/spec/agentlisp_srs.md#L312-L316)：`uv run python scripts/bdd_export_traceability.py --junitxml ... --output artifacts/traceability_matrix.md` | ①若不存在→新建：读取 junit xml → 聚合 `@pytest.mark.req("X")` 标签 → 输出 7 列 md 表（与附录 B 列完全对齐）；②smoke：`scripts/tests/test_traceability_export.py` 验证列头形状=7、SRS-ID 行唯一、孤儿数 exit 1 报警；③若已存在→补 smoke 并确保与附录 B drift 报警 exit≠0 | `pytest scripts/tests/test_traceability_export.py -q` 1 passed；模拟孤儿输入脚本 exit=1 且 stderr 含 `ORPHAN-DETECTED:` 前缀 |
+| **A-4** | §3 FR 正文表缺矩阵首列已存在的 `FR-CHECK-0 / FR-CORRECT-1` 两行（「正文唯一锚」核查 28 ID 不成立） | 附录 B 矩阵 [FR-CHECK-0:L282](file:///Users/lee/products/agentLisp/docs/spec/agentlisp_srs.md#L282-L282) + [FR-CORRECT-1:L286](file:///Users/lee/products/agentLisp/docs/spec/agentlisp_srs.md#L286-L286)；但 §3 FR 表格 [L83-L99](file:///Users/lee/products/agentLisp/docs/spec/agentlisp_srs.md#L83-L99) 仅 15 行 FR，缺此 2 行 | 正文 §3 功能性需求表插入 2 行：①FR-CHECK-0 标题「12 字段结构化错误 JSON（SSOT）」；代码锚填 `compiler/checker.rkt` + `compiler/main.rkt emit-json-errors` 行范围；②FR-CORRECT-1 标题「Correct 熔断 + on_failure 3 枚举」；代码锚填 `runtime/base_harness_v2.py Correct 管道` | 正文 §3 FR 表总行数 = 17；孤儿核查清单 L308 追加 FR-CHECK-0、FR-CORRECT-1 两个 ID 顺序不变 |
+
+---
+
+### 类别 B：代码实现 + pytest 缺口（中优先级 · 119 baseline → ~125-128 passed · 预计 18h）
+
+| ID | 缺口 | SRS 绑定 / 证据 | 交付形态 | 验收 PASS 判据（严格基线不回退） |
+|---|---|---|---|---|
+| **B-1 = P3-5** | `emit context :auto-append → auto_append_episodic` 下划线自动重命名（编译器 emit 阶段缺映射） | [FR-PARSER-3 正文:L87-L87](file:///Users/lee/products/agentLisp/docs/spec/agentlisp_srs.md#L87-L87)「spec `:auto-append` 必须透传到 Python `context_config.auto_append_episodic`（下划线键）」；矩阵 FR-PARSER-3 代码锚写「+ emit context 段」，但实际 emit 是否重命名待验证 | ① `compiler/agentlisp_compiler.rkt` emit-context 段：读到 `:auto-append` → 生成 Python 代码 key = `auto_append_episodic`（下划线）；② 旧命名 `:auto-append-episodic` 直接抛 FR-PARSER-3 ERR；③ 新增 pytest `test_emit_context_auto_append_maps_to_underscore_key_in_python_source` 绑定 `@pytest.mark.req("FR-PARSER-3")`，断言 emit 的临时 py 文件 grep 成功 | 新增 1 pytest 通过；严格基线 ≥120 passed；附录 B FR-PARSER-3 行第 5 列追加该新函数名 |
+| **B-2 = P1-2** | `.github/workflows/ci.yml` 缺 `perf-*` 性能指标 job | [NFR-PERF-1b:L110-L110](file:///Users/lee/products/agentLisp/docs/spec/agentlisp_srs.md#L110-L110)「P50 latency 对比 v0.1 baseline ≥50% 降低率」；[NFR-PERF-2:L111-L111](file:///Users/lee/products/agentLisp/docs/spec/agentlisp_srs.md#L111-L111)「racket compile <200ms」 | ① `ci.yml` 新 job `perf-bench`：runs-on=ubuntu-24.04；② steps：Bogdanp/setup-racket 8.12 + `uv sync --extra all`；③ 10 次 `time racket compiler/main.rkt -i examples/production-repair-agent.al --check-only` 几何均值 <200ms；④ MockLLMClient 100 轮 task 算 P50 latency ratio ≥0.5（缺 baseline 时 skip + TODO）；⑤ 新增 2 条 pytest 对应代表名回填 A-2 | 新增 2 pytest 通过；ci.yml 语法 `act -j perf-bench` 或 GH Actions 真机 green；严格基线 ≥122 passed |
+| **B-3** | `IF-CLI-1` 编译器 CLI 6 档 exit code 编码 + 选项全扫描 pytest 缺失 | §5.1 [IF-CLI-1 规格表:L125-L141](file:///Users/lee/products/agentLisp/docs/spec/agentlisp_srs.md#L125-L141)：`-i/-o/--check-only/-m/--json-errors/-V/--version`；exit 0=ok /1=check/2=parse/3=io/≥4=panic | 新建 `runtime/tests/test_cli_if_cli_1_exit_encoding.py`：① `--check-only` 合法 .al → exit=0；② malformed S-exp → exit=2；③ KV 顺序错 ERR_KV_ALIGNMENT_VIOLATION → exit=1；④ 不存在文件 `-i /no/such.al` → exit=3；⑤ 注入 panic → exit≥4；⑥ `--version / -V` stdout 含 `2.0.0`；共 6 子用例 | 新增 1 pytest（内含 6 参数化 or 6 断言）全部通过；严格基线 ≥123；附录 B IF-CLI-1 行第 5 列回填函数名 |
+| **B-4** | `FR-CHECK-2` 双端 SSOT 8 项 builtin 集合一致性缺 pytest（runtime/checker.py 8 项 vs Racket checker.rkt 可能长度/成员不一致） | 项目_memory「SSOT 枚举 SIDEEFFECT-BUILTIN-TOOLS = bash,git-push,wget,curl,scp,dd,chmod,sudo 8 项；双端一致否则 BLOCK」 | pytest `test_sideeffect_builtin_tools_racket_and_python_ssot_8_items_bitwise_equal`：① 子进程 `racket -l compiler/checker -e "(displayln sideeffect-builtin-tools)"` 读列表；② Python `from runtime.checker import SIDEEFFECT_BUILTIN_TOOLS`；③ `set(racket_list) == set(python_list) and len=8`；失败 exit=1，绑定 `@pytest.mark.req("FR-CHECK-2")` | 新增 1 pytest 通过；严格基线 ≥124；若任一端缺项 → 立即补齐对应端枚举后重跑 |
+
+---
+
+### 类别 C：阻塞性外部依赖 + Release 作业级缺口（预计 14h · C-1 必须用户终端操作）
+
+| ID | 缺口 | 阻塞原因 / **释放命令 VERBATIM** | 交付形态 | 验收 PASS 判据 |
+|---|---|---|---|---|
+| **C-1 = P1-3 AC-3** | τ²-bench v1.0 1000 真样本 `fix_rate_total ≥ 0.90` 端到端未运行（当前 AC-3 2 条 pytest 只是指标统计/McNemar 数学性质验证，非真实 fix_rate） | `which gh = not found` + 缺 `$HOME/.cache/agentlisp/t2-bench-v1.0/samples.jsonl`；**释放命令 VERBATIM**：`brew install gh && gh auth login && gh release download τ²-bench-v1.0 -R agentlisp/t2-bench -D $HOME/.cache/agentlisp/t2-bench-v1.0` | ① 下载完成后执行 `scripts/bench/run_t2_bench.py --sample-range 1..1000 --timeout 600s`；② report.json 含 `fix_rate_total` 字段 + 1000 条 detail[]；③ `ci.yml` 新增 `τ²-bench` job（可 `continue-on-error: true` 灰度）；④ release.yml 触发 tag 时合并报告到 Release Note | 真实跑通 ≥1 次且 `fix_rate_total ≥ 0.90`（900/1000）为 AC-3 PASS；低于 0.90 时本缺口保留并在 README 标注「AC-3 WIP，fix_rate=X.XXX」；严格基线保持 124 不回退 |
+| **C-2** | 附录 B 矩阵「各行 Passed 列求和 = 实际 pytest passed 数」未精确对齐（L272 写 119，但 L275-L302 数值求和需复核 119 = 求和） | 验证基线 [L272](file:///Users/lee/products/agentLisp/docs/spec/agentlisp_srs.md#L272-L272)：`严格模式 pytest 119 passed / 1 skipped`；矩阵 L275-L302 Passed 列数值可能求和 ≠ 119 | ① 逐行累加 L275-L302 Passed 整数；② 若 ≠ 119 → 按 CR-24 cf7ef33 实际 pytest 报告修正（参数化 ×N 在「代表用例」列写「×N」，但 Passed 列按 pytest 报告的实际用例数而非函数数填写）；③ L272 基线声明日期同步更新 | `python -c "sum = Σ int(row[3]); print(sum)"` 输出 119；严格基线未来每新增 1 passed 都要同步 L272 + 求和 |
+| **C-3** | `release.yml` 三 OS PyInstaller + Docker OCI image 的 GH Actions 端到端真机 green 未验证（语法正确但未 tag 触发） | 项目_memory「tag v0.1.0-rc1 远端 = HEAD 9dfcc0a（CR-18 patch）」；CR-19~CR-24 共 6 commit 未打新 tag，`on.push.tags: [v*]` 不触发 release.yml | ① A/B/C-1/C-2 全部完工且严格基线 ≥124 passed 后，打签名 tag：`git tag -s v2.0.0-rc2 -m "CR-25+ GA RC · baseline ≥124 passed · OCI 5 labels + FR-PARSER-3 emit + perf job"`；② `git push origin v2.0.0-rc2`；③ 观察 GH Actions release.yml 5 job（Linux / macOS / Windows build + merge-sha + docker）全部 green；④ pull `ghcr.io/4TWS3/agentLisp:v2.0.0-rc2` → `docker inspect` 5 个 `org.opencontainers.image.*` labels 非空且等于 GITHUB_SHA/ref_name；⑤ 下载 artifacts 验证 SHA256SUMS 条目数 = 预期（whl + sdist + 3 平台 exe/.app 等） | release.yml 全 5 jobs green；`docker inspect` 5 labels = git 元数据；`shasum -c SHA256SUMS` 0 mismatch |
+
+---
+
+### TOP3 即刻推进顺序（匹配 IDE 当前锚 L318 自动化维护脚本 + 零外部依赖）
+
+每次「继续」指令从 TOP 向下取，不跳项，直到本附录所有行标记 DONE：
+1. **A-1 + A-2 + A-4**：附录 B 矩阵 + 孤儿核查清单 28→34 条；正文 §3 FR 表补 FR-CHECK-0 / FR-CORRECT-1 两行
+2. **A-3**：落地 `scripts/bdd_export_traceability.py` 本体 + smoke，确保 CI 不漂移
+3. **B-1 = P3-5**：emit context `:auto-append → auto_append_episodic` 下划线映射 + pytest 绑定 FR-PARSER-3
+
+完成 TOP3 后再按优先级 B-2 → B-3 → B-4 → C-2 → C-1（释放 gh）→ C-3（打 tag）执行。
