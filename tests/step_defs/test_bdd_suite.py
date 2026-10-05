@@ -25,6 +25,11 @@ from typing import Any
 
 import pytest
 
+try:
+    from runtime.checker import SIDEEFFECT_BUILTIN_TOOLS as _SIDEEFFECT_SET
+except Exception:  # pragma: no cover - fallback should never be hit if sys.path OK
+    _SIDEEFFECT_SET = frozenset({"bash", "git-push", "wget", "curl", "scp", "dd", "chmod", "sudo"})
+
 # pytest-bdd 缺省时直接 skip 整个模块（所有场景）
 try:
     from pytest_bdd import given, parsers, scenarios, then, when  # type: ignore
@@ -232,7 +237,14 @@ def _step_init_harness(test_context: dict[str, Any]) -> None:
             ),
         ),
         harness_config=dict(
-            constrain=dict(require_approval=[], forbidden_commands=[], workspace_root=None),
+            # CR-22 P3-2：FR-CHECK-2 要求副作用 builtin 至少有护栏（approval ∧ forbidden non-empty）∨ verify
+            # 这里传 require_approval=["bash","cat"]（BDD 场景仅用这两 builtin）+ forbidden 动态注入。
+            constrain=dict(
+                require_approval=["bash", "cat"],
+                forbidden_commands=[],
+                workspace_root=None,
+                _matching="token_boundary",
+            ),
             verify=dict(
                 json_schema=False, linter_check=False, test_runner=None, reviewer_agent=None
             ),
@@ -791,8 +803,8 @@ def _when_static_check(test_context: dict[str, Any]) -> None:
     codes: list[str] = []
     hints: list[str] = []
     has_sideeffect = False
-    for s in ("bash", "git-push"):
-        if f"[{s}]" in src or _re.search(rf"define-tool\s+{s}\b", src):
+    for s in _SIDEEFFECT_SET:
+        if f"[{s}]" in src or _re.search(rf"define-tool\s+{_re.escape(s)}\b", src):
             has_sideeffect = True
             break
     if test_context.get("expect_unguarded") or has_sideeffect:

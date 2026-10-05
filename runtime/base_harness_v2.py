@@ -34,6 +34,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import gc
 import logging
 import pathlib
 import re
@@ -50,6 +51,16 @@ from typing import (
 )
 
 logger = logging.getLogger(__name__)
+
+# Python-side SSOT mirror of compiler/checker.rkt SIDEEFFECT-BUILTIN-TOOLS (L87).
+# BaseHarnessV2.constrain() uses this set to enforce FR-CHECK-2 invariant
+# at runtime even when the compiled emit bypasses the Racket static checker.
+try:
+    from runtime.checker import SIDEEFFECT_BUILTIN_TOOLS
+except Exception:  # pragma: no cover - extremely rare (broken package)
+    SIDEEFFECT_BUILTIN_TOOLS = frozenset(  # type: ignore[assignment]
+        {"bash", "git-push", "wget", "curl", "scp", "dd", "chmod", "sudo"}
+    )
 
 # ==============================================================================
 # 证据链数据结构 (对应 Code Review Issue #2)
@@ -537,9 +548,59 @@ class BaseHarnessV2:
     # ------------------------------------------------------------------
 
     def constrain(self, tool_call: dict[str, Any]) -> tuple[bool, str]:
-        """【护栏 1：Constrain】负面清单 + 词边界匹配 + workspace_root 路径门控（Fix Issue #4 + SRS FR-RUN-3）。"""
+        """【护栏 1：Constrain】负面清单 + 词边界匹配 + workspace_root 路径门控（Fix Issue #4 + SRS FR-RUN-3）。
+
+        CR-22 P3-2 强化：FR-CHECK-2 runtime 侧镜像 ERR_UNGUARDED_TOOL_EXECUTION
+        静态 invariant。当 tool_name ∈ SIDEEFFECT_BUILTIN_TOOLS（bash/git-push/wget/curl/scp/dd/chmod/sudo）
+        时，**同时** 满足 (A ∧ B) ∨ C 三者之一：
+            A) constrain.require_human_approval 包含该工具名；
+            B) constrain.forbidden_commands 至少 1 条非空；
+            C) verify.{json_schema,linter_check,test_runner,reviewer_agent} 任一项 truthy。
+        三都不满足 → 立即 Block，reason 开头 `Harness Blocked: FR-CHECK-2`（便于 CI 反推 SRS-ID）。
+        """
+        tool_name = str(tool_call.get("tool_name") or "")
         args: dict[str, Any] = tool_call.get("args", {}) or {}
         cmd: str = str(args.get("command", ""))
+        # (a0) FR-CHECK-2 runtime side-effect 护栏（CR-22 P3-2）
+        if tool_name and tool_name in SIDEEFFECT_BUILTIN_TOOLS:
+            constrain_cfg = (
+                (self.harness_config.get("constrain") or {})
+                if isinstance(self.harness_config, dict)
+                else {}
+            )
+            verify_cfg = (
+                (self.harness_config.get("verify") or {})
+                if isinstance(self.harness_config, dict)
+                else {}
+            )
+            approval_list = [
+                str(x)
+                for x in (
+                    constrain_cfg.get("require_human_approval")
+                    or constrain_cfg.get("require_approval")
+                    or []
+                )
+            ]
+            forbidden_raw = list(constrain_cfg.get("forbidden_commands") or [])
+            forbidden_nonempty = any(True for x in forbidden_raw if str(x).strip() != "")
+            approved = tool_name in approval_list
+            verify_any = any(
+                bool(verify_cfg.get(k))
+                for k in ("json_schema", "linter_check", "test_runner", "reviewer_agent")
+            )
+            if not ((approved and forbidden_nonempty) or verify_any):
+                reason = (
+                    "Harness Blocked: FR-CHECK-2(ERR_UNGUARDED_TOOL_EXECUTION) "
+                    f"side-effect builtin {tool_name!r} requires guardrails: "
+                    "either (require_human_approval lists tool AND forbidden_commands non-empty) "
+                    "OR any verify.* flag is truthy. "
+                    f"current require_human_approval={approval_list!r} "
+                    f"forbidden_commands={forbidden_raw!r} verify={verify_cfg!r}."
+                )
+                logger.warning(
+                    "[Constrain][FR-CHECK-2] tool=%r unguarded; reason=%s", tool_name, reason
+                )
+                return False, reason
         # (a) forbidden_commands 词边界匹配（Issue #4）
         forbidden_list = list(
             self.harness_config.get("constrain", {}).get("forbidden_commands", []) or []
@@ -834,24 +895,42 @@ class BaseHarnessV2:
             raise
         finally:
             # (b) 退出（正常/异常）：
-            #   - 先 .clear() child 列表对象本体（即使外部持有引用，也会把内容释放）——真·GC 回收；
-            #   - 再把父级引用恢复；无论是否抛异常都必须执行。
+            #   - CRITICAL（硬约束）：必须用 `del list[n:]` **本体截断** child_trajectory，
+            #     而不是重新赋值新列表 —— 外部对 child_trajectory 本体的持有引用也会看到截断结果；
+            #   - inherit_trajectory=True 时，前 parent_len 条 dict 是父级 trajectory 的引用，
+            #     绝不允许修改这些 dict（历史 bug：清空 content 会污染父级 trajectory 字典）；
+            #   - 内容回收仅对**截断出来的切片副本**做置空（不影响 parent）；
+            #   - 最后显式 gc.collect() 双保险，防止 worker 大 LLM 响应字符串长生命。
+            truncated_slices: list[dict[str, Any]] = []
             try:
-                # 如果 inherit=True：child 的前 len(parent_trajectory_ref) 条其实是父级内容，不要误删父级 dict 对象
-                # 正确做法：仅截断新增部分 [parent_len:]；inherit=False 时就是全 clear
                 parent_len = len(parent_trajectory_ref) if inherit_trajectory else 0
                 if len(child_trajectory) > parent_len:
+                    # 保留截断出来的 worker 内部消息，便于我们后续 None-ize 内容（不碰 parent 对象）
+                    truncated_slices = list(child_trajectory[parent_len:])
+                    # ------------------------------------------------------------------
+                    # SRS §4.3 FR-MAGT-1 Invariant #3 硬约束：必须使用 `del list[parent_len:]`
+                    # 本体截断，而不是 child_trajectory = child_trajectory[:parent_len]
+                    # 后者只改局部变量，外部引用不会观察到截断，内存泄漏 + 上下文泄漏。
+                    # ------------------------------------------------------------------
                     del child_trajectory[parent_len:]
-                # 截断尾部残余仍可能有残留引用（如 dict 内嵌套大块值），再整体 None 化一遍剩余位置
-                # 并把可能的大字符串值替换为空，加速 GC。
-                for m in child_trajectory:
-                    if isinstance(m, dict):
-                        if isinstance(m.get("content"), str) and len(m["content"]) > 1024:
-                            m["content"] = ""
-                        if isinstance(m.get("name"), str) is False:
-                            pass
+                # 仅对 worker 内部的截断切片内容置空加速 GC（绝不修改 parent_len 之前的对象）
+                for m in truncated_slices:
+                    if not isinstance(m, dict):
+                        continue
+                    if isinstance(m.get("content"), str):
+                        m["content"] = ""
+                    if isinstance(m.get("thought"), str):
+                        m["thought"] = ""
+                    # tool_calls 数组可能是大 JSON，显式清空
+                    tcs = m.get("tool_calls")
+                    if isinstance(tcs, list):
+                        tcs.clear()
             except Exception:
-                logger.debug("[scoped_worker:%s] child clear non-fatal", worker_name, exc_info=True)
+                logger.debug(
+                    "[scoped_worker:%s] child truncation non-fatal", worker_name, exc_info=True
+                )
+            finally:
+                truncated_slices.clear()
             self.trajectory = parent_trajectory_ref
             self.step_count = parent_step_count_ref
             self.is_terminated = parent_terminated_ref
@@ -861,6 +940,11 @@ class BaseHarnessV2:
                 len(self.trajectory),
                 self.step_count,
             )
+            # 双保险 GC：scoped_worker 退出边界固定点回收 worker 私有轨迹内存与循环引用
+            try:
+                gc.collect()
+            except Exception:  # pragma: no cover - gc.collect() 极少抛
+                logger.debug("[scoped_worker:%s] gc.collect non-fatal", worker_name, exc_info=True)
             # 若上层捕获/吞异常，依然保留原始异常语义（不丢 traceback）
             del exc_info
 

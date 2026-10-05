@@ -275,8 +275,11 @@ def test_verify_failure_triggers_correct_then_circuit_breaker():
         max_turns=30,
         harness_config=dict(
             constrain=dict(
-                require_approval=[],
-                forbidden_commands=[],
+                # CR-22 P3-2：FR-CHECK-2 runtime 侧对副作用 builtin bash 要求 (approval ∧ forbidden non-empty) ∨ verify
+                # 本测试的目标是验证 Correct 熔断（FR-RUN-4），所以加 approval+forbidden 让 FR-CHECK-2 放行，
+                # 仍能正常进入 execute → verify 失败 → 熔断循环。
+                require_approval=["bash"],
+                forbidden_commands=["___OBSCURE_PLACEHOLDER_NEVER_MATCH___"],
                 workspace_root=None,
                 _matching="token_boundary",
             ),
@@ -492,8 +495,9 @@ def test_correct_on_failure_abort_is_reflected_in_trace_when_circuit_break():
         max_turns=30,
         harness_config=dict(
             constrain=dict(
-                require_approval=[],
-                forbidden_commands=[],
+                # CR-22 P3-2：FR-CHECK-2 放行 require_approval+forbidden non-empty（避免bash 继续测 Correct 熔断
+                require_approval=["bash"],
+                forbidden_commands=["___PLACEHOLDER_NEVER_MATCH_CORRECT_TEST___"],
                 workspace_root=None,
                 _matching="token_boundary",
             ),

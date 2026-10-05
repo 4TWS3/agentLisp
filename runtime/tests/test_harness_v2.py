@@ -1006,3 +1006,290 @@ def test_mcp_scheme_whitelist_accepts_stdio_httpunix_https_sse_and_rejects_other
         assert validate_mcp_scheme(u) is True, f"mcp scheme 白名单应为真：{u}"
     for u in bad_schemes:
         assert validate_mcp_scheme(u) is False, f"mcp scheme 非白名单应为假：{u}"
+
+
+# 16. CR-22 P3-4：NFR-SEC-1c E2BSandbox SandboxProtocol 形状对齐 NullSandbox/DockerSandbox (Sandbox ABC / FeatureNotInstalledError install_group=sandbox)
+def test_e2b_sandbox_sandbox_abc_shape_and_feature_not_installed_error() -> None:  # type: ignore[no-untyped-def]
+    """CR-22 P3-4 NFR-SEC-1c：E2BSandbox 必须：
+    (a) import path host.sandbox_e2b.E2BSandbox 存在
+    (b) isinstance(E2BSandbox 若能构造) → Sandbox ABC 子类
+    (c) 缺 e2b SDK → 抛 FeatureNotInstalledError，且 install_group.lower == "sandbox"，msg 同时包含 uv pip install 'agentlisp[sandbox]' 与 FeatureNotInstalledError 三字段 msg 模式
+    (d) 有 e2b SDK 但无 E2B_API_KEY → 抛 RuntimeError，msg 含 E2B_API_KEY
+    """
+    import inspect
+    import os
+
+    import host.sandbox as sb
+    import host.sandbox_e2b as sb_e2b
+    from runtime.errors import FeatureNotInstalledError
+
+    assert issubclass(sb_e2b.E2BSandbox, sb.Sandbox), (
+        "E2BSandbox 必须继承 Sandbox ABC (SandboxProtocol)"
+    )
+    sig = inspect.signature(sb_e2b.E2BSandbox.run)
+    params = list(sig.parameters.keys())
+    assert "command" in params and "env" in params and "timeout" in params, (
+        f"E2BSandbox.run 签名 command/env/timeout 不全：params={params}"
+    )
+    assert sig.return_annotation is sb.SandboxRunResult or "SandboxRunResult" in str(
+        sig.return_annotation
+    ), "run 返回值必须是 SandboxRunResult"
+    # (c) 缺 e2b SDK → FeatureNotInstalledError install_group == "sandbox"（本机未装 e2b 必命中）
+    caught: FeatureNotInstalledError | None = None
+    env_swap = {k: os.environ.pop(k) for k in list(os.environ.keys()) if k.startswith("E2B_API_")}
+    try:
+        try:
+            sb_e2b.E2BSandbox()
+        except FeatureNotInstalledError as fn:
+            caught = fn
+        except RuntimeError as re_err:
+            # 本机装了 e2b SDK 但缺 key 路径也行 → 转 FeatureNotInstalledError 断言放弃，仅 RuntimeError 形状校验 (d)
+            assert "E2B_API_KEY" in str(re_err), f"RuntimeError 缺 E2B_API_KEY：{re_err!r}"
+            return
+        else:  # pragma: no cover - 本机装了 e2b + key 极罕见
+            return
+    finally:
+        os.environ.update(env_swap)
+    assert caught is not None, "缺 e2b SDK 时 E2BSandbox() 必须抛 FeatureNotInstalledError"
+    assert caught.install_group.lower() == "sandbox", (
+        f"install_group={caught.install_group!r} 必须 == sandbox (与 DockerSandbox 一致)"
+    )
+    assert (
+        caught.feature.lower() in {"e2b sandbox", "e2bsandbox", "e2b"}
+        or "e2b" in caught.feature.lower()
+    ), f"feature={caught.feature!r} 必须提到 E2B"
+    msg = str(caught)
+    assert "uv pip install 'agentlisp[sandbox]'" in msg, (
+        "FeatureNotInstalledError msg 必须给出 install 命令：{msg!r}"
+    )
+
+
+# 17. CR-22 P3-2：FR-CHECK-2 runtime 侧 ERR_UNGUARDED_TOOL_EXECUTION 镜像护栏：6 个新增副作用 builtin + 2 个 baseline
+def test_fr_check_2_sideeffect_builtins_6_new_unguarded_runtime_block_and_ssot_consistent() -> None:  # type: ignore[no-untyped-def]
+    """CR-22 P3-2：
+      (a) Python runtime/checker.py 的 SIDEEFFECT_BUILTIN_TOOLS 与 compiler/checker.rkt L87 严格一致；
+      (b) runtime/base_harness_v2.constrain() 对 {wget, curl, scp, dd, chmod, sudo} ×6 = 6 个新 builtin，
+          当 require_approval 不命中、forbidden_commands 全空、verify.* 全 False 时 → BLOCK，
+          reason 前缀 `Harness Blocked: FR-CHECK-2(ERR_UNGUARDED_TOOL_EXECUTION)`；
+      (c) 6  builtin 命中 approval+forbidden → PASS 则不 block（baseline：bash/git-push 保留的两项老 builtin 也满足相同逻辑）。
+    故共新增 pytest：1(SSOT) + 6(unguarded) = 7 条断言；PASS 路径选 wget + sudo 验两个分支（共 7+2=9 断言）。
+    """
+    import pathlib
+
+    from runtime.base_harness_v2 import SIDEEFFECT_BUILTIN_TOOLS as _PY_SET
+    from runtime.base_harness_v2 import BaseHarnessV2
+    from runtime.checker import (
+        SIDEEFFECT_BUILTIN_TOOLS,
+        check_sideeffect_builtins_racket_mirror,
+    )
+
+    # ---- (a) SSOT 一致性 ----
+    checker_rkt = pathlib.Path(__file__).resolve().parents[2] / "compiler" / "checker.rkt"
+    assert checker_rkt.is_file(), f"compiler/checker.rkt 缺失：{checker_rkt}"
+    src = checker_rkt.read_text(encoding="utf-8")
+    ok, racket_only, python_only = check_sideeffect_builtins_racket_mirror(src)
+    assert ok, (
+        "FR-CHECK-2 SSOT 漂移：runtime/checker.SIDEEFFECT_BUILTIN_TOOLS vs compiler/checker.rkt#L87 "
+        f"racket_only={racket_only} python_only={python_only}"
+    )
+    # 必需项：{bash, git-push} 老保留 + {wget, curl, scp, dd, chmod, sudo} ×6 新
+    MUST = {"bash", "git-push", "wget", "curl", "scp", "dd", "chmod", "sudo"}
+    assert MUST.issubset(SIDEEFFECT_BUILTIN_TOOLS), (
+        f"sideeffect 必需项缺失：{MUST - set(SIDEEFFECT_BUILTIN_TOOLS)}"
+    )
+    # base_harness_v2 重导出与 runtime/checker 必须一致
+    assert set(_PY_SET) == set(SIDEEFFECT_BUILTIN_TOOLS), (
+        "base_harness_v2 重导出的 SIDEEFFECT_BUILTIN_TOOLS 与 runtime/checker 不一致"
+    )
+
+    def _make_harness(
+        approval: list[str] | None = None,
+        forbidden: list[str] | None = None,
+        verify_any: bool = False,
+    ) -> BaseHarnessV2:
+        return BaseHarnessV2(
+            model_config={"provider": "mock", "model": "m", "temperature": 0.0},
+            context_config={},
+            tools_config={},
+            harness_config={
+                "constrain": {
+                    "require_human_approval": list(approval or []),
+                    "forbidden_commands": list(forbidden or []),
+                    "workspace_root": None,
+                    "_matching": "token_boundary",
+                },
+                "verify": {
+                    "json_schema": verify_any,
+                    "linter_check": False,
+                    "test_runner": None,
+                    "reviewer_agent": "judge" if verify_any else None,
+                },
+                "correct": {"max_retries": 1, "circuit_breaker": 1, "on_failure": "abort"},
+            },
+        )
+
+    # ---- (b) 6 新 builtin unguarded → BLOCK ----
+    NEW_SIX = ["wget", "curl", "scp", "dd", "chmod", "sudo"]
+    for tool in NEW_SIX:
+        h = _make_harness(approval=[], forbidden=[], verify_any=False)
+        allowed, reason = h.constrain({"tool_name": tool, "args": {"command": f"{tool} --help"}})
+        assert allowed is False, f"{tool} 未加护栏时应被 FR-CHECK-2 阻断，但 allowed=True"
+        assert reason.startswith("Harness Blocked: FR-CHECK-2(ERR_UNGUARDED_TOOL_EXECUTION)"), (
+            f"{tool} reason 前缀错：{reason!r}"
+        )
+        assert tool in reason, f"{tool} 阻断消息应包含 tool_name：{reason!r}"
+
+    # 同时验两个老 baseline（保证不回退 CR-13）
+    for tool in ("bash", "git-push"):
+        h = _make_harness(approval=[], forbidden=[], verify_any=False)
+        allowed, reason = h.constrain({"tool_name": tool, "args": {"command": tool}})
+        assert allowed is False, f"baseline {tool} 未加护栏时应仍阻断：allowed=True"
+        assert "FR-CHECK-2(ERR_UNGUARDED_TOOL_EXECUTION)" in reason, (
+            f"baseline {tool} reason 错：{reason!r}"
+        )
+
+    # ---- (c) PASS 分支（两分支各一个代表：approval+forbidden vs verify_any）----
+    h_pass_a = _make_harness(approval=["wget"], forbidden=["wget --delete-after"], verify_any=False)
+    ok, reason_pass = h_pass_a.constrain(
+        {"tool_name": "wget", "args": {"command": "wget https://example.com/a.tgz"}}
+    )
+    assert ok is True, f"wget (approval + forbidden non-empty) 应允许，reason={reason_pass!r}"
+
+    h_pass_b = _make_harness(approval=[], forbidden=[], verify_any=True)
+    ok2, reason_pass2 = h_pass_b.constrain({"tool_name": "sudo", "args": {"command": "sudo -n id"}})
+    assert ok2 is True, f"sudo (verify_any truthy) 应允许：reason={reason_pass2!r}"
+
+    # (d) 非副作用 builtin 不应触发 FR-CHECK-2：echo 是纯 builtin 代表，无 approval 无 forbidden 也能过
+    h_neutral = _make_harness(approval=[], forbidden=[], verify_any=False)
+    ok3, _ = h_neutral.constrain({"tool_name": "echo", "args": {"command": "echo hello"}})
+    assert ok3 is True, "纯读/非 sideeffect 工具 echo 不应被 FR-CHECK-2 误伤"
+
+
+# 18. CR-22 P3-1：FR-MAGT-1 scoped_worker 双保险 del list[n:] 本体截断 + gc.collect() 外部引用观察到截断且不污染父级 trajectory dict
+async def _async_test_fr_magt1_scoped_worker_del_list_truncate_and_gc_collect() -> None:  # type: ignore[no-untyped-def]
+    """CR-22 P3-1 FR-MAGT-1 双保险：
+    (A) inherit=True + worker 写 trajectory，退出 scoped_worker 后：
+          - 父级 trajectory 长度 == 进入前的长度（父级 dict 对象数量未变）
+          - 父级 dict 引用的 content 没有被 worker 内部 for-loop 清空（历史 bug 防回归）
+          - worker.trajectory 本体（= 外部同对象引用）退出后 len == parent_len（del list[n:]，而不是重新赋值）
+    (B) gc.collect().call_count ≥ 1（双保险第二弹）
+    (C) inherit=False 分支：parent_len=0 → worker 本体退出后 len == 0
+    """
+    import gc as _gc
+    from unittest.mock import patch
+
+    from runtime.base_harness_v2 import BaseHarnessV2
+
+    h = BaseHarnessV2(
+        model_config={"provider": "mock", "model": "m", "temperature": 0.0},
+        context_config={},
+        tools_config={},
+        harness_config={},
+    )
+    # ---- 父级先填 3 条 trajectory（其中 1 条大 content 用于 detect 误伤清空）----
+    BIG = "PARENT_BIG_CONTENT_" + ("X" * 2048)
+    h.trajectory.append({"role": "user", "content": "parent-input-1"})
+    h.trajectory.append({"role": "assistant", "content": BIG})  # 索引 1
+    h.trajectory.append({"role": "user", "content": "parent-input-2"})
+    parent_len_before = len(h.trajectory)
+    assert parent_len_before == 3
+    # 保留 parent 第二个 dict 对象的 id（退出后验证 content 未被清空）
+    parent_big_id = id(h.trajectory[1])
+    parent_big_snapshot = str(h.trajectory[1].get("content"))
+    assert BIG in parent_big_snapshot
+
+    # ---- (A) scoped_worker inherit=True ----
+    gc_calls = {"n": 0}
+    _orig_gc_collect = _gc.collect
+
+    def _tracing_gc() -> None:
+        gc_calls["n"] += 1
+        return _orig_gc_collect()
+
+    with patch.object(_gc, "collect", side_effect=_tracing_gc) as patched_gc:
+        # 抓取 scoped 前保存 trajectory 本体引用（退出后它还是同一个 list 对象，应被 del list[n:] 截断
+        worker_outer_ref: list[dict[str, Any]] | None = None
+        worker_big_msg_id: int | None = None
+        async with h.scoped_worker("w-inherit", inherit_trajectory=True) as w:
+            worker_outer_ref = w.trajectory
+            # 前 len(parent) 都是 parent 已有
+            assert len(w.trajectory) == parent_len_before, (
+                "inherit=True 时 worker 起点应为 parent 长度"
+            )
+            assert id(w.trajectory[1]) == parent_big_id, (
+                "inherit=True 时第二条应是父级 dict 同一引用（共享前半段）"
+            )
+            # worker 内部塞两条：一条小 + 一条超大 worker content（worker 私有）
+            w.trajectory.append({"role": "assistant", "content": "worker-thinking"})
+            w.trajectory.append(
+                {
+                    "role": "tool",
+                    "name": "bash",
+                    "content": "WORKER_BIG_LOG_" + ("Y" * 4096),
+                    "tool_calls": [{"id": x} for x in range(32)],  # 大嵌套列表
+                }
+            )
+            worker_big_msg_id = id(w.trajectory[-1])
+            assert len(w.trajectory) == parent_len_before + 2
+        # 退出后验证
+        patched_gc.assert_called()  # gc.collect 至少调用 1 次
+        assert gc_calls["n"] >= 1, f"gc.collect 未调用：call_count={gc_calls['n']}"
+
+    # (A.1) 父级 trajectory 长度恢复为进入前（父级没被 append 新东西）
+    assert len(h.trajectory) == parent_len_before, (
+        f"父级 trajectory 长度不应变化：before={parent_len_before} after={len(h.trajectory)}"
+    )
+    # (A.2) 父级第二条 dict（大 content）**没有被 worker 内部 for-loop 误伤清空**
+    assert id(h.trajectory[1]) == parent_big_id, "父级第二个 dict 对象 id 变了（不应被替换）"
+    assert h.trajectory[1].get("content") == parent_big_snapshot, (
+        "父级 trajectory 内容被 worker 内部置空误伤（历史 bug：前 parent_len 条不应被修改）"
+    )
+    # (A.3) worker_outer_ref 是 child_trajectory 本体（self.trajectory 在 yield 前绑定到 child）。
+    # scoped_worker 退出后 self.trajectory 已恢复为 parent_trajectory_ref（另一对象），
+    # 所以 worker_outer_ref is h.trajectory 必然为 False（区别两个 list 对象），这里仅验：
+    # worker_outer_ref 本体（child）已被 del list[parent_len:] 本体截断 → len == parent_len_before。
+    assert worker_outer_ref is not None, "scoped_worker body 未执行"
+    assert worker_outer_ref is not h.trajectory, (
+        "scoped_worker 退出后 self.trajectory 应已恢复为 parent_trajectory_ref（新绑定），"
+        "worker_outer_ref 仍指向 child 本体（但已被 del list[n:] 截断）"
+    )
+    # 核心验收：worker_outer_ref（child 本体）退出后长度必须 == parent_len_before（inherit=True）
+    # 如果实现改用了「重新赋值 new_list = old[:n]」（而不是 del list[n:] 本体截断），
+    # 则 worker_outer_ref 仍是原来的 5 项 list，这里会 FAIL — 真正锁死 SRS §4.3 硬约束。
+    assert len(worker_outer_ref) == parent_len_before, (
+        f"worker trajectory 本体未被 del list[n:] 截断：退出后 len={len(worker_outer_ref)} 期望 {parent_len_before}；"
+        "若 FAIL → 说明实现改用了重新赋值 new_list = old[:n] 而不是本体截断，外部引用观察不到截断（内存泄漏 + 上下文泄漏）"
+    )
+    # (A.4) worker 内部大 dict（截断切片）的 content 应被置空（加速 GC）—— 我们拿不到切片但可以验证：worker_big_msg_id 对应的对象如果仍被引用（极小概率），content 应已被清空或长度 <=64；这个断言我们 skip 严格只验可观测（以上 4 条已覆盖 SRS 硬约束）。
+    del worker_big_msg_id
+
+    # ---- (C) inherit=False 分支：parent_len=0，worker 内部 5 条 → 退出本体 len=0 ----
+    h2 = BaseHarnessV2(
+        model_config={"provider": "mock", "model": "m", "temperature": 0.0},
+        context_config={},
+        tools_config={},
+        harness_config={},
+    )
+    h2.trajectory.append({"role": "user", "content": "p1"})
+    parent2_len = len(h2.trajectory)  # 1
+    child_outer: list[dict[str, Any]] | None = None
+    async with h2.scoped_worker("w2-noinherit", inherit_trajectory=False) as w2:
+        child_outer = w2.trajectory
+        # inherit=False → 起点空（len == 0，不继承 parent）
+        assert len(w2.trajectory) == 0
+        for i in range(5):
+            w2.trajectory.append({"role": "assistant", "content": f"worker-inner-{i}"})
+        assert len(w2.trajectory) == 5
+    assert child_outer is not None
+    # child 本体被截断为 parent_len=0（inherit=False => parent_len=0）
+    assert len(child_outer) == 0, (
+        f"inherit=False 分支 worker 本体未被 del list[0:] 全截断：len={len(child_outer)}"
+    )
+    # 父级 h2 还是 1 条（不变）
+    assert len(h2.trajectory) == parent2_len
+
+
+def test_fr_magt1_scoped_worker_del_list_truncate_and_gc_collect() -> None:  # type: ignore[no-untyped-def]
+    import asyncio
+
+    asyncio.run(_async_test_fr_magt1_scoped_worker_del_list_truncate_and_gc_collect())

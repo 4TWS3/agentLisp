@@ -84,7 +84,7 @@
 (define TOPOLOGY-ENUM          '(peer orchestration decentralised judge-driven))
 (define MEMORY-LAYER-ENUM      '(L0-Abstract L1-Overview L2-FullText))
 (define PROVIDER-ENUM          '("anthropic" "openai" "qwen" "mock"))
-(define SIDEEFFECT-BUILTIN-TOOLS '(bash git-push))
+(define SIDEEFFECT-BUILTIN-TOOLS '(bash git-push wget curl scp dd chmod sudo))
 
 (define (enum-member? v lst [->id to-str])
   (for/or ([x (in-list lst)]) (string=? (->id v) (->id x))))
@@ -453,7 +453,7 @@
        #:srcloc (and raw (srcloc*-from-form raw))
        #:agent-name name
        #:hints (list
-                (format "工具 ~a 在 SIDEEFFECT-BUILTIN-TOOLS 内（bash / git-push 默认都是），必须有护栏" unguarded)
+                (format "工具 ~a 在 SIDEEFFECT-BUILTIN-TOOLS 内（bash / git-push / wget / curl / scp / dd / chmod / sudo 默认都是），必须有护栏" unguarded)
                 "方法 A：把工具名加到 (:constrain :require-human-approval (TOOL…))，并确保 forbidden-commands 至少 1 条非空"
                 "方法 B：(:verify :json-schema #t / :linter-check #t / :test-runner \"…\" / :reviewer-agent \"judge\") 任一项开启"))))
 
