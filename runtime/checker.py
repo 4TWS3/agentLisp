@@ -376,6 +376,255 @@ def validate_topology_and_scoped_worker_min_blocks(
     return True, None
 
 
+def _str(v: Any) -> str:
+    if isinstance(v, str):
+        return v
+    if isinstance(v, bool):
+        return "True" if v else "False"
+    return str(v)
+
+
+def _get(d: Any, key: str, default: Any = None) -> Any:
+    if not isinstance(d, dict):
+        return default
+    if key in d:
+        return d[key]
+    sym_key = f":{key}"
+    if sym_key in d:
+        return d[sym_key]
+    kw_repr = f":{key}"
+    for k in d:
+        ks = _str(k)
+        if ks in (key, kw_repr) or ks.lstrip(":") == key:
+            return d[k]
+    return default
+
+
+def _order_list(order: Any) -> list[str]:
+    if order is None:
+        return []
+    if not isinstance(order, list):
+        return []
+    out: list[str] = []
+    for item in order:
+        s = _str(item).lstrip(":")
+        if s:
+            out.append(s)
+    return out
+
+
+def _list_of_dicts(x: Any) -> list[dict]:
+    if not isinstance(x, list):
+        return []
+    return [item for item in x if isinstance(item, dict)]
+
+
+def check_kv_alignment_order(agent_dict: dict) -> tuple[bool, dict | None]:
+    """FR-CHECK-1: 静态块 :model/:tools 必须在动态块 :context 之前。
+
+    递归检查 scoped-worker 子块（与 Racket checker.rkt L360-L382 对齐）。
+    """
+    order = _order_list(_get(agent_dict, "order"))
+    name = _str(_get(agent_dict, "name", "anon"))
+    ctx_pos = order.index("context") if "context" in order else None
+    model_pos = order.index("model") if "model" in order else None
+    tools_pos = order.index("tools") if "tools" in order else None
+    if (model_pos is not None and ctx_pos is not None and model_pos > ctx_pos) or (
+        tools_pos is not None and ctx_pos is not None and tools_pos > ctx_pos
+    ):
+        return False, make_parse_error_json(
+            "ERR_KV_ALIGNMENT_VIOLATION",
+            "FR-CHECK-1",
+            f"FR-CHECK-1: agent={name} 静态块 (:model/:tools) 出现在动态块 :context 之后（实际顺序={order}）",
+            agent_name=name,
+            hints=[
+                "SRS §4.1.1 KV 顺序必须是 :model → :tools → :context（允许缺 harness/multiagent）",
+                "把 :context 整块移动到 :tools 之后即可修复",
+            ],
+        )
+    multi = _get(agent_dict, "multi")
+    workers = _list_of_dicts(_get(multi if isinstance(multi, dict) else {}, "workers"))
+    for w in workers:
+        w_name = _str(_get(w, "name", "anon-worker"))
+        w_order = _order_list(_get(w, "order"))
+        w_ctx = w_order.index("context") if "context" in w_order else None
+        w_model = w_order.index("model") if "model" in w_order else None
+        w_tools = w_order.index("tools") if "tools" in w_order else None
+        if (w_model is not None and w_ctx is not None and w_model > w_ctx) or (
+            w_tools is not None and w_ctx is not None and w_tools > w_ctx
+        ):
+            return False, make_parse_error_json(
+                "ERR_KV_ALIGNMENT_VIOLATION",
+                "FR-CHECK-1",
+                f"FR-CHECK-1: scoped-worker={w_name}: 静态块出现在动态块之后（实际顺序={w_order}）",
+                agent_name=w_name,
+                hints=[
+                    "scoped-worker 的 :model/:tools 也必须在 :context 之前（SRS §4.3 FR-MAGT-1）",
+                    "把该 worker 的 :context 移到 :tools 之后即可",
+                ],
+            )
+    return True, None
+
+
+def check_unguarded_tool_execution(agent_dict: dict) -> tuple[bool, dict | None]:
+    """FR-CHECK-2: 有副作用 builtin（SIDEEFFECT_BUILTIN_TOOLS 8 项）必须满足：
+    (A) require_human_approval 明确 AND forbidden_commands 至少 1 条非空；
+        OR (B) verify 任一字段 json_schema/linter_check/test_runner/reviewer_agent 真/非空。
+    递归检查 scoped-worker（Racket checker.rkt L460-L490 对齐）。
+    """
+
+    def _sideeffect_names(tools_dict: Any) -> list[str]:
+        builtins = _get(tools_dict, "builtins")
+        if builtins is None:
+            builtins = _get(tools_dict, "import_builtins", [])
+        if not isinstance(builtins, list):
+            return []
+        return [_str(b) for b in builtins if _str(b) in SIDEEFFECT_BUILTIN_TOOLS]
+
+    def _approval_ok(approval_list: Any, name: str) -> bool:
+        if not isinstance(approval_list, list):
+            return False
+        return any(_str(a) == name for a in approval_list)
+
+    def _forbidden_non_empty(forbidden_list: Any) -> bool:
+        if not isinstance(forbidden_list, list):
+            return False
+        return any(isinstance(f, str) and f.strip() != "" for f in forbidden_list)
+
+    def _verify_any(verify_dict: Any) -> bool:
+        if not isinstance(verify_dict, dict):
+            return False
+        for k in ("json_schema", "linter_check", "test_runner", "reviewer_agent"):
+            v = _get(verify_dict, k)
+            if v is None:
+                continue
+            if isinstance(v, bool) and v:
+                return True
+            if isinstance(v, str) and v.strip() != "":
+                return True
+            if isinstance(v, (dict, list)) and len(v) > 0:
+                return True
+        return False
+
+    def _check_one(name: str, tools_dict: Any, harness_dict: Any) -> tuple[bool, dict | None]:
+        se = _sideeffect_names(tools_dict)
+        if not se:
+            return True, None
+        constrain = _get(harness_dict, "constrain", {}) or {}
+        verify = _get(harness_dict, "verify", {}) or {}
+        approval = _get(constrain, "require_human_approval", [])
+        forbidden = _get(constrain, "forbidden_commands", [])
+        has_ver = _verify_any(verify)
+        unguarded: list[str] = []
+        for n in se:
+            ok = has_ver or (_approval_ok(approval, n) and _forbidden_non_empty(forbidden))
+            if not ok:
+                unguarded.append(n)
+        if unguarded:
+            return False, make_parse_error_json(
+                "ERR_UNGUARDED_TOOL_EXECUTION",
+                "FR-CHECK-2",
+                (
+                    f"FR-CHECK-2: agent={name} 有副作用工具={unguarded} 未被护栏保护："
+                    f"要求 (require_approval 明确列出 AND forbidden 非空) OR verify 任一项断言开启；"
+                    f"当前 approval={approval} forbidden={forbidden} verify 开={has_ver}"
+                ),
+                agent_name=name,
+                hints=[
+                    f"工具 {unguarded} 在 SIDEEFFECT_BUILTIN_TOOLS 内（bash/git-push/wget/curl/scp/dd/chmod/sudo 默认都是），必须有护栏",
+                    "方法 A：把工具名加到 (:constrain :require-human-approval (TOOL…))，并确保 forbidden-commands 至少 1 条非空",
+                    '方法 B：(:verify :json-schema #t / :linter-check #t / :test-runner "…" / :reviewer-agent "judge") 任一项开启',
+                ],
+            )
+        return True, None
+
+    name = _str(_get(agent_dict, "name", "anon"))
+    ok, err = _check_one(name, _get(agent_dict, "tools", {}), _get(agent_dict, "harness", {}))
+    if not ok:
+        return False, err
+    multi = _get(agent_dict, "multi")
+    workers = _list_of_dicts(_get(multi if isinstance(multi, dict) else {}, "workers"))
+    for w in workers:
+        w_name = _str(_get(w, "name", "anon-worker"))
+        ok, err = _check_one(w_name, _get(w, "tools", {}), _get(w, "harness", {}))
+        if not ok:
+            return False, err
+    return True, None
+
+
+def check_context_leakage(agent_dict: dict) -> tuple[bool, dict | None]:
+    """FR-CHECK-3: (a) 父子 define-tools 精确重名；(b) 兄弟 scoped-worker 定义同名工具。
+
+    前缀非重名（write-md vs write-md-worker）必须 PASS（反误杀）。
+    与 Racket checker.rkt L500-L540 对齐：字符串精确相等，不是子串/前缀匹配。
+    """
+
+    def _define_tool_names(tools_dict: Any) -> list[str]:
+        dts = _get(tools_dict, "define_tools")
+        if dts is None:
+            dts = _get(tools_dict, "define-tools", [])
+        if not isinstance(dts, list):
+            return []
+        names: list[str] = []
+        for t in dts:
+            if isinstance(t, dict):
+                n = _str(_get(t, "name", ""))
+                if n:
+                    names.append(n)
+            elif isinstance(t, str):
+                if t:
+                    names.append(t)
+        return names
+
+    name = _str(_get(agent_dict, "name", "anon"))
+    multi = _get(agent_dict, "multi")
+    multi_dict = multi if isinstance(multi, dict) else {}
+    workers = _list_of_dicts(_get(multi_dict, "workers"))
+
+    parent_names = _define_tool_names(_get(agent_dict, "tools", {}))
+    all_worker_names: list[tuple[str, str]] = []  # (worker_name, tool_name)
+    for w in workers:
+        w_name = _str(_get(w, "name", "anon-worker"))
+        for tn in _define_tool_names(_get(w, "tools", {})):
+            all_worker_names.append((w_name, tn))
+
+    for w_name, tn in all_worker_names:
+        if tn in parent_names:
+            return False, make_parse_error_json(
+                "ERR_CONTEXT_LEAKAGE",
+                "FR-CHECK-3",
+                (
+                    f"FR-CHECK-3: scoped-worker={w_name} 的工具名 {tn!r} 与父级 define-tools 重名；"
+                    "离开作用域后可能导致父级 trajectory 意外复用，违反词法隔离"
+                ),
+                agent_name=name,
+                hints=[
+                    f"工具 {tn!r} 与父级 define-tools 重名（FR-CHECK-3 不变量），请重命名该 worker 工具",
+                    "SRS §4.3：所有 scoped-worker define-tools 名必须父子/兄弟两两不重名",
+                ],
+            )
+
+    seen: dict[str, str] = {}
+    for w_name, tn in all_worker_names:
+        if tn in seen:
+            return False, make_parse_error_json(
+                "ERR_CONTEXT_LEAKAGE",
+                "FR-CHECK-3",
+                (
+                    f"FR-CHECK-3: 兄弟 scoped-worker 工具名冲突：worker={seen[tn]!r} 与 "
+                    f"worker={w_name!r} 均定义 {tn!r}；可能导致 cross-worker trajectory 混淆"
+                ),
+                agent_name=w_name,
+                hints=[
+                    f"重名工具 {tn!r}：请把两个 worker 的 define-tools 名改为不同（例如加前缀 w1- / w2-）",
+                    "SRS FR-CHECK-3：兄弟 worker 的工具名必须两两互斥（编译期就断，避免运行时轨迹泄漏）",
+                ],
+            )
+        seen[tn] = w_name
+
+    return True, None
+
+
 __all__ = [
     "FR_PARSER_MCP_SCHEMES",
     "FR_PARSER_ON_FAILURE_ENUM",
@@ -390,7 +639,10 @@ __all__ = [
     "PARSE_ERR_TOOLS_COMBINATION",
     "PARSE_ERR_TOPOLOGY",
     "SIDEEFFECT_BUILTIN_TOOLS",
+    "check_context_leakage",
+    "check_kv_alignment_order",
     "check_sideeffect_builtins_racket_mirror",
+    "check_unguarded_tool_execution",
     "extract_checker_rkt_sideeffect_list",
     "make_parse_error_json",
     "sideeffect_builtin_names",

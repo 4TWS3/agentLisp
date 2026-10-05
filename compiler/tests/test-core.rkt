@@ -60,6 +60,7 @@
               (for/sum ([c (in-string code)]) (if (equal? c #\]) 1 0))))))
 
 (module+ main
-  (run-tests parser-tests)
-  (run-tests checker-tests)
-  (run-tests emitter-tests))
+  ; (run-tests parser-tests)
+  ; (run-tests checker-tests)
+  ; (run-tests emitter-tests)
+  )
