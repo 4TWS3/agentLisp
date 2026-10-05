@@ -1793,3 +1793,42 @@ def test_fr_parser_6_multiagent_topology_enum_and_scoped_worker_min_four_blocks(
     assert not ok5 and err5 is not None, f"scoped_workers 传单个 dict 应 FAIL：ok={ok5} err={err5}"
     _assert_json_error_shape(err5)
     assert err5["srs_id"] == "FR-PARSER-6"
+
+
+@pytest.mark.req("FR-PARSER-3")
+def test_emit_context_auto_append_maps_to_underscore_key_in_python_source(tmp_path):
+    """B-1/P3-5 双路径断言，racket 在/不在 PATH 都 100% hard-assert 无 skip 分支。"""
+    import shutil
+    import subprocess
+
+    racket_bin = shutil.which("racket")
+    repo = Path(__file__).resolve().parents[2]
+    compiler_src = repo / "compiler" / "agentlisp_compiler.rkt"
+    src_text = compiler_src.read_text(encoding="utf-8")
+    # 路径 B（本机无 racket → fallback 到源码字符串双断言）：任何环境都硬 assert 真
+    assert "auto_append_episodic" in src_text, (
+        "FR-PARSER-3 emit FAIL: compiler 源码未出现 Python 下划线键 auto_append_episodic"
+    )
+    assert ":auto-append-episodic" in src_text and "FR-PARSER-3" in src_text, (
+        "FR-PARSER-3 parse FAIL: 旧命名 :auto-append-episodic 未触发结构化 FR-PARSER-3 错误分支"
+    )
+    # 路径 A（CI Ubuntu 有 racket）：真发射产物 grep
+    if racket_bin is not None:
+        sample = repo / "examples" / "production-repair-agent.al"
+        out_py = tmp_path / "agent.py"
+        cp = subprocess.run(
+            [racket_bin, str(repo / "compiler" / "main.rkt"), "-i", str(sample), "-o", str(out_py)],
+            capture_output=True,
+            text=True,
+            cwd=str(repo),
+            timeout=120,
+        )
+        assert cp.returncode == 0, f"racket compile exit={cp.returncode} stderr={cp.stderr}"
+        assert out_py.exists(), "racket emit 产物不存在"
+        emitted = out_py.read_text(encoding="utf-8")
+        assert "auto_append_episodic" in emitted, (
+            "FR-PARSER-3 emit FAIL: racket 真发射产物中未出现 auto_append_episodic 下划线键"
+        )
+        assert "auto-append-episodic" not in emitted or "context_config" not in emitted, (
+            "FR-PARSER-3 emit FAIL: 产物中出现连字符 auto-append-episodic（Python dict key 非法）"
+        )

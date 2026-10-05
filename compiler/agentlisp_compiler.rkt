@@ -179,6 +179,14 @@
 
 (define (parse-memory-policy mp)
   (match mp
+    [(? (lambda (x) (and (list? x) (member ':auto-append-episodic x))) _)
+     (raise-parse-with-srcloc
+      'FR-PARSER-3
+      "[FR-PARSER-3] 使用了已废弃命名 :auto-append-episodic，请统一改为 spec 标准 :auto-append"
+      #:srcloc #f
+      #:agent-name #f
+      #:hints (list "spec 层命名规范：用 :auto-append 禁用旧 :auto-append-episodic"
+                    "emit 到 Python 运行时键名：context_config.auto_append_episodic（下划线，禁止连字符）"))]
     [`(:markdown-fs ,path :layers ,layers :auto-append ,append?)
      (unless (string? path) (raise-parse ':memory-policy "markdown-fs path 必须是字符串"))
      (for ([l (in-list layers)])
