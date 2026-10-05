@@ -4,12 +4,12 @@
 
 ## 1. Git 状态核验（交接当时）
 
-- 交付 commit：**1183556**（等 push 后填真实远程 HEAD，后续小 commit hash fill 回填到这里和第 7 章提交人时间）
+- 交付 commit：**1183556454fdff36cec07a69e65fdbfb02a892a4**（CR-30 核心交付 hash fill 后真实值；验证：`git show --name-only 1183556` 首行 = CR-30 C-2 核心 119→124 对齐 pytest；`git ls-remote origin main`  HEAD = `52a8e21` 包含本 commit 作为 HEAD~1）
 - 交付 commit message 首行：`CR-30 C-2 附录 B 矩阵基线 119→124 对齐 CR-29 实际 pytest + 34-ID全等（纯文档核查 Δ=0 严格基线 124）`
-- 工作区状态（push 前）：
-  * `git status -s` 未跟踪只有 **历史遗留 .trae/specs/cr26_*、cr27_* 目录 + 本 CR-30 .trae/specs/cr30_c2_* 3 工件 + 本 handoff 文件**（CR-30 当轮产出，待一并 hash fill commit）
-  * CR-30 当轮核心交付 1 文件 `docs/spec/agentlisp_srs.md` 已 committed 到 commit 1183556；本 handoff + review.md Cycle2 Actual Verdict 属于下一个 hash fill 微小 commit
-- push 状态：**待执行 `git push origin main` 后把 `git ls-remote origin main` HEAD hash 回填到本节末尾（和第 7 章）**
+- 工作区状态（push 后·交接当时 2026-10-05 17:09:03）：
+  * `git status -s` 未跟踪只有 **历史遗留 .trae/specs/cr26_*、cr27_* 目录**（≥3 轮未 staged，不属于 CR-30 当轮产出；CR-30 当轮 5 文件全部 committed 无 staged 残余）
+  * 验证：`git diff HEAD -- docs/spec/agentlisp_srs.md` 输出空（3 处主改已进入 1183556）；`git diff HEAD -- docs/handoff/*_cr30_c2_*.md` 输出空（handoff hash fill 已进入 52a8e21）
+- push 状态（交接当时·已验证）：**`diff <(git rev-parse HEAD) <(git ls-remote origin main | awk '{print $1}')` 输出空 → local=remote=52a8e21760fae63355ef682e89c829d8c294b2d0，两 hash 字节全等**
 
 ```
 本轮 CR-30 交付 5 文件（AC-6 忠实范围 1 类 1 文件主交付 + 4 个 Spec Mode / handoff 制度化工件 · Score=2/2 满分）：
@@ -137,9 +137,9 @@
 ## 7. 交接人 & 时间
 
 - CR-30 交付人（自动化 Agent）：**CR-30 C-2 automation（本会话 Spec Mode 5 阶段全流程 Agent）**
-- Handoff 文档创建时间：**2026-10-05（与 CR-26/27/28/29 handoff 同日期的制度化连续交付日期；真实时间 `date '+%Y-%m-%d %H:%M:%S'` 待 push 后回填到本段末尾）**
-- 关联 CR-30 核心交付 commit hash：**1183556**（等 push 成功后用 `git rev-parse HEAD` 真实值确认与 `git ls-remote origin main` HEAD hash 全等，确保其他接手人 `git pull origin main` 直接看到本 CR 的 SRS 3 处改动 + Spec 三工件 + 本移交文档）
-- 关联 Handoff hash fill 微小 commit hash：**等写 review.md §4 Cycle2 AC-7 Actual Verdict = PASS + 本手交文档 hash fill 完成后，把这个 commit hash 写在这里（制度化 CR-28/29 同款 2 commit 结构）**
+- Handoff 文档 hash fill 时间：**2026-10-05 17:09:03**（交接当时真实时间；验证命令：`date -r docs/handoff/20261005_cr30_c2_traceability_matrix_align_124_handoff.md '+%Y-%m-%d %H:%M:%S'`）
+- 关联 CR-30 核心交付 commit hash：**1183556454fdff36cec07a69e65fdbfb02a892a4**（HEAD~1；真实值已与 `git ls-remote origin main HEAD~1` 字节全等）
+- 关联 Handoff hash fill 微小 commit hash：**52a8e21760fae63355ef682e89c829d8c294b2d0**（HEAD；制度化 CR-28/29 同款 2 commit 结构；真实值已与 `git ls-remote origin main` HEAD 字节全等）
 
 ```
 下一接手 Agent 必做 4 步（制度化零思考，与 CR-26/27/28/29 同款步骤）：

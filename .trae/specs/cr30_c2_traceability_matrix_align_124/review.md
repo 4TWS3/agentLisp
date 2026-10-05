@@ -45,7 +45,7 @@
 
 | TR# | 复核项（独立 Reviewer 执行不依赖 Implementer 证据） | Actual Value | PASS? |
 |---|---|---|---|
-| TR-4.1 | Push 成功无冲突 · local HEAD = git ls-remote origin main HEAD（两 hash 全等）| 两 hash 全等 = `TBD_handoff_hashfill_commit_hash`（等 hash fill 后回填真实值；验证命令：`diff <(git rev-parse HEAD) <(git ls-remote origin main | awk '{print $1}')`）| ✅ PASS |
+| TR-4.1 | Push 成功无冲突 · local HEAD = git ls-remote origin main HEAD（两 hash 全等）| 两 hash 全等 = `52a8e21760fae63355ef682e89c829d8c294b2d0`（验证命令：`diff <(git rev-parse HEAD) <(git ls-remote origin main | awk '{print $1}')` 输出空）| ✅ PASS（已独立复核 2026-10-05 17:09）|
 | TR-4.2 | Handoff 7 章标题与 CR-29 handoff `grep "^## "` diff 空（字节全等 count=7/7）| diff 空输出；count=7/7；验证 `diff <(grep "^## " 20261005_cr29_b4…handoff.md) <(grep "^## " 20261005_cr30_c2…handoff.md)` → 空 | ✅ PASS（已独立复核 2026-10-05）|
 | TR-4.3 | 两次 commit message 全部 `-F /tmp/cr30_*.txt` 长文无单行 `-m`（制度化 `grep -c "git commit -m"` 真调用=0）| commit 数=2；message 源文件 `/tmp/cr30_commit_msg.txt`（162 lines 7 AC checklist）+ `/tmp/cr30_handoff_hashfill_msg.txt`（30 lines hash fill 说明）；无单行 `-m` zsh 分词风险 | ✅ PASS（已独立复核 2026-10-05）|
 
