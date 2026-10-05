@@ -13,7 +13,7 @@
 |---|---|
 | 本地分支 | `main` |
 | 本轮前基线 HEAD（可 checkout 回退）| `7d67a1c Handoff: CR-26 & CR-27 文档归档` |
-| 本轮 CR-28 业务 commit（待 `git commit -F` 生成后替换）| `待 commit 后填充真实 hash（后 7 位）` |
+| 本轮 CR-28 业务 commit（已 `git commit -F /tmp/cr28_commit_msg.txt` 生成）| `4b89802 CR-28 B-3 IF-CLI-1 CLI exit 6 档编码（123 Δ+1 · 7/7 AC PASS）` |
 | remote origin | `git@github.com:4TWS3/agentLisp.git`（SSH 正常，`git ls-remote origin main` 连通） |
 | `.gitignore` handoff 目录 | 未 ignore（`docs/handoff/*.md` 可正常 commit） |
 | 工作区干净度（`git status -s`）| 本轮交付前：5 个未 staged 文件（spec 3 工件 + pytest 1 + SRS 1）；本轮 T5 commit 后：0 untracked，`git status` clean |
@@ -136,7 +136,7 @@
 
 | 标签字段 | 值（commit push 后可 checkout 复现，字节级一致）|
 |---|---|
-| Commit hash（CR-28 业务 commit 后 7 位，待 `git commit` 替换）| `待 commit 后填真实 7 位（短 hash）` |
+| Commit hash（CR-28 业务 commit 7 位短 hash，已 push origin）| `4b89802`（`git show 4b89802` 可复现，6 files changed，723 insertions，2 deletions） |
 | 严格基线 pytest 签名 | `123 passed / 1 skipped / 1 warning`（CR-28 指纹） |
 | ruff check + format | `0 errors · 56 files already formatted`（CR-28 指纹）|
 | GetDiagnostics | `0 files / 0 diagnostics` |
