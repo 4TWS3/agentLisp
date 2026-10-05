@@ -267,13 +267,19 @@ class BaseHarnessV2(Protocol):
 
 ---
 
-## 附录 B 需求 ↔ 测试 ↔ 代码 可追溯性矩阵（已验证双向对齐，commit aadda41）
+## 附录 B 需求 ↔ 测试 ↔ 代码 可追溯性矩阵（已验证双向对齐，commit 174ca7c → CR-23）
 
-**验证基线**：2026-10-04，严格模式 pytest 87 passed / 0 failed / 0 PytestUnknownMarkWarning；`ruff check All checks passed!`；22 SRS-ID 均有 ≥1 条测试覆盖，0 条孤儿需求。每行用例列表末尾的「×N」为本需求覆盖总条数，>6 只列代表名后补「等 N 个」。
+**验证基线**：2026-10-05，严格模式 pytest 119 passed / 1 skipped / 0 PytestUnknownMarkWarning；`ruff check All checks passed!`；28 SRS-ID 均有 ≥1 条测试覆盖，0 条孤儿需求。每行用例列表末尾的「×N」为本需求覆盖总条数，>6 只列代表名后补「等 N 个」。
 
 | 需求 ID | Scenario 数 | Passed | Failed | Skip/Xfail | pytest / RackUnit 代表性用例 ID | 代码锚（精确文件:行范围） |
 |---|---:|---:|---:|---:|---|---|
 | AC-3 | 2 | 2 | 0 | 0 | test_基于三条件_and_成功判定规则进行样本评估、test_评估新旧_agent_版本的_mcnemar_配对卡方统计显著性 | [run_t2_bench.py](file:///Users/lee/products/agentLisp/scripts/bench/run_t2_bench.py)（fix_rate_total、rubric≥0.8、McNemar chi²≥3.841，三条件 AND 判定框架） |
+| **FR-PARSER-1** | 1 | 1 | 0 | 0 | test_fr_parser_1_illegal_sexp_returns_structured_parse_error_not_racket_match_crash | [agentlisp_compiler.rkt: parse-defagent L83-L121](file:///Users/lee/products/agentLisp/compiler/agentlisp_compiler.rkt#L83-L121)（EBNF 5+1 必选块解析；`raise-parse-with-srcloc` 结构化 exn:agentlisp:parse，避免 Racket match 崩溃泄漏）；[runtime/checker.py](file:///Users/lee/products/agentLisp/runtime/checker.py) `make_parse_error_json` 12 字段 JSON shape 工厂 |
+| **FR-PARSER-2** | 1 | 1 | 0 | 0 | test_fr_parser_2_provider_enum_and_temperature_range_validation | [agentlisp_compiler.rkt: parse-model L125-L145](file:///Users/lee/products/agentLisp/compiler/agentlisp_compiler.rkt#L125-L145)（provider ∈ {anthropic, openai, qwen, mock}；temperature ∈ [0.0, 1.0]，bool 类型拒绝）；[runtime/checker.py](file:///Users/lee/products/agentLisp/runtime/checker.py) `validate_provider_and_temperature`；[runtime/llm_client.py](file:///Users/lee/products/agentLisp/runtime/llm_client.py#L241-L248) 运行时二次校验 |
+| **FR-PARSER-3** | 1 | 1 | 0 | 0 | test_fr_parser_3_memory_auto_append_renamed_to_python_underscore_and_bool_not_lost | [agentlisp_compiler.rkt: parse-memory-policy L165-L175](file:///Users/lee/products/agentLisp/compiler/agentlisp_compiler.rkt#L165-L175)（spec `:auto-append` → Python `auto_append_episodic` 下划线重命名；废弃 `:auto-append-episodic`；#t/#f 值不静默丢失）+ emit context 段；[runtime/checker.py](file:///Users/lee/products/agentLisp/runtime/checker.py) `validate_memory_auto_append_key` |
+| **FR-PARSER-4** | 1 | 1 | 0 | 0 | test_fr_parser_4_tools_4_combinations_and_mcp_scheme_whitelist | [agentlisp_compiler.rkt: parse-tools L180-L216](file:///Users/lee/products/agentLisp/compiler/agentlisp_compiler.rkt#L180-L216)（4 组合：only define-tool × N / only import-builtin / only import-mcp URL / 任意组合，全不崩溃）；[runtime/mcp_client.py](file:///Users/lee/products/agentLisp/runtime/mcp_client.py#L14-L27) MCP scheme 白名单 {stdio, http+unix, https, sse}；[runtime/checker.py](file:///Users/lee/products/agentLisp/runtime/checker.py) `validate_tools_combination_and_mcp_scheme` |
+| **FR-PARSER-5** | 1 | 1 | 0 | 0 | test_fr_parser_5_correct_on_failure_three_values_and_rejects_underscore_variants | [agentlisp_compiler.rkt: CORRECT-ON-FAILURE-ENUM L77-L79](file:///Users/lee/products/agentLisp/compiler/agentlisp_compiler.rkt#L77-L79) + [parse-correct L258-L271](file:///Users/lee/products/agentLisp/compiler/agentlisp_compiler.rkt#L258-L271)（on-failure ∈ {ask-human, fallback-model, abort}，连字符；下划线变体 ask_human/fallback_model 拒绝）；[runtime/checker.py](file:///Users/lee/products/agentLisp/runtime/checker.py) `validate_correct_on_failure` |
+| **FR-PARSER-6** | 1 | 1 | 0 | 0 | test_fr_parser_6_multiagent_topology_enum_and_scoped_worker_min_four_blocks | [agentlisp_compiler.rkt: parse-multi / parse-scoped-worker L272-L305](file:///Users/lee/products/agentLisp/compiler/agentlisp_compiler.rkt#L272-L305)（topology ∈ {peer, orchestration, decentralised, judge-driven}，英式 s 拼写；scoped-worker 最小 4 块 name + model + tools + harness）；[runtime/checker.py](file:///Users/lee/products/agentLisp/runtime/checker.py) `validate_topology_and_scoped_worker_min_blocks` |
 | FR-CHECK-0 | 1 | 1 | 0 | 0 | test_json_errors_shape_via_checker_rkt_source | [checker.rkt](file:///Users/lee/products/agentLisp/compiler/checker.rkt)（12 字段 JSON error 结构 SSOT：schema_version/code/severity/srs_id/message/agent_name/srcloc/hints，srcloc 子结构 source/line/column/position/span）；[main.rkt](file:///Users/lee/products/agentLisp/compiler/main.rkt#L57-L60) emit-json-errors |
 | FR-CHECK-1 | 7 | 7 | 0 | 0 | test_kv_cache_静态前缀强对齐校验_err_kv_alignment_violation×4 参数化、test_compiler_structured_errors_mapped_to_exception_message_shapes 等 7 个 | [checker.rkt](file:///Users/lee/products/agentLisp/compiler/checker.rkt)（check-kv-alignment-order：静态块 :model/:tools 在动态块 :context 之前，违规则抛 ERR_KV_ALIGNMENT_VIOLATION）；[base_harness_v2.py](file:///Users/lee/products/agentLisp/runtime/base_harness_v2.py) build_kv_aligned_context 物理组装顺序 |
 | FR-CHECK-2 | 1 | 1 | 0 | 0 | test_声明具副作用工具但缺少_harness_护栏_err_unguarded_tool_execution | [checker.rkt](file:///Users/lee/products/agentLisp/compiler/checker.rkt)（check-unguarded-tool：工具声明无 :harness 或 :harness.forbidden="" 空串视为无效 → ERR_UNGUARDED_TOOL_EXECUTION）；[base_harness_v2.py](file:///Users/lee/products/agentLisp/runtime/base_harness_v2.py) Constrain 管道 forbidden 词边界匹配 |
@@ -296,10 +302,10 @@ class BaseHarnessV2(Protocol):
 | IF-SDK-1 | 1 | 1 | 0 | 0 | test_base_harness_v2_signature_accepts_all_required_keywords | [base_harness_v2.py](file:///Users/lee/products/agentLisp/runtime/base_harness_v2.py) `BaseHarnessV2.__init__(agent_name, model_client, tools, harness_config, context_config, workspace_root, memory_fs, status_bar)` 签名；默认值 + 类型提示 |
 | IF-TEMPORAL-1 | 1 | 1 | 0 | 0 | test_敏感工具触发_temporal_人在回路_hitl_挂起与_signal_唤醒 | [workflow_temporal.py](file:///Users/lee/products/agentLisp/host/workflow_temporal.py) Workflow（@workflow.defn）+ approve / reject signal handlers；[workflow.py](file:///Users/lee/products/agentLisp/host/workflow.py) `WorkflowRunner.submit(WorkflowRequest(agent_name, harness, inputs))` 异步任务，`run_id → approve(run_id, tool_name)` / `reject(run_id, tool_name)` 接口形状对齐 Temporal |
 
-### 孤儿需求核查（非孤儿 = 正文中 §4/§5 章节存在该 SRS-ID 定义 + ≥1 条 pytest 用例覆盖；孤儿数=0）
+### 孤儿需求核查（非孤儿 = 正文中 §3/§4/§5 章节存在该 SRS-ID 定义 + ≥1 条 pytest 用例覆盖；孤儿数=0）
 
-以下 22 SRS-ID 在 SRS 正文中 **均存在唯一锚点**（ISO 29148 §5.2 需求唯一性 + §8.3 验证完备性）：
-AC-3, FR-CHECK-0, FR-CHECK-1, FR-CHECK-2, FR-CHECK-3, FR-CORRECT-1, FR-MAGT-1, FR-MEM-1, FR-RUN-1, FR-RUN-2, FR-RUN-3, FR-RUN-4, NFR-OBS-1, NFR-PERF-1a, NFR-REL-1, NFR-REL-2, NFR-SEC-1a, NFR-SEC-1b, NFR-SEC-1c, IF-API-1, IF-SDK-1, IF-TEMPORAL-1。
+以下 28 SRS-ID 在 SRS 正文中 **均存在唯一锚点**（ISO 29148 §5.2 需求唯一性 + §8.3 验证完备性）：
+AC-3, FR-PARSER-1, FR-PARSER-2, FR-PARSER-3, FR-PARSER-4, FR-PARSER-5, FR-PARSER-6, FR-CHECK-0, FR-CHECK-1, FR-CHECK-2, FR-CHECK-3, FR-CORRECT-1, FR-MAGT-1, FR-MEM-1, FR-RUN-1, FR-RUN-2, FR-RUN-3, FR-RUN-4, NFR-OBS-1, NFR-PERF-1a, NFR-REL-1, NFR-REL-2, NFR-SEC-1a, NFR-SEC-1b, NFR-SEC-1c, IF-API-1, IF-SDK-1, IF-TEMPORAL-1。
 
 ### 自动化维护脚本
 

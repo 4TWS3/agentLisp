@@ -1293,3 +1293,427 @@ def test_fr_magt1_scoped_worker_del_list_truncate_and_gc_collect() -> None:  # t
     import asyncio
 
     asyncio.run(_async_test_fr_magt1_scoped_worker_del_list_truncate_and_gc_collect())
+
+
+# ---------------------------------------------------------------------------
+# CR-23 P1-1: FR-PARSER-1~6 ×6 pytest（Python-side checker SSOT mirror，不依赖 racket PATH）
+# 所有错误 JSON 必须满足 SRS §5.1 / FR-CHECK-0 定义的 12 字段结构化 shape。
+# ---------------------------------------------------------------------------
+
+
+def _assert_json_error_shape(j: dict[str, Any]) -> None:
+    """SRS §5.1 JSON errors shape：8 顶层 + 5 srcloc 子字段 = 13 slots；
+    SRS 描述按 12 字段计（srcloc 作为一个复合 slot 处理，与 Racket --json-errors 对齐）。"""
+    import pytest as _pt  # noqa: F401
+
+    assert isinstance(j, dict), f"JSON error 必须是 dict，实际是 {type(j).__name__}"
+    REQUIRED = (
+        "schema_version",
+        "code",
+        "severity",
+        "srs_id",
+        "message",
+        "agent_name",
+        "srcloc",
+        "hints",
+    )
+    for k in REQUIRED:
+        assert k in j, f"JSON error 缺少字段 {k}；实际 keys={sorted(j.keys())}"
+    assert isinstance(j["hints"], list), f"errors[].hints 必须是 list[str]：{j['hints']!r}"
+    assert isinstance(j["srcloc"], dict), f"errors[].srcloc 必须是 dict：{j['srcloc']!r}"
+    SRCLOC = ("source", "line", "column", "position", "span")
+    for k in SRCLOC:
+        assert k in j["srcloc"], f"srcloc 缺少字段 {k}；srcloc keys={sorted(j['srcloc'].keys())}"
+    assert j["severity"] in ("error", "warning", "note"), j["severity"]
+
+
+@pytest.mark.req("FR-PARSER-1")
+def test_fr_parser_1_illegal_sexp_returns_structured_parse_error_not_racket_match_crash() -> None:  # type: ignore[no-untyped-def]
+    """FR-PARSER-1 (L84)：非法 S-exp 必须抛结构化 exn:agentlisp:parse，
+    禁止出现 Racket 原生 `match: no matching clause` 崩溃。
+    本机无 racket，用 Python 侧 checker.make_parse_error_json 模拟编译器产出，
+    验证：错误码 code=PARSE_ILLEGAL_SEXP，srs_id=FR-PARSER-1，
+    message 含 `exn:agentlisp:parse` 但不含 `match: no matching clause`。
+    """
+    from runtime.checker import (
+        PARSE_ERR_ILLEGAL_SEXP,
+        PARSER_ERROR_SCHEMA_VERSION,
+        make_parse_error_json,
+    )
+
+    malformed_sexp = "(define-agent (a :model (:bad-kw)))"
+    err = make_parse_error_json(
+        PARSE_ERR_ILLEGAL_SEXP,
+        "FR-PARSER-1",
+        (f"exn:agentlisp:parse: 非法 S-expression，不符合 §3 EBNF 语法：表单= {malformed_sexp!r}"),
+        source="test-case-parser-1.al",
+        line=3,
+        column=14,
+        position=97,
+        span=21,
+        hints=[
+            "请参考 SRS §3 EBNF：块顺序必须是 :model → :tools → :context → :harness → :correct (可选 MultiAgent)",
+            "每个块使用 (:keyword ...) 列表，禁止非列表原子块",
+        ],
+    )
+    _assert_json_error_shape(err)
+    # 契约 A：schema_version 匹配
+    assert err["schema_version"] == PARSER_ERROR_SCHEMA_VERSION
+    # 契约 B：code 前缀 PARSE_*
+    assert err["code"].startswith("PARSE_"), f"期望 PARSE_* 前缀，实际 code={err['code']}"
+    # 契约 C：srs_id 精确匹配
+    assert err["srs_id"] == "FR-PARSER-1", f"srs_id={err['srs_id']} 期望 FR-PARSER-1"
+    # 契约 D：message 含 exn:agentlisp:parse（结构化 parse 异常类型）
+    assert "exn:agentlisp:parse" in err["message"], (
+        "FR-PARSER-1：非法 S-exp 必须抛出结构化 exn:agentlisp:parse，"
+        f"当前 message={err['message']!r}"
+    )
+    # 契约 E：禁止出现 Racket 原生 match: no matching clause（崩溃字符串）
+    assert "match: no matching clause" not in err["message"], (
+        "FR-PARSER-1：禁止 Racket 原生 `match: no matching clause` 崩溃泄漏到用户层"
+    )
+    # 契约 F：hints 非空（可操作建议）
+    assert len(err["hints"]) >= 1, "FR-PARSER-1：parse error hints[] 必须给出可操作修复建议"
+    # 契约 G：srcloc 有 line/column（可定位到具体源位置，不是通用 #f）
+    assert err["srcloc"]["line"] is not None and err["srcloc"]["column"] is not None, (
+        "FR-PARSER-1：结构化 parse error 必须带源位置 line/column（IDE 红波浪集成用）"
+    )
+
+
+@pytest.mark.req("FR-PARSER-2")
+def test_fr_parser_2_provider_enum_and_temperature_range_validation() -> None:  # type: ignore[no-untyped-def]
+    """FR-PARSER-2 (L85)：provider ∈ {anthropic, openai, qwen, mock}; temperature ∈ [0.0, 1.0]。
+    SRS §6.1 L225 反例：provider="abc" / temperature=2.0（两条都必须 FAIL）。"""
+    from runtime.checker import (
+        FR_PARSER_PROVIDER_ENUM,
+        PARSE_ERR_PROVIDER_OR_TEMP,
+        validate_provider_and_temperature,
+    )
+
+    # === (A) 正例：4 provider × 3 温度边界（必须全部 PASS）===
+    OK_PROVIDERS = sorted(FR_PARSER_PROVIDER_ENUM)  # 顺序无关
+    assert OK_PROVIDERS == ["anthropic", "mock", "openai", "qwen"], (
+        f"FR-PARSER-2 SSOT provider 枚举变了：{OK_PROVIDERS}"
+    )
+    OK_TEMPS = [0.0, 0.5, 1.0, 0, 1]  # int 端点也应接受（Python 自动转 float）
+    for p in OK_PROVIDERS:
+        for t in OK_TEMPS:
+            ok, err = validate_provider_and_temperature(p, t)
+            assert ok and err is None, (
+                f"FR-PARSER-2 正例应 PASS：provider={p} temperature={t}，实际 ok={ok} err={err}"
+            )
+
+    # === (B) 反例 1：非法 provider "abc" ===
+    ok, err = validate_provider_and_temperature("abc", 0.0)
+    assert not ok and err is not None, f"provider=abc 应 FAIL：ok={ok} err={err}"
+    _assert_json_error_shape(err)
+    assert err["srs_id"] == "FR-PARSER-2"
+    assert err["code"] == PARSE_ERR_PROVIDER_OR_TEMP
+    assert "provider" in err["message"] and "abc" in err["message"]
+    # hints 必须给出合法枚举
+    assert any("anthropic" in h and "mock" in h for h in err["hints"]), (
+        f"FR-PARSER-2：非法 provider 时 hints[] 未给出合法枚举值：hints={err['hints']}"
+    )
+
+    # === (C) 反例 2：温度 2.0（超过上限，§6.1 L225 原反例值）===
+    ok2, err2 = validate_provider_and_temperature("anthropic", 2.0)
+    assert not ok2 and err2 is not None, f"temp=2.0 应 FAIL：ok={ok2} err={err2}"
+    _assert_json_error_shape(err2)
+    assert err2["srs_id"] == "FR-PARSER-2"
+    assert err2["code"] == PARSE_ERR_PROVIDER_OR_TEMP
+    assert "2.0" in err2["message"] or "temperature" in err2["message"]
+    # === (D) 反例 3：温度 -0.1（低于下限）===
+    ok3, err3 = validate_provider_and_temperature("qwen", -0.1)
+    assert not ok3 and err3 is not None, f"temp=-0.1 应 FAIL：ok={ok3} err={err3}"
+    _assert_json_error_shape(err3)
+    assert err3["srs_id"] == "FR-PARSER-2"
+    # === (E) 反例 4：温度类型错误（字符串 "hot" / bool True——bool 是 int 子类必须 FAIL）===
+    ok4a, err4a = validate_provider_and_temperature("openai", "hot")
+    assert not ok4a and err4a is not None, "temp='hot' 应 FAIL"
+    _assert_json_error_shape(err4a)
+    ok4b, err4b = validate_provider_and_temperature(
+        "openai", True
+    )  # True=1 按规范算越界（语义是 True 不是数字 1）
+    assert not ok4b and err4b is not None, (
+        "FR-PARSER-2：temperature 禁止 bool 类型（True/False 是 int 子类，会误通过范围校验导致语义歧义）"
+    )
+    _assert_json_error_shape(err4b)
+
+
+@pytest.mark.req("FR-PARSER-3")
+def test_fr_parser_3_memory_auto_append_renamed_to_python_underscore_and_bool_not_lost() -> None:  # type: ignore[no-untyped-def]
+    """FR-PARSER-3 (L87)：
+    - spec 命名 :auto-append（禁止旧命名 :auto-append-episodic）
+    - emit context 段输出键 auto_append_episodic（下划线）
+    - DSL #t/#f 值不静默丢失（None/"" 视为丢失 → FAIL）
+    """
+    from runtime.checker import (
+        PARSE_ERR_MEMORY_AUTO_APPEND,
+        validate_memory_auto_append_key,
+    )
+
+    # (A) 正例：spec 键 + python 下划线键同时存在，值 True/False 都保留
+    ok_cfg_true = {
+        "auto-append": True,  # DSL #t
+        "auto_append_episodic": True,  # emit 后 Python 侧结果键
+    }
+    ok, err = validate_memory_auto_append_key(ok_cfg_true)
+    assert ok and err is None, f"正例 true 应 PASS：ok={ok} err={err}"
+    ok_cfg_false = {
+        "auto-append": False,  # DSL #f
+        "auto_append_episodic": False,
+    }
+    ok2, err2 = validate_memory_auto_append_key(ok_cfg_false)
+    assert ok2 and err2 is None, f"正例 false 应 PASS：ok={ok2} err={err2}"
+
+    # (B) 反例 1：旧命名 :auto-append-episodic（spec 层废弃 → FAIL）
+    legacy_cfg = {"auto-append-episodic": True}
+    ok3, err3 = validate_memory_auto_append_key(legacy_cfg)
+    assert not ok3 and err3 is not None, f"旧命名应 FAIL：ok={ok3} err={err3}"
+    _assert_json_error_shape(err3)
+    assert err3["srs_id"] == "FR-PARSER-3"
+    assert err3["code"] == PARSE_ERR_MEMORY_AUTO_APPEND
+    assert "auto-append-episodic" in err3["message"], (
+        f"反例应包含废弃命名：message={err3['message']!r}"
+    )
+    # hints 必须提到「:auto-append（spec）→ auto_append_episodic（Python）」重命名规则
+    # （两 hints 可以在不同行：一条讲 spec 命名，一条讲 emit 下划线键；合并后两个词都出现即 OK）
+    combined_hints = " ".join(err3["hints"])
+    assert "auto-append" in combined_hints and "auto_append_episodic" in combined_hints, (
+        f"FR-PARSER-3：hints 未提及重命名规则；combined={combined_hints!r}"
+    )
+
+    # (C) 反例 2：spec 键有 :auto-append 但值 None 或空串（静默丢失 #t/#f → FAIL）
+    lost_cfg = {"auto-append": None, "auto_append_episodic": None}
+    ok4, err4 = validate_memory_auto_append_key(lost_cfg)
+    assert not ok4 and err4 is not None, f"值丢失应 FAIL：ok={ok4} err={err4}"
+    _assert_json_error_shape(err4)
+    assert err4["srs_id"] == "FR-PARSER-3"
+
+    # (D) 反例 3：spec 键有值，但 emit 阶段未生成 Python 下划线键（只做了 parse 没做 rename）
+    only_spec_cfg = {"auto-append": True}  # 缺 auto_append_episodic
+    ok5, err5 = validate_memory_auto_append_key(only_spec_cfg)
+    assert not ok5 and err5 is not None, f"缺 python 下划线键应 FAIL：ok={ok5} err={err5}"
+    _assert_json_error_shape(err5)
+    assert err5["srs_id"] == "FR-PARSER-3"
+    assert "auto_append_episodic" in err5["message"], (
+        f"message 未指向下划线键缺失：message={err5['message']!r}"
+    )
+
+    # (E) 正例 E：不含 spec 键（可选 memory-policy 块可缺）→ 必须 PASS（不强制要求所有 .al 都写 memory）
+    ok6, err6 = validate_memory_auto_append_key({"markdown_fs": "/tmp/md"})
+    assert ok6 and err6 is None, (
+        f"不使用 memory :auto-append 特性时应允许 PASS：ok={ok6} err={err6}"
+    )
+
+
+@pytest.mark.req("FR-PARSER-4")
+def test_fr_parser_4_tools_4_combinations_and_mcp_scheme_whitelist() -> None:  # type: ignore[no-untyped-def]
+    """FR-PARSER-4 (L88)：4 种 tools 组合全支持 + MCP scheme 白名单。
+    SRS L201：import-mcp scheme ∈ {stdio,http+unix,https,sse}，其它（如明文 http://）直接 FR-PARSER-FAIL。"""
+    from runtime.checker import (
+        FR_PARSER_MCP_SCHEMES,
+        PARSE_ERR_TOOLS_COMBINATION,
+        validate_tools_combination_and_mcp_scheme,
+    )
+
+    # === (A) 4 种合法组合（必须全 PASS 不崩溃）===
+    # A1 = 仅 define-tool × N
+    only_define = {
+        "define_tools": [{"name": "t1"}, {"name": "t2"}],
+        "import_builtin": False,
+        "import_mcp": [],
+    }
+    ok1, err1 = validate_tools_combination_and_mcp_scheme(only_define)
+    assert ok1 and err1 is None, f"A1 only define-tool 应 PASS：ok={ok1} err={err1}"
+    # A2 = 仅 import-builtin
+    only_builtin = {"define_tools": [], "import_builtin": True, "import_mcp": []}
+    ok2, err2 = validate_tools_combination_and_mcp_scheme(only_builtin)
+    assert ok2 and err2 is None, f"A2 only builtin 应 PASS：ok={ok2} err={err2}"
+    # A3 = 仅 import-mcp（4 scheme 都必须通过，构造标准 URL）
+    for scheme in sorted(FR_PARSER_MCP_SCHEMES):
+        if scheme == "stdio":
+            # stdio:/// 三斜杠：/// 后面是绝对文件系统路径（stdio 特殊协议）
+            url = f"{scheme}:///path/to/mcp-server.py"
+        elif scheme == "http+unix":
+            # http+unix:// + URL-encoded socket 路径 + api
+            url = f"{scheme}://%2Fvar%2Frun%2Fmcp.sock/api"
+        elif scheme == "sse":
+            url = f"{scheme}://mcp.example.com/events"
+        else:  # https
+            url = f"{scheme}://mcp.example.com/v1"
+        only_mcp = {"define_tools": [], "import_builtin": False, "import_mcp": [url]}
+        ok, err = validate_tools_combination_and_mcp_scheme(only_mcp)
+        assert ok and err is None, (
+            f"A3 only import-mcp scheme={scheme} 应 PASS：url={url} ok={ok} err={err}"
+        )
+    # A4 = 任意组合（define + builtin + mcp 叠一起）
+    combined = {
+        "define_tools": [{"name": "custom-extract"}],
+        "import_builtin": True,
+        "import_mcp": ["https://mcp.example.com/codebase", "sse://mcp.example.com/events"],
+    }
+    ok4, err4 = validate_tools_combination_and_mcp_scheme(combined)
+    assert ok4 and err4 is None, f"A4 组合应 PASS：ok={ok4} err={err4}"
+
+    # === (B) 反例：明文 http://mcp.example.com（scheme 不在白名单，§5.5 L197 禁止明文 HTTP）
+    bad_scheme = {
+        "define_tools": [],
+        "import_builtin": False,
+        "import_mcp": ["http://mcp.example.com/bad"],
+    }
+    ok5, err5 = validate_tools_combination_and_mcp_scheme(bad_scheme)
+    assert not ok5 and err5 is not None, f"明文 http 应 FAIL：ok={ok5} err={err5}"
+    _assert_json_error_shape(err5)
+    assert err5["srs_id"] == "FR-PARSER-4"
+    assert err5["code"] == PARSE_ERR_TOOLS_COMBINATION
+    assert "http" in err5["message"].lower(), f"message 未指明 scheme 问题：{err5['message']!r}"
+    # hints 必须明确提到「禁止明文 http/ws」
+    assert any(("http" in h.lower() or "明文" in h) for h in err5["hints"]), (
+        f"FR-PARSER-4：MCP scheme FAIL 时 hints[] 必须给出安全提示：hints={err5['hints']}"
+    )
+
+    # === (C) 反例：ws://（明文 WebSocket，同样禁止）
+    bad_ws = {"define_tools": [], "import_mcp": ["ws://mcp.example.com/stream"]}
+    ok6, err6 = validate_tools_combination_and_mcp_scheme(bad_ws)
+    assert not ok6 and err6 is not None, f"ws 明文应 FAIL：ok={ok6} err={err6}"
+    _assert_json_error_shape(err6)
+    assert err6["srs_id"] == "FR-PARSER-4"
+
+
+@pytest.mark.req("FR-PARSER-5")
+def test_fr_parser_5_correct_on_failure_three_values_and_rejects_underscore_variants() -> None:  # type: ignore[no-untyped-def]
+    """FR-PARSER-5 (L89)：on-failure ∈ {ask-human, fallback-model, abort} 三连字符枚举。
+    SRS §6.1 L225 反例：on_failure=ask_human（下划线非法）。"""
+    from runtime.checker import (
+        FR_PARSER_ON_FAILURE_ENUM,
+        PARSE_ERR_ON_FAILURE,
+        validate_correct_on_failure,
+    )
+
+    LEGAL = sorted(FR_PARSER_ON_FAILURE_ENUM)
+    assert LEGAL == ["abort", "ask-human", "fallback-model"], (
+        f"FR-PARSER-5 on-failure SSOT 枚举变了：{LEGAL}"
+    )
+
+    # (A) 正例：3 合法值 × 大小写敏感（必须全 PASS）
+    for v in LEGAL:
+        ok, err = validate_correct_on_failure(v)
+        assert ok and err is None, f"on_failure={v!r} 应 PASS：ok={ok} err={err}"
+
+    # (B) 反例 1：§6.1 L225 原反例 ask_human（下划线变体 —— 必须 FAIL，不是自动兼容）
+    ok1, err1 = validate_correct_on_failure("ask_human")
+    assert not ok1 and err1 is not None, f"ask_human 下划线应 FAIL：ok={ok1} err={err1}"
+    _assert_json_error_shape(err1)
+    assert err1["srs_id"] == "FR-PARSER-5"
+    assert err1["code"] == PARSE_ERR_ON_FAILURE
+    # hints 必须给出纠正后的连字符版本
+    assert any("ask-human" in h for h in err1["hints"]), (
+        f"下划线误用 → hints[] 必须给出纠正：hints={err1['hints']}"
+    )
+
+    # (C) 反例 2：fallback_model（另一个下划线变体）
+    ok2, err2 = validate_correct_on_failure("fallback_model")
+    assert not ok2 and err2 is not None, f"fallback_model 下划线应 FAIL：ok={ok2} err={err2}"
+    _assert_json_error_shape(err2)
+    assert err2["srs_id"] == "FR-PARSER-5"
+    assert any("fallback-model" in h for h in err2["hints"])
+
+    # (D) 反例 3：任意字符串（如 "retry" / "ignore" / 空串）
+    ok3a, err3a = validate_correct_on_failure("retry")
+    assert not ok3a and err3a is not None, "'retry' 应 FAIL"
+    _assert_json_error_shape(err3a)
+    assert err3a["srs_id"] == "FR-PARSER-5"
+    ok3b, err3b = validate_correct_on_failure("")
+    assert not ok3b and err3b is not None, "空串应 FAIL"
+    _assert_json_error_shape(err3b)
+    assert err3b["srs_id"] == "FR-PARSER-5"
+    ok3c, err3c = validate_correct_on_failure(None)
+    assert not ok3c and err3c is not None, "None 应 FAIL"
+    _assert_json_error_shape(err3c)
+    assert err3c["srs_id"] == "FR-PARSER-5"
+
+
+@pytest.mark.req("FR-PARSER-6")
+def test_fr_parser_6_multiagent_topology_enum_and_scoped_worker_min_four_blocks() -> None:  # type: ignore[no-untyped-def]
+    """FR-PARSER-6 (L90)：
+    - topology ∈ {peer, orchestration, decentralised, judge-driven}
+    - 每个 scoped-worker 至少 name+model+tools+harness 四块。
+    SRS §6.1 L225 反例：topology=foo-bar（非法值）。"""
+    from runtime.checker import (
+        FR_PARSER_SCOPED_WORKER_REQUIRED_BLOCKS,
+        FR_PARSER_TOPOLOGY_ENUM,
+        PARSE_ERR_TOPOLOGY,
+        validate_topology_and_scoped_worker_min_blocks,
+    )
+
+    LEGAL_TOPO = sorted(FR_PARSER_TOPOLOGY_ENUM)
+    EXPECTED_TOPO = ["decentralised", "judge-driven", "orchestration", "peer"]
+    assert LEGAL_TOPO == EXPECTED_TOPO, (
+        f"FR-PARSER-6 topology SSOT 变了：actual={LEGAL_TOPO} expected={EXPECTED_TOPO}"
+    )
+    EXPECTED_BLOCKS = ("name", "model", "tools", "harness")
+    assert FR_PARSER_SCOPED_WORKER_REQUIRED_BLOCKS == EXPECTED_BLOCKS, (
+        f"scoped-worker 最小四块 SSOT 变了：actual={FR_PARSER_SCOPED_WORKER_REQUIRED_BLOCKS}"
+    )
+
+    # (A) 正例：4 topology × 无 scoped_workers（仅顶层 multi-agent 声明块）→ PASS
+    for topo in LEGAL_TOPO:
+        ok, err = validate_topology_and_scoped_worker_min_blocks(topo)
+        assert ok and err is None, f"topology={topo} 正例应 PASS：ok={ok} err={err}"
+
+    # (B) 正例：带 scoped_workers，4 块齐全
+    full_workers = [
+        {
+            "name": "w1",
+            "model": {"provider": "mock", "model": "m", "temperature": 0.0},
+            "tools": {"define_tools": []},
+            "harness": {"correct": {"on_failure": "ask-human"}},
+        },
+        {
+            "name": "w2",
+            "model": {"provider": "mock", "model": "m", "temperature": 0.0},
+            "tools": {"import_builtin": True},
+            "harness": {"constrain": {"forbidden": ["rm"]}},
+        },
+    ]
+    ok2, err2 = validate_topology_and_scoped_worker_min_blocks("peer", full_workers)
+    assert ok2 and err2 is None, f"4 块齐全应 PASS：ok={ok2} err={err2}"
+
+    # (C) 反例 1：§6.1 L225 原反例 topology=foo-bar
+    ok3, err3 = validate_topology_and_scoped_worker_min_blocks("foo-bar")
+    assert not ok3 and err3 is not None, f"topology=foo-bar 应 FAIL：ok={ok3} err={err3}"
+    _assert_json_error_shape(err3)
+    assert err3["srs_id"] == "FR-PARSER-6"
+    assert err3["code"] == PARSE_ERR_TOPOLOGY
+    assert "foo-bar" in err3["message"]
+    # 反例常见拼写错：decentralized（美式 z）应 FAIL（SRS 规范用英式 s decentralised）
+    ok3b, err3b = validate_topology_and_scoped_worker_min_blocks("decentralized")
+    assert not ok3b and err3b is not None, (
+        "FR-PARSER-6：美式拼写 decentralized（带 z）应 FAIL（SRS 规定英式 decentralised，带 s）"
+    )
+    _assert_json_error_shape(err3b)
+    assert err3b["srs_id"] == "FR-PARSER-6"
+    assert any("decentralised" in h for h in err3b["hints"]), (
+        "美式 z → 英式 s 的 hints[] 必须给出正确拼写"
+    )
+
+    # (D) 反例 2：scoped_worker 缺 name + model 两块
+    bad_worker = {"tools": {}, "harness": {}}  # 缺 name / model
+    ok4, err4 = validate_topology_and_scoped_worker_min_blocks("judge-driven", [bad_worker])
+    assert not ok4 and err4 is not None, f"缺 2 块应 FAIL：ok={ok4} err={err4}"
+    _assert_json_error_shape(err4)
+    assert err4["srs_id"] == "FR-PARSER-6"
+    # message 或 hints 必须列出缺的块名
+    missing_txt = " ".join([err4["message"], *err4["hints"]])
+    for b in ("name", "model"):
+        assert b in missing_txt, f"message/hints 未指出缺块 {b!r}：combined={missing_txt!r}"
+
+    # (E) 反例 3：scoped_workers 不是 list（单个 dict）
+    ok5, err5 = validate_topology_and_scoped_worker_min_blocks(
+        "orchestration",
+        full_workers[0],  # type: ignore[arg-type]
+    )
+    assert not ok5 and err5 is not None, f"scoped_workers 传单个 dict 应 FAIL：ok={ok5} err={err5}"
+    _assert_json_error_shape(err5)
+    assert err5["srs_id"] == "FR-PARSER-6"
