@@ -35,6 +35,10 @@ jobs:
                    racket/function)
           (require "compiler/patterns.rkt")
 
+          ;; DSL primitives — no-op identity macros so expand doesn't complain about unbound
+          (define-syntax (defagent stx) stx)
+          (define-syntax (scoped-worker stx) stx)
+
           (define (normalize-sexp str)
             (with-input-from-string str
               (thunk

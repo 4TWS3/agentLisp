@@ -10,8 +10,13 @@
          defchain-agent
          defparallel-agent
          defplanner-agent
+         defagent
+         scoped-worker
          reorder-blocks
          splice-to-define-agent)
+
+(define-syntax (defagent stx) stx)
+(define-syntax (scoped-worker stx) stx)
 
 (define (reorder-blocks blocks)
   (define order-preference
