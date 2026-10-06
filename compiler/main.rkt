@@ -9,7 +9,8 @@
          json
          "parser.rkt"
          "checker.rkt"
-         "emitter.rkt")
+         "emitter.rkt"
+         "patterns.rkt")
 
 (module+ main
   (define input-path #f)
@@ -80,6 +81,23 @@
                            (raise e)))])
       (file->value-list input-path)))
 
+  (define (expand-pattern-macros/one form)
+    (cond
+      [(and (pair? form) (memq (car form)
+                              '(defreflect-agent defrouter-agent defchain-agent defparallel-agent defplanner-agent)))
+       (with-handlers ([exn:fail? (lambda (e) form)])
+         (define expanded
+           (syntax->datum (expand (datum->syntax #f form))))
+         (define inner
+           (and (pair? expanded) (eq? (car expanded) 'quote)
+                (pair? (cdr expanded)) (cadr expanded)))
+         (if (and inner (pair? inner) (eq? (car inner) 'defagent))
+             (cons 'define-agent (cdr inner))
+             form))]
+      [else form]))
+  (define expanded-source
+    (for/list ([form (in-list source)]) (expand-pattern-macros/one form)))
+
   (define ast
     (with-handlers
       ([(lambda (e) (or (exn:agentlisp:parse? e) (exn:fail:read? e) (exn:fail? e)))
@@ -89,7 +107,7 @@
              (emit-json-errors (list (exn->jsexpr e)))
              (exit 2)]
             [else (raise e)]))])
-      (with-srcloc-from-form input-path (parse-s-exp input-path source))))
+      (with-srcloc-from-form input-path (parse-s-exp input-path expanded-source))))
 
   (when verbose?
     (displayln (format "==> AgentLisp v2 compiler: ~a" input-path))
@@ -122,7 +140,7 @@
       (cond
         [(pair? agents)
          (define combined-results
-           (for/list ([ag-form source]
+           (for/list ([ag-form expanded-source]
                       #:when (and (pair? ag-form) (eq? (car ag-form) 'define-agent)))
              (with-handlers ([exn:agentlisp:check?
                               (lambda (e)
@@ -169,7 +187,7 @@
             [else
              (list (hasheq 'ok? #f 'title (format "~a" (if (exn? e) (exn-message e) e))
                            'message (format "~a" (if (exn? e) (exn-message e) e))))]))])
-      (let loop ([xs source] [errs-rev '()])
+      (let loop ([xs expanded-source] [errs-rev '()])
         (cond
           [(null? xs) (reverse errs-rev)]
           [else
