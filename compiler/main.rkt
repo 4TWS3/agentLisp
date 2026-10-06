@@ -75,6 +75,17 @@
       (define f (dyn-val '"checker.rkt" 'with-srcloc-from-form (lambda (src th) (th))))
       (f src th)))
 
+  (define (to-str v)
+    (define f (dyn-val '"checker.rkt" 'to-str
+                        (lambda (v)
+                          (cond
+                            ((symbol? v) (symbol->string v))
+                            ((string? v) v)
+                            ((number? v) (number->string v))
+                            ((boolean? v) (if v "True" "False"))
+                            (else (format "~a" v))))))
+    (f v))
+
   (command-line
    #:program "agentlispc"
    #:once-each
