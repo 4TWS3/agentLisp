@@ -53,9 +53,7 @@ RUN apt-get update \
     && curl -fsSL "${RACKET_URL}" -o /tmp/racket-installer.sh \
     && sh /tmp/racket-installer.sh --unix-style --dest /usr/local --create-dir \
     && raco pkg install --auto --no-docs --batch \
-         base \
          rackunit-lib \
-         syntax-parse \
          data-lib \
     && rm -rf /tmp/* /root/.cache /var/lib/apt/lists/*
 
@@ -85,7 +83,7 @@ ENV VIRTUAL_ENV=/app/.venv \
 
 WORKDIR /app
 
-COPY --from=builder /app/.venv /app/.venv
+COPY --from=builder /app/python/.venv /app/.venv
 COPY scheme /app/scheme
 COPY python /app/python
 COPY docker/entrypoint.sh /app/docker/entrypoint.sh
