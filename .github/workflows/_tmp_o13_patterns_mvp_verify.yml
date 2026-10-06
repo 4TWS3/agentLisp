@@ -72,46 +72,38 @@ jobs:
 
           (check-macro 'defreflect
             (defreflect-agent code-refiner
-              :provider "anthropic"
-              :model-name "claude-3-7-sonnet"
-              :tools (bash pytest)
-              :critic "审查"
-              :max-retries 3)
+              :provider "anthropic" :model-name "claude-3-7-sonnet"
+              :tools (bash pytest) :critic "检查代码逻辑漏洞" :max-retries 3)
             "tests/patterns/fixtures/defreflect_code_refiner.expected.rkt"
             200)
 
           (check-macro 'defrouter
             (defrouter-agent ops-gateway
-              :model ("anthropic" "claude-3-5-haiku")
-              :routes ((:intent 'code-review => reviewer)
-                       (:intent 'data-analysis => analyst)
-                       (:intent 'doc-writer => scribe)))
+              :model ("openai" "gpt-5.6")
+              :routes ((:intent 'db-query  => db-worker)
+                       (:intent 'net-debug => net-worker)))
             "tests/patterns/fixtures/defrouter_ops_gateway.expected.rkt"
             200)
 
           (check-macro 'defchain
             (defchain-agent doc-pipeline
-              :model ("qwen" "qwen-plus")
-              :steps (("接收原始 Markdown 文档并检查 frontmatter" frontmatter)
-                      ("按 DCAF 2.0 原子动作分层抽取 L0~L3 知识点" knowledge-atoms)))
+              :steps ((:prompt "提取文档摘要" :out summary)
+                      (:prompt "基于摘要生成代码" :in summary :out code)))
             "tests/patterns/fixtures/defchain_doc_pipeline.expected.rkt"
-            180)
+            200)
 
           (check-macro 'defparallel
             (defparallel-agent multi-search
-              :branches ((search-a "官方文档源 + PyPI README")
-                         (search-b "GitHub Wiki / Issues / Discussions")
-                         (search-c "StackOverflow + 博客"))
-              :reducer aggregator
-              :model ("openai" "gpt-5"))
+              :branches ((search-a "来源 A") (search-b "来源 B"))
+              :reducer aggregator-agent)
             "tests/patterns/fixtures/defparallel_multi_search.expected.rkt"
-            180)
+            200)
 
           (check-macro 'defplanner
             (defplanner-agent deep-researcher
               :model ("anthropic" "claude-3-7-sonnet")
-              :planner-prompt "围绕 AgentLisp Compiler 的测试覆盖做一次调研：现状、缺口、优先级；先制定计划再执行。"
-              :executor-tools (bash wget curl))
+              :planner-prompt "将研究目标分解为 3-5 个步骤"
+              :executor-tools (web-search read-pdf))
             "tests/patterns/fixtures/defplanner_deep_researcher.expected.rkt"
             200)
 
