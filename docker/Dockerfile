@@ -94,8 +94,10 @@ RUN chmod +x /app/docker/entrypoint.sh \
 
 RUN cd /app \
     && ls scheme/ \
-    && raco pkg install --auto --no-docs --batch --link ./scheme 2>&1 || \
-       raco pkg install --auto --no-docs --batch --type dir --name agent-dsl ./scheme
+    && (raco pkg install --auto --no-docs --batch --no-setup --link ./scheme || \
+        raco pkg install --auto --no-docs --batch --no-setup --type dir --name agent-dsl ./scheme || \
+        raco pkg show agent-dsl 2>&1) \
+    && raco pkg list | grep -E "agent-dsl|scheme"
 
 # ===== OCI Image Format Specification 标注（ANNOTATIONS 1.0）=====
 # 5 个标准键 org.opencontainers.image.{source,version,revision,created,title}
