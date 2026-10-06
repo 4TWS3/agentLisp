@@ -65,6 +65,7 @@ SRS_ALIGNMENT: str = "AC-3 §6"
 MCNEMAR_SIGNIFICANCE_CHI2_CUTOFF: float = 3.841
 MCNEMAR_P_CUTOFF: float = 0.05
 FIX_RATE_CUTOFF: float = 0.90
+RUBRIC_MEAN_CUTOFF: float = 0.80
 DEFAULT_DATASET_DOI: str = "t2-bench@v1.0"
 
 
@@ -450,6 +451,7 @@ class T2BenchEvaluator:
         original_fail_pass = sum(1 for d in details if d["cond2_original_fail_all_pass"])
         rubric_ge_0_8 = sum(1 for d in details if d["cond3_rubric_ge_0_8"])
         t2_pass = sum(1 for d in details if d["t2_pass"])
+        rubric_mean = sum(float(d["rubric_score"]) for d in details) / float(n)
         # 构建 A/B contingency：baseline_a_pass vs t2_pass(new_B)
         a = sum(1 for d in details if d["baseline_a_pass"] and d["t2_pass"])
         b = sum(1 for d in details if d["baseline_a_pass"] and not d["t2_pass"])
@@ -463,19 +465,25 @@ class T2BenchEvaluator:
             "generated_at_unix_ms": int(time.time() * 1000),
             "run_id": f"t2-{uuid.uuid4().hex[:10]}",
             "n_samples": n,
-            # SRS 要求的顶层 6 键（顺序保持稳定）
+            # SRS 要求的顶层 6 键（顺序保持稳定）+ rubric_mean
             "compile_pass_rate": round(compile_pass / float(n), 6),
             "original_fail_all_pass_rate": round(original_fail_pass / float(n), 6),
             "rubric_ge_0_8_rate": round(rubric_ge_0_8 / float(n), 6),
+            "rubric_mean": round(rubric_mean, 6),
             "fix_rate": round(fix_rate, 6),
             "mcnemar_chi2": mcnemar["chi2"],
             "mcnemar_p_value": mcnemar["p_value"],
-            # AC-3 合规判定（可机读）
-            "ac3_pass": bool(fix_rate >= FIX_RATE_CUTOFF and mcnemar["significant_p_lt_005"]),
+            # AC-3 合规判定（可机读，SRS 三条件全等：fix_rate≥0.90 AND McNemar 显著 AND rubric_mean≥0.80）
+            "ac3_pass": bool(
+                fix_rate >= FIX_RATE_CUTOFF
+                and mcnemar["significant_p_lt_005"]
+                and rubric_mean >= RUBRIC_MEAN_CUTOFF
+            ),
             "ac3_cutoffs": {
                 "fix_rate_ge": FIX_RATE_CUTOFF,
                 "mcnemar_chi2_ge": MCNEMAR_SIGNIFICANCE_CHI2_CUTOFF,
                 "mcnemar_p_lt": MCNEMAR_P_CUTOFF,
+                "rubric_mean_ge": RUBRIC_MEAN_CUTOFF,
             },
             "mcnemar": mcnemar,
             "detail": details,
@@ -588,6 +596,8 @@ def write_junit_xml(path: str, metrics: dict[str, Any]) -> None:
             ("compile_pass_rate", metrics["compile_pass_rate"]),
             ("original_fail_all_pass_rate", metrics["original_fail_all_pass_rate"]),
             ("rubric_ge_0_8_rate", metrics["rubric_ge_0_8_rate"]),
+            ("rubric_mean", metrics["rubric_mean"]),
+            ("rubric_mean_cutoff_ge", RUBRIC_MEAN_CUTOFF),
             ("fix_rate", metrics["fix_rate"]),
             ("fix_rate_cutoff_ge", FIX_RATE_CUTOFF),
             ("ac3_pass", metrics["ac3_pass"]),
@@ -595,7 +605,11 @@ def write_junit_xml(path: str, metrics: dict[str, Any]) -> None:
         failure_msg=(
             f"fix_rate={metrics['fix_rate']} < cutoff={FIX_RATE_CUTOFF}"
             if metrics["fix_rate"] < FIX_RATE_CUTOFF
-            else None
+            else (
+                f"rubric_mean={metrics['rubric_mean']} < cutoff={RUBRIC_MEAN_CUTOFF}"
+                if metrics["rubric_mean"] < RUBRIC_MEAN_CUTOFF
+                else None
+            )
         ),
     )
     make_case(
@@ -859,19 +873,24 @@ def main(argv: list[str] | None = None) -> int:
         json.dump(summary, sys.stdout, ensure_ascii=False, indent=2, sort_keys=True)
         sys.stdout.write("\n")
     else:
+        rm_ok = metrics["rubric_mean"] >= RUBRIC_MEAN_CUTOFF
         print(
             "[AC-3] n={n} fix_rate={fr:.4%} >= {fc:.0%} ? {fr_ok} ; "
+            "rubric_mean={rm:.4f} >= {rmc:.2f} ? {rm_ok} ; "
             "McNemar chi2={chi:.3f} p={p:.4f} significant={sig}".format(
                 n=metrics["n_samples"],
                 fr=metrics["fix_rate"],
                 fc=FIX_RATE_CUTOFF,
                 fr_ok=metrics["fix_rate"] >= FIX_RATE_CUTOFF,
+                rm=metrics["rubric_mean"],
+                rmc=RUBRIC_MEAN_CUTOFF,
+                rm_ok=rm_ok,
                 chi=metrics["mcnemar_chi2"],
                 p=metrics["mcnemar_p_value"],
                 sig=metrics["mcnemar"]["significant_p_lt_005"],
             )
         )
-        print(f"[AC-3] Overall PASS: {metrics['ac3_pass']}")
+        print(f"[AC-3] Overall PASS (3-condition AND): {metrics['ac3_pass']}")
 
     return 0 if metrics["ac3_pass"] else 4
 

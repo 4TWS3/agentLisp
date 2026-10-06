@@ -30,7 +30,7 @@ from typing import Any
 
 logger = logging.getLogger("AgentLisp.T2Bench.Fetch")
 
-T2_V1_REPO = "agentlisp/t2-bench"
+T2_V1_REPO = "4TWS3/t2-bench"
 T2_V1_TAG = "τ²-bench-v1.0"
 DEFAULT_CACHE_DIR = Path.home() / ".cache" / "agentlisp" / "t2-bench-v1.0"
 
