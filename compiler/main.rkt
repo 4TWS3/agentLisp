@@ -44,10 +44,14 @@
     ((safe-dyn "checker.rkt" 'exn:agentlisp:emit? (lambda (e) #f)) e))
   (define (exn:agentlisp:check->jsexpr e)
     ((safe-dyn "checker.rkt" 'exn:agentlisp:check->jsexpr (lambda (e) (hasheq 'message (exn-message e)))) e))
+  (define (exn:agentlisp:check-code e)
+    ((safe-dyn "checker.rkt" 'exn:agentlisp:check-code (lambda (e) 'UNKNOWN_CHECK_ERROR)) e))
+  (define (exn:agentlisp:parse-code e)
+    ((safe-dyn "checker.rkt" 'exn:agentlisp:parse-code (lambda (e) 'UNKNOWN_PARSE_ERROR)) e))
   (define (to-str v)
     ((safe-dyn "checker.rkt" 'to-str (lambda (v) (if (symbol? v) (symbol->string v) (format "~a" v)))) v))
-  (define (with-srcloc-from-form src thnk)
-    ((safe-dyn "checker.rkt" 'with-srcloc-from-form (lambda (src thnk) (thnk))) src thnk))
+  (define (with-srcloc-from-form src proc)
+    ((safe-dyn "checker.rkt" 'with-srcloc-from-form (lambda (src proc) (proc))) src proc))
   (define (parse-defagent form)
     ((safe-dyn "agentlisp_compiler.rkt" 'parse-defagent (lambda (form) #f)) form))
   (define (check-agent parsed)
@@ -59,7 +63,6 @@
 
   (define (expand-pattern-macros/via-subprocess all-forms)
     (with-handlers ([exn:fail? (lambda (e) all-forms)])
-      (define tmp-out (make-temporary-file "al_expand_~a.rkt"))
       (define tmp-in (make-temporary-file "al_in_~a.al"))
       (call-with-output-file tmp-in
         (lambda (out)
@@ -68,13 +71,11 @@
             (newline out)))
         #:exists 'replace)
       (define expander-path (build-path (or (current-load-relative-directory) (current-directory)) "_tmp_expand_patterns.rkt"))
-      (define cmd (format "~a ~a ~a"
-                          (find-executable-path "racket")
-                          expander-path
-                          tmp-in))
-      (define out-str (with-output-to-string (lambda () (system cmd))))
+      (define rkt-path (find-executable-path "racket"))
+      (define out-str (if (and rkt-path (file-exists? expander-path))
+                         (with-output-to-string (lambda () (system* rkt-path expander-path tmp-in)))
+                         ""))
       (delete-file tmp-in)
-      (delete-file tmp-out)
       (call-with-input-string out-str
         (lambda (in)
           (let loop ((acc '()))
@@ -93,9 +94,9 @@
    (("-v" "--verbose") "Verbose: print progress" (set! verbose? #t))
    (("--dump-expanded-sexp") "Dump post-pattern-expansion s-expressions, then exit"
     (set! dump-expanded-sexp? #t))
-   (("--dump-ast") "Alias for --dump-expanded-sexp (backward compat)"
-    (set! dump-ast? #t)
-    (set! dump-expanded-sexp? #t))
+   (("--dump-ast") "Alias for --dump-expanded-sexp"
+    (set! dump-expanded-sexp? #t)
+    (set! dump-ast? #t))
    #:args positional
    (when (and (not input-path) (pair? positional))
      (set! input-path (car positional)))
@@ -210,10 +211,11 @@
                    (values (and name (to-str name)) #t)))
                (with-srcloc-from-form
                 input-path
-                (lambda ()
-                  (let ((parsed (parse-defagent ag-form)))
-                    (check-agent parsed)
-                    (hasheq 'ok? #t 'title (format "check-agent: ~a" (or parsed-name "anon")) 'message "")))))))
+                (begin
+                  (require "agentlisp_compiler.rkt")
+                  (define parsed (parse-defagent ag-form))
+                  (check-agent parsed)
+                  (hasheq 'ok? #t 'title (format "check-agent: ~a" (or parsed-name "anon")) 'message ""))))))
          combined-results)
         (else
          (list (hasheq 'ok? #t 'title "empty-ast" 'message "no define-agent forms, trivially pass static checks"))))))
@@ -276,19 +278,19 @@
                                                        'message (exn-message e)
                                                        'jsexpr (exn->jsexpr e))
                                                errs-rev)))))
-                  (let ((parsed (parameterize ((current-checker-source-name input-path))
-                                   (let ((p (parse-defagent form)))
-                                     (check-agent p)
-                                     p)))
-                        (aname
-                         (if (and (pair? (cdr form)) (pair? (cddr form)))
-                             (to-str (cadr form))
-                             "anon")))
-                    (loop (cdr xs)
+                  (local-require "agentlisp_compiler.rkt")
+                  (parameterize ((current-checker-source-name input-path))
+                    (define parsed (parse-defagent form))
+                    (check-agent parsed))
+                  (define aname
+                    (if (and (pair? (cdr form)) (pair? (cddr form)))
+                        (to-str (cadr form))
+                        "anon"))
+                  (loop (cdr xs)
                         (cons (hasheq 'ok? #t
                                       'title (format "check-agent: ~a" aname)
                                       'message "")
-                              errs-rev))))))
+                              errs-rev)))))
              (else (loop (cdr xs) errs-rev))))))))
 
   ;; JSON errors 输出模式：把所有 failed 的 jsexpr 打平成一个 array；成功时输出 ()
