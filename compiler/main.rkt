@@ -249,7 +249,8 @@
                (with-srcloc-from-form
                 input-path
                 (begin
-                  (require "agentlisp_compiler.rkt")
+                  (with-handlers ((exn:fail? (lambda (e) (void))))
+                    (dynamic-require "agentlisp_compiler.rkt" #f))
                   (define parsed (parse-defagent ag-form))
                   (check-agent parsed)
                   (hasheq 'ok? #t 'title (format "check-agent: ~a" (or parsed-name "anon")) 'message ""))))))
@@ -315,7 +316,8 @@
                                                        'message (exn-message e)
                                                        'jsexpr (exn->jsexpr e))
                                                errs-rev)))))
-                  (local-require "agentlisp_compiler.rkt")
+                  (with-handlers ((exn:fail? (lambda (e) (void))))
+                    (dynamic-require "agentlisp_compiler.rkt" #f))
                   (parameterize ((current-checker-source-name input-path))
                     (define parsed (parse-defagent form))
                     (check-agent parsed))
@@ -327,7 +329,7 @@
                         (cons (hasheq 'ok? #t
                                       'title (format "check-agent: ~a" aname)
                                       'message "")
-                              errs-rev)))))
+                              errs-rev))))))
              (else (loop (cdr xs) errs-rev))))))))
 
   ;; JSON errors 输出模式：把所有 failed 的 jsexpr 打平成一个 array；成功时输出 ()
@@ -368,7 +370,7 @@
             (displayln (format "==> emitted ~a bytes -> ~a" (string-length code) output-path))))
         (display code)))
 
-  (exit 0))
+  (exit 0)
 
 (define (file->value-list path)
   (call-with-input-file path
