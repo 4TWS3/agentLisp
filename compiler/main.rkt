@@ -28,10 +28,12 @@
    [("-o" "--output") path "Output .py destination file (stdout if omitted)" (set! output-path path)]
    [("--check-only") "Run static checks only, do not emit" (set! check-only? #t)]
    [("--no-emit") "Alias for --check-only" (set! check-only? #t)]
-   [("--dump-ast") "Alias for --dump-expanded-sexp (compat)" (set! dump-expanded-sexp? #t)]
-   [("--dump-expanded-sexp") "After Pattern Macro Expansion pass, dump normalized s-exp of ALL top-level forms to stdout and exit (do not check/emit); used by tests/patterns/" (set! dump-expanded-sexp? #t)]
    [("--json-errors") "Emit compiler diagnostics as JSON array to stdout (SRS §5.1, 用于 IDE 红波浪)"
     (set! json-errors? #t)]
+   [("--dump-ast") "Alias for --dump-expanded-sexp"
+    (set! dump-expanded-sexp? #t)]
+   [("--dump-expanded-sexp") "After Pattern Macro Expansion, dump all top-level sexp to stdout then exit"
+    (set! dump-expanded-sexp? #t)]
    [("-v" "--verbose") "Verbose: print progress" (set! verbose? #t)]
    #:args positional
    (when (and (not input-path) (pair? positional))
@@ -86,20 +88,31 @@
 
   (define (expand-pattern-macros/one form)
     (cond
-      [(and (pair? form) (memq (car form)
-                              '(defreflect-agent defrouter-agent defchain-agent defparallel-agent defplanner-agent)))
+      [(and (pair? form)
+            (memq (car form)
+                  '(defreflect-agent
+                    defrouter-agent
+                    defchain-agent
+                    defparallel-agent
+                    defplanner-agent)))
        (with-handlers ([exn:fail? (lambda (e) form)])
-         (define expanded
-           (syntax->datum (expand (datum->syntax #f form))))
-         (define inner
-           (and (pair? expanded) (eq? (car expanded) 'quote)
-                (pair? (cdr expanded)) (cadr expanded)))
-         (if (and inner (pair? inner) (eq? (car inner) 'defagent))
-             (cons 'define-agent (cdr inner))
-             form))]
+         (let* ([stx (datum->syntax #f form)]
+                [expanded-stx (expand stx)]
+                [expanded (syntax->datum expanded-stx)])
+           (define inner
+             (and (pair? expanded)
+                  (eq? (car expanded) 'quote)
+                  (pair? (cdr expanded))
+                  (cadr expanded)))
+           (if (and (pair? inner)
+                    (eq? (car inner) 'defagent))
+               (cons 'define-agent (cdr inner))
+               form)))]
       [else form]))
+
   (define expanded-source
-    (for/list ([form (in-list source)]) (expand-pattern-macros/one form)))
+    (for/list ([form (in-list source)])
+      (expand-pattern-macros/one form)))
 
   (when dump-expanded-sexp?
     (for ([form (in-list expanded-source)])

@@ -147,7 +147,7 @@ jobs:
         shell: bash -euxo pipefail {0}
         run: |
           python3 -m pip install --upgrade pip
-          python3 -m pip install pytest ruff
+          python3 -m pip install pytest ruff pytest-cov
           python3 -m pip install -e . 2>&1 | tail -3 || true
 
       - name: Run pytest patterns cases
@@ -155,13 +155,13 @@ jobs:
         run: |
           export PYTHONPATH=$(pwd):$(pwd)/tests
           which racket && racket --version
-          echo "-- Sanity dump-ast defreflect 260 chars --"
-          racket compiler/main.rkt --dump-ast tests/patterns/fixtures/defreflect_code_refiner.al 2>&1 | head -c 300 || true
+          echo "-- Sanity dump-ast defreflect 300 chars --"
+          racket compiler/main.rkt --dump-ast tests/patterns/fixtures/defreflect_code_refiner.al 2>&1 | head -c 300
           echo
-          echo "-- pytest patterns --"
+          echo "-- Now full pytest patterns suite --"
           python3 -m pytest tests/patterns/test_pattern_checker.py -v 2>&1 | tee /tmp/pytest_patterns.log || true
-          echo "===== pytest patterns summary tail 15 ====="
-          tail -15 /tmp/pytest_patterns.log
+          echo "===== pytest patterns summary tail 20 ====="
+          tail -20 /tmp/pytest_patterns.log
 
       - name: Run RackUnit patterns MVP
         shell: bash -euxo pipefail {0}
