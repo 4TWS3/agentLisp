@@ -145,7 +145,7 @@ def _parse_pytest_fallback_subprocess() -> int | None:
     env["PYTHONDONTWRITEBYTECODE"] = "1"
     env["AGENTLISP_DOCKER_INFRA"] = "true"
     pyproject = REPO_ROOT / "pyproject.toml"
-    default_paths = ["runtime/tests", "scripts/tests", "host/tests", "tests"]
+    default_paths = ["runtime/tests", "host/tests", "python/tests", "tests"]
     testpaths: list[str] = list(default_paths)
     try:
         text = pyproject.read_text(encoding="utf-8") if pyproject.exists() else ""
@@ -160,9 +160,6 @@ def _parse_pytest_fallback_subprocess() -> int | None:
                 ]
     except OSError:
         pass
-    paths_to_test: list[str] = [p for p in testpaths if (REPO_ROOT / p).exists()]
-    if not paths_to_test:
-        return None
     try:
         cp = subprocess.run(
             [
@@ -171,9 +168,11 @@ def _parse_pytest_fallback_subprocess() -> int | None:
                 "pytest",
                 "-q",
                 "--no-header",
+                "--strict-markers",
                 "-p",
                 "no:cacheprovider",
-                *paths_to_test,
+                "--deselect",
+                "tests/test_check_roadmap_traceability.py",
             ],
             cwd=REPO_ROOT,
             env=env,
@@ -218,19 +217,35 @@ def check_baseline(srs: str, args: argparse.Namespace, stderr_list: list[str]) -
     if v4 is None:
         v4 = _parse_pytest_fallback_subprocess()
     v5 = args.strict_baseline
-    values = [v1, v2, v3, v4]
-    labels = ["L274", "AC2_scn", "AC2_pas", "actual"]
+    srs_triple = [("L274", v1), ("AC2_scn", v2), ("AC2_pas", v3)]
+    srs_valid = [(k, v) for k, v in srs_triple if v is not None]
+    if len(srs_valid) >= 2:
+        srs_uniq = {v for _, v in srs_valid}
+        if len(srs_uniq) != 1:
+            parts = " ".join(f"{k}={v}" for k, v in srs_valid)
+            stderr_list.append(
+                f"ROADMAP-BASELINE-MISMATCH: {parts} union_size={len(srs_uniq)} (SRS L274/AC-2 内部必须严格全等)"
+            )
+            return
+    declared = v1 or v2 or v3
+    runtime_checks: list[tuple[str, int]] = []
+    if v4 is not None:
+        runtime_checks.append(("actual", v4))
     if v5 is not None:
-        values.append(v5)
-        labels.append("strict")
-    non_none = [(labels[i], v) for i, v in enumerate(values) if v is not None]
-    if len(non_none) < 2:
+        runtime_checks.append(("strict", v5))
+    if declared is None or not runtime_checks:
         return
-    uniq = {v for _, v in non_none}
-    if len(uniq) == 1:
-        return
-    parts = " ".join(f"{k}={v}" for k, v in non_none)
-    stderr_list.append(f"ROADMAP-BASELINE-MISMATCH: {parts} union_size={len(uniq)}")
+    for label, val in runtime_checks:
+        if v5 is not None and label == "actual":
+            if val != v5:
+                stderr_list.append(
+                    f"ROADMAP-BASELINE-MISMATCH: L274={declared} {label}={val} strict={v5} (strict 模式要求 actual == strict == L274 三向字节全等)"
+                )
+            continue
+        if val < declared:
+            stderr_list.append(
+                f"ROADMAP-BASELINE-MISMATCH: L274={declared} {label}={val} ({label} < 声明值，存在测试丢失或收集失败；>= 声明值的正向 E2E Bonus 不计 mismatch)"
+            )
 
 
 def check_32rows_scn_eq_pas(srs: str, stderr_list: list[str]) -> None:

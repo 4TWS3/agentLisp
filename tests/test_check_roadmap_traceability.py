@@ -13,7 +13,7 @@ SRS_MD = REPO_ROOT / "docs" / "spec" / "agentlisp_srs.md"
 with tempfile.NamedTemporaryFile("w", suffix=".xml", delete=False, encoding="utf-8") as FAKE_JUNIT:
     FAKE_JUNIT.write(
         '<?xml version="1.0"?>'
-        '<testsuites><testsuite tests="124" failures="0" errors="0" skipped="1">'
+        '<testsuites><testsuite tests="128" failures="0" errors="0" skipped="3">'
         '<testcase classname="m" name="x"/></testsuite></testsuites>'
     )
     FAKE_JUNIT_NAME = FAKE_JUNIT.name
@@ -56,7 +56,7 @@ def test_check_roadmap_traceability_id_drift_exit_one_and_prefix_count_one():
         tmp.write(drifted)
         tmp_srs = pathlib.Path(tmp.name)
     try:
-        cp = _run_cli(tmp_srs, extra=["--strict-baseline", "124"])
+        cp = _run_cli(tmp_srs, extra=["--strict-baseline", "128"])
         assert cp.returncode == 1, f"stderr: {cp.stderr}"
         id_count = len(re.findall(r"^ROADMAP-ID-MISMATCH:", cp.stderr, re.M))
         base_count = len(re.findall(r"^ROADMAP-BASELINE-MISMATCH:", cp.stderr, re.M))
@@ -68,13 +68,13 @@ def test_check_roadmap_traceability_id_drift_exit_one_and_prefix_count_one():
 
 def test_check_roadmap_traceability_baseline_mismatch_exit_one_and_prefix_count_one():
     content = SRS_MD.read_text(encoding="utf-8")
-    drifted = content.replace("pytest 124 passed", "pytest 119 passed", 1)
+    drifted = content.replace("pytest 128 passed", "pytest 119 passed", 1)
     assert drifted != content
     with tempfile.NamedTemporaryFile("w", suffix=".md", delete=False, encoding="utf-8") as tmp:
         tmp.write(drifted)
         tmp_srs = pathlib.Path(tmp.name)
     try:
-        cp = _run_cli(tmp_srs, extra=["--strict-baseline", "124"])
+        cp = _run_cli(tmp_srs, extra=["--strict-baseline", "128"])
         assert cp.returncode == 1, f"stderr: {cp.stderr}"
         id_count = len(re.findall(r"^ROADMAP-ID-MISMATCH:", cp.stderr, re.M))
         base_count = len(re.findall(r"^ROADMAP-BASELINE-MISMATCH:", cp.stderr, re.M))
