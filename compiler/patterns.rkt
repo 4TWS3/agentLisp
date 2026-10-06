@@ -3,8 +3,7 @@
 (require (for-syntax racket/base
                      racket/syntax
                      racket/string
-                     racket/match)
-         "checker.rkt")
+                     racket/match))
 
 (provide defreflect-agent
          defrouter-agent
