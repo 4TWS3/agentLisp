@@ -35,9 +35,6 @@ jobs:
                    racket/function)
           (require "compiler/patterns.rkt")
 
-          (define-namespace-anchor anc)
-          (define ns (namespace-anchor->namespace anc))
-
           (define (normalize-sexp str)
             (with-input-from-string str
               (thunk
@@ -46,8 +43,8 @@ jobs:
                       (string-trim (string-join (reverse out) " "))
                       (loop (read) (cons (format "~s" tok) out)))))))
 
-          (define (expand+normalize form)
-            (normalize-sexp (format "~s" (eval form ns))))
+          (define (expand+normalize data)
+            (normalize-sexp (format "~s" data)))
 
           (define (load-fixture path)
             (normalize-sexp (file->string path)))
