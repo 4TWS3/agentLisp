@@ -19,6 +19,7 @@
   (define emit-python? #t)
   (define json-errors? #f)
   (define verbose? #f)
+  (define dump-expanded-sexp? #f)
 
   (command-line
    #:program "agentlispc"
@@ -27,6 +28,8 @@
    [("-o" "--output") path "Output .py destination file (stdout if omitted)" (set! output-path path)]
    [("--check-only") "Run static checks only, do not emit" (set! check-only? #t)]
    [("--no-emit") "Alias for --check-only" (set! check-only? #t)]
+   [("--dump-ast") "Alias for --dump-expanded-sexp (compat)" (set! dump-expanded-sexp? #t)]
+   [("--dump-expanded-sexp") "After Pattern Macro Expansion pass, dump normalized s-exp of ALL top-level forms to stdout and exit (do not check/emit); used by tests/patterns/" (set! dump-expanded-sexp? #t)]
    [("--json-errors") "Emit compiler diagnostics as JSON array to stdout (SRS §5.1, 用于 IDE 红波浪)"
     (set! json-errors? #t)]
    [("-v" "--verbose") "Verbose: print progress" (set! verbose? #t)]
@@ -97,6 +100,11 @@
       [else form]))
   (define expanded-source
     (for/list ([form (in-list source)]) (expand-pattern-macros/one form)))
+
+  (when dump-expanded-sexp?
+    (for ([form (in-list expanded-source)])
+      (displayln (format "~s" form)))
+    (exit 0))
 
   (define ast
     (with-handlers
