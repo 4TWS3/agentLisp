@@ -12,7 +12,7 @@ permissions:
 jobs:
   verify-patterns-mvp:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -24,65 +24,25 @@ jobs:
           distribution: minimal
           version: "8.12"
 
-      - name: Quick syntax check main.rkt + patterns.rkt (diagnostic)
+      - name: Quick syntax/load diagnostics
         shell: bash -euxo pipefail {0}
         run: |
-          echo "--- Step A: racket syntax-only main.rkt ---"
-          cat > /tmp/load_main.rkt <<'RKT'
-          #lang racket
-          (with-handlers ([exn:fail? (lambda (e) (displayln (format "ERROR: ~a" (exn-message e))) (exit 1))])
-            (load "compiler/main.rkt"))
-          RKT
-          raco make compiler/main.rkt 2>&1 | tee /tmp/raco_make_main.log || true
-          echo "--- Step B: lines around L244 of compiler/main.rkt (1-based) ---"
-          sed -n '190,250p' compiler/main.rkt | cat -n
-          echo "--- Step C: racket -l racket/base require patterns standalone ---"
-          cat > /tmp/load_patterns.rkt <<'RKT'
-          #lang racket
-          (require "compiler/patterns.rkt")
-          (displayln "PATTERNS LOADED OK")
-          RKT
-          racket /tmp/load_patterns.rkt 2>&1 | tee /tmp/load_patterns.log || true
-          echo "--- Step D: bracket diff via Python counter on full load_main.rkt ---"
-          python3 -c "
-import sys
-content = open('compiler/main.rkt').read()
-sq=par=0
-bad=[]
-for i,line in enumerate(content.splitlines(),1):
-  for c in line:
-    if c=='[': sq+=1
-    elif c==']': sq-=1
-    elif c=='(': par+=1
-    elif c==')': par-=1
-    if sq<0 or par<0:
-      bad.append((i,line[:120],sq,par))
-      sq=max(sq,0); par=max(par,0)
-print('end sq=%d par=%d'%(sq,par))
-if bad:
-  print('NEGATIVE at lines:',bad[:5])
-"
-          echo "--- Step E: racket read-line each line, check for bad unread paren from here-string syntax ---"
-          cat > /tmp/read-check.rkt <<'RKT'
-          #lang racket
-          (require syntax/readerr)
-          (define (go)
-            (with-input-from-file "compiler/main.rkt"
-              (thunk
-                (let loop ([n 0])
-                  (define line (read-line))
-                  (cond [(eof-object? line) (displayln (format "LINES READ: ~a OK" n))]
-                        [else (loop (+ n 1))])))))
-          (with-handlers ([exn:fail:read? (lambda (e) (displayln (format "READ-ERR AT: ~a ~a" (exn:fail:read-srclocs e) (exn-message e))))]
-                          [exn:fail? (lambda (e) (displayln (format "OTHER ERR: ~a" (exn-message e))))])
-            (parameterize ([read-case-sensitive #t]) (go)))
-          RKT
-          racket /tmp/read-check.rkt 2>&1 | tee /tmp/readline_check.log || true
+          echo "-- Step A: bracket diff via python --"
+          python3 scripts/_tmp_bracket_diff.py compiler/main.rkt 2>&1 | tee /tmp/diff_main.log || true
+          python3 scripts/_tmp_bracket_diff.py compiler/patterns.rkt 2>&1 | tee /tmp/diff_pat.log || true
+          echo "-- Step B: load patterns.rkt standalone --"
+          racket -e "(require (file \"$(pwd)/compiler/patterns.rkt\")) (displayln \"PATTERNS OK\")" 2>&1 | tee /tmp/pat_load.log || true
+          echo "-- Step C: print lines 190-260 main.rkt (cat -n) --"
+          awk 'NR>=190 && NR<=260 {printf "%d:\t%s\n", NR, $0}' compiler/main.rkt
+          echo "-- Step D: raco expand of main.rkt head lines only (up to 2048 chars) --"
+          racket -e "(with-input-from-file \"compiler/main.rkt\" (thunk (let loop ([n 0] [sz 0]) (define l (read-line (current-input-port) 'any)) (cond [(or (eof-object? l) (> sz 8192)) (displayln (format \"ok lines ~a sz ~a\" n sz))] [else (loop (+ n 1) (+ sz (string-length l)))])))" 2>&1 | tee /tmp/read_lines.log || true
+          echo "-- Step E: raco make main.rkt --"
+          raco make compiler/main.rkt 2>&1 | tee /tmp/raco_make.log || true
 
       - name: Verify 5 macros standalone expand against fixtures (NO main.rkt wiring)
         shell: bash -euxo pipefail {0}
         run: |
-          cat > expand_verify.rkt <<'RKT'
+          cat > expand_verify.rkt <<'ENDOFRACKET'
           #lang racket
           (require racket/match
                    racket/string
@@ -164,16 +124,18 @@ if bad:
           (call-with-output-file "/tmp/patterns_verify.json"
             (lambda (out)
               (for/list ([(k v) (in-hash *results*)])
-                (displayln (format "RESULT name=~a ok=~a detail=~a" k (car v) (cdr v)))))
+                (displayln (format "RESULT name=~a ok=~a detail=~a" k (car v) (cdr v)) out)))
             #:exists 'replace)
+          (for/list ([(k v) (in-hash *results*)])
+            (displayln (format "RESULT name=~a ok=~a" k (car v))))
           (define failures (for/sum ([(k v) (in-hash *results*)] #:when (not (car v))) 1))
           (printf "SUMMARY failures=~a/5\n" failures)
           (flush-output)
           (exit failures)
-          RKT
+          ENDOFRACKET
           ls -la expand_verify.rkt
           racket expand_verify.rkt 2>&1 | tee /tmp/expand_stdout.log
-          echo "--- LOG TAIL ---"
+          echo "--- expand LOG TAIL ---"
           tail -20 /tmp/expand_stdout.log || true
 
       - name: Setup Python (for pytest patterns cases)
@@ -181,34 +143,32 @@ if bad:
         with:
           python-version: "3.12"
 
-      - name: Install Python deps (pytest, ruff, etc.)
+      - name: Install Python deps
         shell: bash -euxo pipefail {0}
         run: |
           python3 -m pip install --upgrade pip
           python3 -m pip install pytest ruff
           python3 -m pip install -e . 2>&1 | tail -3 || true
 
-      - name: Run pytest patterns cases (PM-01..PM-10) via main.rkt --dump-ast
+      - name: Run pytest patterns cases
         shell: bash -euxo pipefail {0}
         run: |
           export PYTHONPATH=$(pwd):$(pwd)/tests
-          echo "--- Racket binary:"
           which racket && racket --version
-          echo "--- Sanity: racket main --dump-ast 输出对 defreflect fixture:"
-          racket compiler/main.rkt --dump-ast tests/patterns/fixtures/defreflect_code_refiner.al | head -c 260
+          echo "-- Sanity dump-ast defreflect 260 chars --"
+          racket compiler/main.rkt --dump-ast tests/patterns/fixtures/defreflect_code_refiner.al 2>&1 | head -c 300 || true
           echo
-          echo "--- Now pytest patterns cases ---"
+          echo "-- pytest patterns --"
           python3 -m pytest tests/patterns/test_pattern_checker.py -v 2>&1 | tee /tmp/pytest_patterns.log || true
-          echo "===== pytest patterns summary (tail 15) ====="
+          echo "===== pytest patterns summary tail 15 ====="
           tail -15 /tmp/pytest_patterns.log
 
-      - name: Run RackUnit patterns MVP (PM-EXP 001..005)
+      - name: Run RackUnit patterns MVP
         shell: bash -euxo pipefail {0}
         run: |
           cd compiler/tests
-          echo "--- raco test test_patterns_mvp.rkt ---"
           raco test test_patterns_mvp.rkt 2>&1 | tee /tmp/rackunit_patterns.log || true
-          echo "===== RackUnit patterns summary (tail 25) ====="
+          echo "===== RackUnit patterns summary tail 25 ====="
           tail -25 /tmp/rackunit_patterns.log
 
       - name: Upload verification log
@@ -216,4 +176,11 @@ if bad:
         uses: actions/upload-artifact@v4
         with:
           name: patterns-verify-result
-          path: /tmp/patterns_verify.json
+          path: |
+            /tmp/patterns_verify.json
+            /tmp/diff_*.log
+            /tmp/pat_load.log
+            /tmp/read_lines.log
+            /tmp/raco_make.log
+            /tmp/pytest_patterns.log
+            /tmp/rackunit_patterns.log
