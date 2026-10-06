@@ -24,6 +24,61 @@ jobs:
           distribution: minimal
           version: "8.12"
 
+      - name: Quick syntax check main.rkt + patterns.rkt (diagnostic)
+        shell: bash -euxo pipefail {0}
+        run: |
+          echo "--- Step A: racket syntax-only main.rkt ---"
+          cat > /tmp/load_main.rkt <<'RKT'
+          #lang racket
+          (with-handlers ([exn:fail? (lambda (e) (displayln (format "ERROR: ~a" (exn-message e))) (exit 1))])
+            (load "compiler/main.rkt"))
+          RKT
+          raco make compiler/main.rkt 2>&1 | tee /tmp/raco_make_main.log || true
+          echo "--- Step B: lines around L244 of compiler/main.rkt (1-based) ---"
+          sed -n '190,250p' compiler/main.rkt | cat -n
+          echo "--- Step C: racket -l racket/base require patterns standalone ---"
+          cat > /tmp/load_patterns.rkt <<'RKT'
+          #lang racket
+          (require "compiler/patterns.rkt")
+          (displayln "PATTERNS LOADED OK")
+          RKT
+          racket /tmp/load_patterns.rkt 2>&1 | tee /tmp/load_patterns.log || true
+          echo "--- Step D: bracket diff via Python counter on full load_main.rkt ---"
+          python3 -c "
+import sys
+content = open('compiler/main.rkt').read()
+sq=par=0
+bad=[]
+for i,line in enumerate(content.splitlines(),1):
+  for c in line:
+    if c=='[': sq+=1
+    elif c==']': sq-=1
+    elif c=='(': par+=1
+    elif c==')': par-=1
+    if sq<0 or par<0:
+      bad.append((i,line[:120],sq,par))
+      sq=max(sq,0); par=max(par,0)
+print('end sq=%d par=%d'%(sq,par))
+if bad:
+  print('NEGATIVE at lines:',bad[:5])
+"
+          echo "--- Step E: racket read-line each line, check for bad unread paren from here-string syntax ---"
+          cat > /tmp/read-check.rkt <<'RKT'
+          #lang racket
+          (require syntax/readerr)
+          (define (go)
+            (with-input-from-file "compiler/main.rkt"
+              (thunk
+                (let loop ([n 0])
+                  (define line (read-line))
+                  (cond [(eof-object? line) (displayln (format "LINES READ: ~a OK" n))]
+                        [else (loop (+ n 1))])))))
+          (with-handlers ([exn:fail:read? (lambda (e) (displayln (format "READ-ERR AT: ~a ~a" (exn:fail:read-srclocs e) (exn-message e))))]
+                          [exn:fail? (lambda (e) (displayln (format "OTHER ERR: ~a" (exn-message e))))])
+            (parameterize ([read-case-sensitive #t]) (go)))
+          RKT
+          racket /tmp/read-check.rkt 2>&1 | tee /tmp/readline_check.log || true
+
       - name: Verify 5 macros standalone expand against fixtures (NO main.rkt wiring)
         shell: bash -euxo pipefail {0}
         run: |
