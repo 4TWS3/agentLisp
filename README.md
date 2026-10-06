@@ -7,6 +7,9 @@
 > [![Release](https://img.shields.io/badge/Release-v2.0.0--rc2-success?logo=github)](https://github.com/4TWS3/agentLisp/releases/tag/v2.0.0-rc2)
 > [![CI 5/5 GREEN](https://img.shields.io/badge/CI-5%2F5%20GREEN-brightgreen?logo=githubactions&logoColor=white)](https://github.com/4TWS3/agentLisp/actions/runs/37411327310)
 > [![Docker 4 tags](https://img.shields.io/badge/Docker-4%20tags-blue?logo=docker)](https://github.com/orgs/4TWS3/packages/container/package/agentlisp)
+> [![PyPI](https://img.shields.io/pypi/v/agentlisp?label=PyPI&logo=pypi&logoColor=ffd242)](https://pypi.org/project/agentlisp)
+> [![PyPI - Python Version](https://img.shields.io/pypi/pyversions/agentlisp?logo=python&logoColor=ffd242)](https://pypi.org/project/agentlisp#files)
+> [![PyPI - Downloads](https://img.shields.io/pypi/dm/agentlisp?logo=pypi&logoColor=ffd242&color=0ea5e9)](https://pypistats.org/packages/agentlisp)
 > [![pytest 128/3/1](https://img.shields.io/badge/pytest-128%20passed%2F3%20skipped%2F1%20warning-46a2f1?logo=pytest)](https://github.com/4TWS3/agentLisp/actions/runs/37411327310)
 > [![SRS 100%](https://img.shields.io/badge/SRS-34%2F34%20100%25-8A2BE2)](file:///Users/lee/products/agentLisp/docs/spec/agentlisp_srs.md)
 > [![τ²-bench v1.0](https://img.shields.io/badge/%CF%84%C2%B2--bench%20v1.0-ac3_pass%3Dtrue-0ea5e9?logo=github)](https://github.com/4TWS3/t2-bench/releases/tag/%CF%84%C2%B2-bench-v1.0)
@@ -39,7 +42,119 @@ Agent = Model + Harness
 
 ---
 
-## 一、三层架构图
+## 一、架构视图（正交 4 视角）
+
+### 图 1 · 四层分层同心圆（Clean Architecture）
+
+```mermaid
+flowchart TB
+    subgraph F["④ Frameworks & Drivers（最外层 · 纯技术细节）"]
+        direction LR
+        F1["Racket 8.12 编译器"]
+        F2["uv + hatchling 包管理"]
+        F3["PyInstaller 单文件打包"]
+        F4["Docker 多阶段镜像"]
+        F5["requests LLM HTTP 客户端"]
+        F6["argparse CLI 解析"]
+    end
+    subgraph IA["③ Interface Adapters（适配层 · 纯翻译无决策）"]
+        direction LR
+        IA1["CLI 参数 → Use Case Input"]
+        IA2["Checker 双端报告 → Exit Code + Stdout"]
+        IA3["Racket ↔ Python 子进程 IPC 翻译"]
+        IA4["Checkpoint 抽象 → MemoryStore / Redis"]
+    end
+    subgraph UC["② Application Use Cases（用例层 · 应用特有规则）"]
+        direction LR
+        UC1["Compiler: Parse → Typecheck → Codegen"]
+        UC2["Runtime: Load Spec → Evaluate → Fix"]
+        UC3["Evaluator: Fetch → Run → Rubric → Statistics"]
+        UC4["Releaser: Build → SHA256 → gh Release"]
+    end
+    subgraph E["① Entities（最内层 · 企业级核心不变性）"]
+        direction LR
+        E1["DCAF L0-L4 五层认知依赖"]
+        E2["Agent = Model + Harness 公式"]
+        E3["AST Node 代数数据类型"]
+        E4["Runtime Identity 规范"]
+        E5["Constrain → Verify → Correct 三层管道语义"]
+    end
+
+    F -->|依赖向内层定义的接口| IA
+    IA -->|依赖向内层定义的接口| UC
+    UC -->|依赖向内层定义的接口| E
+
+    style E fill:#fef3c7,stroke:#d97706,color:#1f2937
+    style UC fill:#dbeafe,stroke:#2563eb,color:#1f2937
+    style IA fill:#d1fae5,stroke:#059669,color:#1f2937
+    style F fill:#fee2e2,stroke:#dc2626,color:#1f2937
+```
+
+> 核心约束：所有箭头方向严格**向心**（Source → Inner Interface），内层绝不 import 外层。  
+> 来源：Wiki [[architecture/layered-architecture.md](file:///Users/lee/workspace-docs/knowledge/architecture/layered-architecture.md)] + [[architecture/dependency-rule.md](file:///Users/lee/workspace-docs/knowledge/architecture/dependency-rule.md)]
+
+---
+
+### 图 2 · Agent = Model + Harness 数据流管道（含 KV Cache 强对齐阻塞点）
+
+```mermaid
+flowchart LR
+    IN["*.al DSL 输入"] --> PARSE["Compiler Parse\n(S-表达式 → AST)"]
+    PARSE --> C0[❓ KV Cache 静态前缀排序]
+    C0 -->|静态块在动态块之前| C1["Constrain 静态校验\nchecker.rkt + checker.py 双端"]
+    C0 -->|顺序违规 ERR_KV_ALIGNMENT_VIOLATION| BLOCK1["🛑 阻塞退出码=2\n(parse fail)"]
+
+    C1 -->|校验通过| MODEL["Model 调用\nHarness.Constrain Prompt 前缀"]
+    MODEL --> V[Verify 环节]
+    V -->|Rubric ≥ 阈值?| NOPE["Correct 修复循环\n最多 max_turns=30 轮"]
+    NOPE --> MODEL
+    V -->|所有规则命中✅| OUT["Runtime Spec + Exit Code=0"]
+
+    style C0 fill:#fde68a,stroke:#d97706,color:#1f2937
+    style BLOCK1 fill:#fecaca,stroke:#dc2626,color:#1f2937
+    style OUT fill:#bbf7d0,stroke:#16a34a,color:#1f2937
+```
+
+> 两个**不可跳过阻塞点**：① KV Cache 静态前缀排序在编译器 Parse 之后立即执行（违反直接退出，不进入后续）；② Constrain → Verify → Correct 三层管道强制串行（跳过任何一层在 SRS §3.2 定义为违规）。  
+> 来源：Wiki [[architecture/boundaries.md](file:///Users/lee/workspace-docs/knowledge/architecture/boundaries.md)] §穿越边界的方式（接口 + 实现 / DIP 模式）
+
+---
+
+### 图 3 · Plugins Pattern（一切细节都是插件，核心公式不变）
+
+```mermaid
+flowchart TD
+    subgraph Core["内核（纯公式 · 零外部依赖）"]
+        direction TB
+        K1["Agent = Model + Harness"]
+        K2["DCAF L0-L4 依赖层级定义"]
+        K3["Constrain → Verify → Correct 管道语义"]
+        K4["ReAct Turn 代数结构"]
+    end
+
+    P1["🔌 Racket Compiler Plugin\n(可替换为 OCaml/Scala)"]
+    P2["🔌 Python Runtime Plugin\n(可替换为 Go/Rust)"]
+    P3["🔌 Checker Plugin（双端同步）\n(可替换为 Coq/Isabelle 形式化验证)"]
+    P4["🔌 LLM Driver Plugin\nDeepSeek / OpenAI / Anthropic / MockLLM"]
+    P5["🔌 Entry Plugin\nCLI 单文件 / Docker 镜像 / FastAPI Gateway / Temporal Workflow"]
+    P6["🔌 Sandbox Plugin\nNullSandbox / Docker / E2B"]
+
+    P1 -->|实现内核接口| Core
+    P2 -->|实现内核接口| Core
+    P3 -->|实现内核接口| Core
+    P4 -->|实现内核接口| Core
+    P5 -->|实现内核接口| Core
+    P6 -->|实现内核接口| Core
+
+    style Core fill:#fef3c7,stroke:#d97706,color:#1f2937,stroke-width:3px
+```
+
+> 内核说不出任何插件的具体细节（不知道 Racket/Python 语法、不知道 LLM 是哪家）。插件替换 = 内核完全不变。  
+> 来源：Wiki [[architecture/plugins-pattern.md](file:///Users/lee/workspace-docs/knowledge/architecture/plugins-pattern.md)] §Database 是一个细节 / Web 是一个细节
+
+---
+
+### 图 4 · 横排组件视图（原 ASCII 保留）
 
 ```
  ┌──────────────────────────────────────────────────────────────────────┐

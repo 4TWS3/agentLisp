@@ -6,7 +6,39 @@ readme = "README.md"
 requires-python = ">=3.12"
 license = { text = "MIT" }
 authors = [
-    { name = "agentlisp" }
+    { name = "AgentLisp Contributors" },
+]
+maintainers = [
+    { name = "4TWS3 Organization" },
+]
+keywords = [
+    "agent",
+    "llm",
+    "lisp",
+    "dsl",
+    "racket",
+    "react-loop",
+    "harness",
+    "prompt-engineering",
+    "code-agent",
+    "scoped-worker",
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Natural Language :: English",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Racket",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: Software Development :: Code Generators",
+    "Topic :: Software Development :: Compilers",
+    "Topic :: Software Development :: Quality Assurance",
+    "Topic :: System :: Distributed Computing",
+    "Typing :: Typed",
 ]
 dependencies = [
     "pydantic>=2.6.0",
@@ -16,6 +48,14 @@ dependencies = [
     "typer>=0.9.0",
     "rich>=13.7.0",
 ]
+
+[project.urls]
+Homepage = "https://github.com/4TWS3/agentLisp"
+Repository = "https://github.com/4TWS3/agentLisp"
+"Bug Tracker" = "https://github.com/4TWS3/agentLisp/issues"
+Documentation = "https://github.com/4TWS3/agentLisp#readme"
+"Release Notes" = "https://github.com/4TWS3/agentLisp/releases"
+SRS = "https://github.com/4TWS3/agentLisp/blob/main/docs/spec/agentlisp_srs.md"
 
 [project.optional-dependencies]
 legacy = [

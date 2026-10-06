@@ -144,22 +144,6 @@ def _parse_pytest_fallback_subprocess() -> int | None:
     env = os.environ.copy()
     env["PYTHONDONTWRITEBYTECODE"] = "1"
     env["AGENTLISP_DOCKER_INFRA"] = "true"
-    pyproject = REPO_ROOT / "pyproject.toml"
-    default_paths = ["runtime/tests", "host/tests", "python/tests", "tests"]
-    testpaths: list[str] = list(default_paths)
-    try:
-        text = pyproject.read_text(encoding="utf-8") if pyproject.exists() else ""
-        m = re.search(r"testpaths\s*=\s*\[(.*?)\]", text, flags=re.S)
-        if m:
-            raw = re.findall(r'"([^"]+)"', m.group(1))
-            if raw:
-                testpaths = [
-                    p
-                    for p in raw
-                    if REPO_ROOT.joinpath(p).exists() or REPO_ROOT.joinpath(p).parent.exists()
-                ]
-    except OSError:
-        pass
     try:
         cp = subprocess.run(
             [

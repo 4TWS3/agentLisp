@@ -166,16 +166,48 @@
 |---|---|---|---|---|
 | 5.3.1 | **新建 Handoff 文档到 `docs/handoff/YYYYMMDD_crXX_crYY_${ACTION}_handoff.md`**，7 章严格：<br>`## 1. Git 状态核验` / `## 2. 四硬指标验证快照` / `## 3. 每项交付的具体改动 + 精确代码锚` / `## 4. 未跑/可选验证项（U1-Ux）` / `## 5. 硬约束 + 34-ID VERBATIM + 外部端点` / `## 6. 顺位路线图（下一条顺位）` / `## 7. 交接人签字 + 四硬终态锚`<br>核查：`grep -nE "^## [1-7]\\." docs/handoff/$(ls -t docs/handoff | head -1) \| wc -l` = 7 | 7 章齐全；标题字节全等（不允许自定义 `## 0.` 或 `## 8.`）；文件大小 ≥ 20KB | 实：新文件=`________________________`；7 章 grep 数=`____`（=7 通过）；size=`____KB` | `[ ]` |
 
-### 5.4 可选外部发布（N 项 · 非阻塞，按需勾选）
+### 5.4 PyPI Publish 制度化必过小节（O12 · 7 步 · 非可选，除非明确跳）
 
-> 所有项必须先确认对应 Secret 已在 GitHub → Settings → Secrets and variables → Actions 录入。
+> **制度化触发**：自 v2.0.0-rc3 起，所有正式 Release（含 rc）必须执行 PyPI Publish；若因 TestPyPI 试点阶段需跳，须明确登记原因。
+
+#### 5.4.0 PyPI 前置配置（**首次发布前一次性完成，后续 Release 只需登记状态**）
+
+| # | 核查要点 · 命令/人工 | 预期值 | 本次实填 | 通过？ |
+|---|---|---|---|---|
+| 5.4.0-1 | **1 包发布策略确认**：仅发布根 `agentlisp==$VERSION`（三合一 runtime+host+python/agentlisp_runtime），子 `agentlisp-runtime` 不发 PyPI（保持 file:// 直引本地） | 一致 = 1 包 | 本次策略：`[ ]1 包 / [ ]2 包` | `[ ]` |
+| 5.4.0-2 | **Trusted Publisher 配置（零 token 方案）**：<br>(a) 登录 PyPI → 右上角 Your projects → agentlisp → Pending trusted publishers → Add<br>(b) Owner: `4TWS3`；Repository name: `agentLisp`；Workflow name: `release.yml`；Environment name: `pypi`<br>（若 TestPyPI 试点：TestPyPI `agentlisp` 项目同样配置 Trusted Publisher，Environment name 改为 `testpypi`） | (a)+(b) 均成功，"This publisher is pending → active" | 配置时间：`YYYY-MM-DD`；PyPI 状态：`[ ]pending / [ ]active`；TestPyPI 状态：`[ ]未配 / [ ]active` | `[ ]` |
+| 5.4.0-3 | **根 pyproject.toml PyPI 元数据齐全核查**：<br>人工读根 pyproject.toml `[project]` + `[project.urls]`：存在 authors/maintainers/keywords(≥8)/classifiers(≥10) + Homepage/Repository/"Bug Tracker"/Documentation/"Release Notes"/SRS 共 6 URLs | 元数据齐全 | 本次核查：`keywords=`____个/`classifiers=`____个/`urls=`____个 | `[ ]` |
+| 5.4.0-4 | **release.yml publish-pypi job 存在性核查**：<br>`grep -c "^  publish-pypi:" .github/workflows/release.yml` 必须 =1；environment.name=pypi；pypa/gh-action-pypi-publish@release/v1 uses | 存在 1 个 publish-pypi job；uses 正确 | `grep count=`____；uses 正确？`[ ]` | `[ ]` |
+| 5.4.0-5 | **GitHub Environment: pypi 创建**：<br>Settings → Environments → New → `Name: pypi` → Environment protection rules 勾选 Required reviewers（至少 1 名 4TWS3 成员）+ Wait timer=0；Deployment branches: Selected → Add: `refs/tags/v*` | Environment pypi 存在；Required reviewers ≥1 | 创建日期：`________`；Reviewers（至少 1 人）：`________` | `[ ]` |
+
+#### 5.4.1 本次 Release PyPI 发布流程（7 步 · 制度化）
+
+| # | 步骤 · 命令 VERBATIM / 人工核查要点 | 预期值 / PASS 条件 | 本次实填 | 通过？ |
+|---|---|---|---|---|
+| 5.4.1-1 | **TestPyPI 试点（仅首次/rc 版必跑；GA 可跳但推荐）**：<br>临时修改 release.yml publish-pypi job 两行：environment.name=`testpypi` + with.repository-url=`https://test.pypi.org/legacy/` → 打 rc tag 触发 CI → 然后 gh release 下载 whl + sdist →：<br>`VERSION=v_____; PKG=${VERSION#v}; python3 -m pip install --index-url https://test.pypi.org/simple/ --extra-index-url https://pypi.org/simple/ --dry-run agentlisp==$PKG 2>&1 | TestPyPI 上 `agentlisp==$PKG` 可见；--dry-run 不报错（实际安装推荐用 venv：`pip install --index-url https://test.pypi.org/simple/ agentlisp[dev]==$PKG && agentlisp --version && python3 -c "import runtime, host, agentlisp_runtime; print('OK')"`） | TestPyPI 安装 dry-run 通过？`[ ]`；实装 import 成功？`[ ]` | `[ ]` |
+| 5.4.1-2 | **release.yml publish-pypi job 状态轮询**（§3 结束后再开始，避免并发）：<br>`RUN_ID=________; gh run view "$RUN_ID" -R 4TWS3/agentLisp --json jobs 2>&1 \| python3 -c "import json,sys; d=json.load(sys.stdin); [print(j['name'], '→', j['status']+'/'+j.get('conclusion','-')) for j in d['jobs'] if 'pypi' in j['name'].lower()]"` | `Publish to PyPI (Trusted Publisher OIDC) → completed/success`；OIDC 登录阶段无 403（表明 Trusted Publisher 生效） | Job 名称=`________`；conclusion=`________`；OIDC 无 403？`[ ]` | `[ ]` |
+| 5.4.1-3 | **SHA256 全等（PyPI ↔ GitHub Release ↔ 本地 §4.1）**：<br>三份文件必须 `sha256sum` 64 hex 字节级全等：<br>① GH release 下载的 `agentlisp-$PKG-py3-none-any.whl`；② PyPI 发布后 PyPI 提供的 sha256（或从 publish-pypi job `print-hash: true` 输出取）；③ 本地 §4.1.1 TMP 下同名文件<br>取三者 sha256 对照：<br>`GH_SHA=$(gh release view $VERSION -R 4TWS3/agentLisp --json assets 2>&1 \| python3 -c "import json,sys; [print(a['name'], a['size']) for a in json.load(sys.stdin)['assets']]"; sha256sum "agentlisp-$PKG-py3-none-any.whl"` | ①=②=③ 三 sha256 完全相同（64 hex 全等） | whl: ①=②？`[ ]`；②=③？`[ ]`；sdist: ①=②=③？`[ ]` | `[ ]` |
+| 5.4.1-4 | **PyPI 正式 3 步 smoke（必须本地 venv 实装，禁止 --dry-run 跳过）**：<br>`TMPENV=$(mktemp -d); python3 -m venv "$TMPENV" && source "$TMPENV/bin/activate" && python3 -m pip install --upgrade pip 2>&1 \| tail -1`<br>(a) `pip install agentlisp==$PKG 2>&1 \| tail -3` 无 ERROR<br>(b) `agentlisp --version 2>&1` 输出含 "agentlisp, version $PKG"<br>(c) `python3 -c "import runtime; import host; import agentlisp_runtime; from runtime.base_harness import BaseHarness; from runtime.checker import Checker; from host.gateway import create_app; print('All 3 modules + 3 key imports OK')"` | (a) exit=0 无 ERROR；(b) version 精确匹配；(c) stdout 末行 `All 3 modules + 3 key imports OK` | (a) 实际最后 3 行：`________________`；(b) version：`________`；(c) 3 关键 import：`[ ]` | `[ ]` |
+| 5.4.1-5 | **PyPI 项目页元数据核查**：<br>浏览器或 `curl -s https://pypi.org/pypi/agentlisp/$PKG/json \| python3 -c "import json,sys; d=json.load(sys.stdin)['info']; print('classifiers=', len(d.get('classifiers',[]))); print('keywords=', len(d.get('keywords') or [])); print('urls=', list(d.get('project_urls',{}).keys()))"` | classifiers≥10；keywords≥8；urls 至少 5 项（Homepage/Repository/Bug Tracker/Documentation/Release Notes/SRS） | classifiers=`____`；keywords=`____`；urls 6 项齐全？`[ ]` | `[ ]` |
+| 5.4.1-6 | **Legacy extras 可用性验证（非阻塞但推荐）**：<br>同一 venv：`pip install "agentlisp[llm,mcp,web,durable,observability,sandbox,dev]==$PKG" 2>&1 \| tail -3`；然后 `python3 -c "import anthropic, openai, fastapi, temporalio, redis, opentelemetry, docker; print('All 7 extras install OK')"` | 无安装 ERROR；7 个 extras import 全通过 | 安装 exit=0？`[ ]`；7 关键 import：`[ ]` / 跳过说明：`________` | `[ ]` |
+| 5.4.1-7 | **首次 TestPyPI 成功 → 切回正式 PyPI**：若 §5.4.1-1 临时改 environment/repository-url，发布完成后必须 **立即 revert release.yml 为 pypi 正式**（不提交 TestPyPI 定制版本到主线） | release.yml publish-pypi environment.name=pypi；repository-url 未硬编码（默认 PyPI） | git diff release.yml 含 TestPyPI 改动？`[ ]否 / [ ]是 → revert 了？[ ]` | `[ ]` |
+
+#### 5.4.2 失败回滚（PyPI 版号永不复用红线）
+
+| 情形 | 回滚动作 VERBATIM | 本次是否触发 |
+|---|---|---|
+| 5.4.2-1 | publish-pypi job 失败（OIDC 403 / build 失败 / 元数据 fail） | **不删 tag**；只修 release.yml 或 pyproject.toml 元数据；推新 commit + 新 `rcX` tag 递增重试（禁止覆写旧 tag） | `[ ]未触发 / [ ]触发→新tag=________` |
+| 5.4.2-2 | PyPI 成功但 5.4.1-3/5.4.1-4 失败（**PyPI 上已存在该版号 = 永不复用红线**） | **禁止 `twine upload --skip-existing` 同版号**；必须递增 patch/prerel tag（如 rc2→rc3）发新版 PyPI；旧版号保留在 PyPI（不 yank 除非严重） | `[ ]未触发 / [ ]触发→新tag=________；是否 yank 旧版？[ ]否/[ ]是(原因:________)` |
+
+---
+
+### 5.5 其他可选外部发布（N 项 · 非阻塞，按需勾选）
 
 | # | 选项 · 触发前置 + 命令要点 | 是否执行 | 本次实填 |
 |---|---|---|---|
-| 5.4.1 | **O12 PyPI Publish（需 `secrets.PYPI_TOKEN` 先录入）**：<br>Release.yml create-release job 末尾追加步骤（若未加则先 PR）：<br>`- name: Publish to PyPI → uses: astral-sh/setup-uv → run: uv publish --username __token__ --password ${{ secrets.PYPI_TOKEN }} --non-interactive`<br>**验证**：`pip install agentlisp==$VERSION --index-url https://pypi.org/simple/ --dry-run`（如 token 已配置真实 publish） | `[ ]否 / [ ]是 → whl sha256 == Release asset 全等？[ ]` | PyPI 版本号上线：`________` |
-| 5.4.2 | **Homebrew Tap（若有 4TWS3/homebrew-tap 仓库）**：更新 `Formula/agentlisp.rb` 的 url + sha256（macOS arm64/x86_64 bottle sha256） | `[ ]否 / [ ]是` | Tap commit：`________` |
-| 5.4.3 | **Release Note 美化（gh release edit）**：<br>`VERSION=v_______; gh release edit "$VERSION" -R 4TWS3/agentLisp --notes-file docs/RELEASE_NOTES_${VERSION//./_}.md`（若需独立 notes 文件） | `[ ]否 / [ ]是` | Notes 文件 size：`____KB` |
-| 5.4.4 | **社群公告（Discussion / 微信群 / README Badge 更新）**：README.md 首屏 6 徽章中的 Release / pytest / SRS / τ²-bench 数值是否已对齐新版本号 | `[ ]否 / [ ]是 → README commit: ________` | 徽章对齐：`[ ]` |
+| 5.5.1 | **Homebrew Tap（若有 4TWS3/homebrew-tap 仓库）**：更新 `Formula/agentlisp.rb` 的 url + sha256（macOS arm64/x86_64 bottle sha256） | `[ ]否 / [ ]是` | Tap commit：`________` |
+| 5.5.2 | **Release Note 美化（gh release edit）**：<br>`VERSION=v_______; gh release edit "$VERSION" -R 4TWS3/agentLisp --notes-file docs/RELEASE_NOTES_${VERSION//./_}.md`（若需独立 notes 文件） | `[ ]否 / [ ]是` | Notes 文件 size：`____KB` |
+| 5.5.3 | **社群公告（Discussion / 微信群 / README Badge 更新）**：README.md 首屏 6 徽章中的 Release / pytest / SRS / τ²-bench 数值是否已对齐新版本号 | `[ ]否 / [ ]是 → README commit: ________` | 徽章对齐：`[ ]` |
 
 ---
 

@@ -248,8 +248,8 @@ jobs:
     needs: [build-windows, build-linux, create-release]
     runs-on: ubuntu-latest
     environment:
-      name: testpypi
-      url: https://test.pypi.org/p/agentlisp
+      name: pypi
+      url: https://pypi.org/p/agentlisp
     steps:
       - uses: actions/checkout@v4
 
@@ -336,4 +336,3 @@ jobs:
           print-hash: true
           skip-existing: true
           verbose: true
-          repository-url: https://test.pypi.org/legacy/
