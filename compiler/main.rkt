@@ -162,7 +162,7 @@
       (cond
         ((zero? rc)
          (with-input-from-string out-str
-           (thunk
+           (lambda ()
              (let loop ((acc '()))
                (define v (read))
                (if (eof-object? v)
