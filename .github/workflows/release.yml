@@ -31,7 +31,7 @@ jobs:
         uses: astral-sh/setup-uv@v3
         with:
           version: ${{ env.UV_VERSION }}
-          enable-cache: true
+          enable-cache: false
 
       - name: Install dependencies and build wheel + sdist
         working-directory: python
@@ -89,7 +89,7 @@ jobs:
         uses: astral-sh/setup-uv@v3
         with:
           version: ${{ env.UV_VERSION }}
-          enable-cache: true
+          enable-cache: false
 
       - name: Build wheels + sdist
         working-directory: python
