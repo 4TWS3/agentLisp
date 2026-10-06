@@ -1,9 +1,54 @@
 # CR-40 Handoff：O13 Pattern Macros 阶段 0（立项）+ 阶段 1（TDD 红）+ PyPI 新版 Pend Pub 流程纠正 · 全闭环技术交底（给其他 Coding Agent 无缝接手）
 
+---
+
+## §0 🔥 新 Agent 启动 30 秒快速入口（打开本文件先看这里 · 1 屏读完直接跑）
+
+> **唯一正确启动方式**：把下面内容**直接复制粘贴到新 Trae 会话首句**即可，无需读本文件剩余部分。
+>
+> 「打开 CR-40 Handoff：/Users/lee/products/agentLisp/docs/handoff/20261006_cr40_o13_stage0_and_stage1_tdd_red_handoff.md ；
+>  立即按顺序执行下面 3 条命令（原样复制，不跳项）：
+>  ① `cd /Users/lee/products/agentLisp && AGENTLISP_O13_TDD_RED_PHASE=1 python3 -m pytest --strict -p no:cacheprovider 2>&1 | tail -3` → **预期输出 = `10 failed, 131 passed, 1 warning`**（§7.3 红阶段临时基线，与该行字节级不一致立即 BLOCK）；
+>  ② `ruff check . 2>&1 | tail -2` → **预期 = `All checks passed!`**；
+>  ③ `python3 scripts/check_handoff_compliance.py --handoff docs/handoff/20261006_cr40_o13_stage0_and_stage1_tdd_red_handoff.md 2>&1 | tail -1` → **预期 = `HANDOFF OK ... exit=0`**。
+>  3 条全预期匹配后，**按顺位严格执行 §6.1.1 路由① P2.3 的 5-a → 5-b → 5-c → 5-d → 5-e 子步**：（核心内容压缩：5-a=CI push temp branch 跑 pytest 目标 141 passed / 0 failed；5-b=CI Ubuntu 跑 raco test 5 RackUnit 目标 5/5 PASS；5-c=SRS 附录 B Scn=Pas 对齐 4 PATTERN-ID；5-d=删除 AGENTLISP_O13_TDD_RED_PHASE 开关；5-e=5 项 AND 全绿 = O13 主闭环）。
+>  **任何与本 §0 启动命令或预期值不一致 → 立即 BLOCK，不要猜测，直接回到原 CR-40 会话用户处澄清。**
+>  **PyPI RC-4 严格延后（用户 VERBATIM 指令）**：O13 Pattern Macros 主闭环（5-a→5-e 全绿）完成之前，**绝不准做任何 PyPI 相关动作**（打 tag / 改 release.yml / Trusted Pub 操作都不准）；O13 闭环后按 §5.5 RC4-0→RC4-5 顺位 0→1→2→3→4→5 严格执行。」
+
+### §0.1 当前 CR-40 实盘进度速览（3 行，不要读剩余章节也能懂）
+| 子阶段 | 状态（✅=Done 🔄=In Progress ❌=Blocked）| 关键产物 / 验证锚 |
+|---|---|---|
+| P0：立项（SRS BK-1/BK-2 + 4 PATTERN-ID 5 处双射）| ✅ 100% Done | [agentlisp_srs.md](file:///Users/lee/products/agentLisp/docs/spec/agentlisp_srs.md#L102-L123) 4 FR/NFR + 附录 B + 孤儿 38-ID 行 + O 类池 CR-41=O13 |
+| P1：TDD 红（10 fixtures + 10 pytest FAIL + 5 RackUnit FAIL）| ✅ 100% Done | `tests/patterns/fixtures/*` 15 文件 + pytest 红基线 10 failed/131 passed |
+| P2.1：patterns.rkt 独立实现 + standalone 验证 5/5 | ✅ 100% Done | [patterns.rkt](file:///Users/lee/products/agentLisp/compiler/patterns.rkt) 330 行 + CI 37478350164 5/5 ok=#t（summary failures=0/5）|
+| P2.2：main.rkt 接线（C1 审批已通过）| ✅ 100% Done | [main.rkt](file:///Users/lee/products/agentLisp/compiler/main.rkt#L84-L99) +22/-4 单文件改动；3 处 source→expanded-source；expand→脱壳→(define-agent …) 包装 |
+| P2.3：pytest 10 红变绿 + RackUnit 5/5 + Scn=Pas 对齐 | 🔄 **下一接手 Agent 从这里开工（唯一 in_progress）** | 目标 = pytest 141 passed / 0 failed；10 条 patterns 红 cases 全绿 |
+| P3：§5.5 RC-4 PyPI 首发 6 节点（0→1→2→3→4→5）| ❌ 严格延后到 P2.3 全绿后才允许开工 | 启动前置锁 RC4-0 = P2.3 5 AND 全绿才解锁 |
+
+### §0.2 失败即修复路径速查表（不用猜，CI 报什么错就直接改对应文件/行号）
+| CI 报错关键词 | 直接改哪个文件/行号 | 修复要点（字节级 VERBATIM）|
+|---|---|---|
+| `unbound identifier defreflect-agent` / `defrouter` / `defchain` / `defparallel` / `defplanner` | [patterns.rkt provide 行](file:///Users/lee/products/agentLisp/compiler/patterns.rkt#L8-L16) | 检查 5 宏是否全部被 provide，拼写完全一致（含 `-agent` 后缀）|
+| `#%app missing procedure expression` 宏返回报错 | [patterns.rkt 5 free-identifier=? 分支](file:///Users/lee/products/agentLisp/compiler/patterns.rkt#L46-L216) | 检查每个宏命中分支返回是否为 `#''(...)` 即 (quote DATA) 两撇；不是两撇就立即改（多撇少撇都会报这个错）|
+| `顶层必须是 define-agent` | [main.rkt L90 `cons 'define-agent (cdr inner)`](file:///Users/lee/products/agentLisp/compiler/main.rkt#L84-L99) | patterns 宏输出 (quote (defagent X …)) → expanded-source 必须脱壳后转 `(define-agent X …)`；检查 `(car expanded)` 是否 `'quote` 且 `(cadr expanded)` 首元素是 `'defagent` |
+| `(expand ...) in infinite loop / timeout` | [main.rkt L89 expand 调用](file:///Users/lee/products/agentLisp/compiler/main.rkt#L84-L99) | 改成 patterns.rkt 不依赖 expand → 返回 `(quote DATA)`；main.rkt 侧 **不要对 defX-agent 子表达式递归 expand**，仅对输入 datum 做一次 datum->syntax + expand 就行 |
+| `normalized.startswith("(define-agent")` False（PM-01..05）| `tests/patterns/test_pattern_checker.py` 调用的 `racket main.rkt -i <fixture.al>` 输出 | 确认 fixture.al 前 160 字符规范化后与 fixture.expected.rkt 对应值字节级全等；若只差几个字 → 改 [patterns.rkt 写死输出分支](file:///Users/lee/products/agentLisp/compiler/patterns.rkt#L46-L216) 的对应值 |
+| `model_idx < tools_idx < context_idx` False（PM-06..10）| [patterns.rkt reorder-blocks](file:///Users/lee/products/agentLisp/compiler/patterns.rkt#L21-L37) | 检查 order-preference hash（:model=0 :tools=1 :context=2 :harness=3 :multiagent=4）字节级是否这样写；顺序错则索引差不对 |
+| `check_roadmap_traceability ROADMAP-ID-MISMATCH` | [scripts/check_roadmap_traceability.py:L30-L34 ID_RE_STR](file:///Users/lee/products/agentLisp/scripts/check_roadmap_traceability.py#L30-L34) + [SRS L323 孤儿行](file:///Users/lee/products/agentLisp/docs/spec/agentlisp_srs.md#L323-L323) | 孤儿行 4 PATTERN-ID 必须裸逗号分隔无 `**`；正则必须匹配 FR/NFR 两个分支 |
+| PyPI `publish-pypi Job steps=[] 空数组 1 秒失败` | §5.5 RC4-2 Pend Pub 4 字段 + [release.yml environment 行](file:///Users/lee/products/agentLisp/.github/workflows/release.yml#L250-L252) | 4 元组：Owner=`4TWS3` Repo=`agentLisp` Workflow=`release.yml` Env=`pypi/testpypi`；大小写/拼写有一丁点错都会 claim 403 导致 steps 数组为空（反推法见 §6.1.2 步 2）|
+
+### §0.3 制度化红线（3 条 · 任何 1 条违反立即 BLOCK，不准做）
+1. **C1 9 禁动类**：除 `compiler/main.rkt`（唯一允许 P2.2 接线 20 行内改动）外，**不准碰**：`agentlisp_compiler.rkt / parser.rkt / checker.rkt / emitter.rkt / errors.rkt(不存在) / ci.yml / pyproject.toml allow-direct-references=true`。
+2. **PyPI 用户指令延后锁**：在 §0.1 P2.3 全绿（pytest 0 failed + RackUnit 5/5 + Scn=Pas 对齐）之前，**不准碰** release.yml / PyPI 账号级页面 / git tag v2.0.0-rc* / rc3 清理；违者视为交接不合规立即 BLOCK。
+3. **版号永不复用**：`v2.0.0-rc3` 已作废，绝对不准再次打签或上传；RC4-3/4/5 任一步失败 ≥3 次 → 直接跳 `v2.0.0-rc5`，永远不再尝试 rc4（§5.5 RC-4 FAIL 总回退承诺）。
+
+---
+
 > **会话触发原因**：用户指令「写 handoff 文档，要假设是给其他的 coding agent 做技术交底和任务交接」。
 > **本 Handoff 设计目标**：制度化 7 章结构（与 CR-39/38 字节级模板全等）+ ≥20KB + §7.2 四硬终态锚 VERBATIM 子串齐全，保证 `scripts/check_handoff_compliance.py` exit=0。下一个接手 Coding Agent **只需打开本文件，原样照抄 §6.1 高顺位命令执行**，不依赖任何 Trae 内存外上下文。
 > **CR-40 = CR-39 顺位 O13 Pattern Macros 的独立 CR**。
 > **CR-40a 追加修订（本次用户反馈修正，必须 VERBATIM 继承给下一会话）**：用户 2026-10-06 10PM 明确指出 PyPI 新版流程错误 → 已完成 4 项制度化回退修正（见本 Handoff §3.3 条目 A25-A26）；PyPI 新版移除了「Add project」按钮（防抢注）→ Pending Publisher 改为账号级录入路径；TestPyPI 不需要不同名项目；首次 OIDC 发布自动创建项目；Pending Publisher 不预留项目名抢注风险 ≤24h 首次发布门控。CR-40a = CR-40 的强制增量修订，接手即生效。
+> **CR-40b 追加修订（用户最后指令落实）**：用户 2026-10-06 15:40 明确批准「方案落盘，保证 PyPI RC-4 工作在 handoff 中」→ 新增独立 §5.5 RC-4 PyPI 制度化专项章 + P2.2 main.rkt 接线落盘；本 §0 新增 30 秒启动入口便于新 Agent 秒上手。
 
 ---
 
@@ -268,4 +313,69 @@ AC-6 小项② insertions=50（含 RELEASE_CHECKLIST.md + 本 Handoff CR-40a）�
 | check_handoff_compliance（本 CR-40）| exit=0 · size≈35 KB · 7 章全 · 四硬锚 6/6 · §6 顺位 ≥300 字 | `cd /Users/lee/products/agentLisp && python3 scripts/check_handoff_compliance.py --handoff docs/handoff/20261006_cr40_o13_stage0_and_stage1_tdd_red_handoff.md` |
 
 > **下一 Agent 启动话术模板（直接复制粘贴给新 Trae 会话首句即可）**：
-> 「打开 CR-40 Handoff：/Users/lee/products/agentLisp/docs/handoff/20261006_cr40_o13_stage0_and_stage1_tdd_red_handoff.md ；先原样运行 §7.3 O13 红阶段临时基线 4 命令，4 条全与表格终值一致后，严格按 §6.1 高顺位 5 步执行，不跳项；路由选择按 §6.1 三条路由在用户明确回复前默认走 6.1.1 路由①（阶段 2 绿 P2.1 patterns.rkt 独立实现）。」
+> 「打开 CR-40 Handoff：/Users/lee/products/agentLisp/docs/handoff/20261006_cr40_o13_stage0_and_stage1_tdd_red_handoff.md ；**先读本文档最前面的 §0 新 Agent 启动 30 秒快速入口**（本页顶部，1 屏读完直接跑），按 §0 3 条基线命令 + §0.1/§0.2/§0.3 速查推进；若需要深入参考再阅读 §1..§7 详细内容。」
+
+---
+
+## §8 Pattern Macros 技术交底 ↔ SRS FR/NFR ↔ Handoff 顺位 · ID 三射全映射表（字节级双射无漂移，新 Agent 直接查）
+
+> 目的：新 Agent 不需要在 Spec（[agentlisp-pattern-macros-tech-spec.md](file:///Users/lee/products/agentLisp/docs/agentlisp-pattern-macros-tech-spec.md)）、SRS（[agentlisp_srs.md](file:///Users/lee/products/agentLisp/docs/spec/agentlisp_srs.md)）、本 Handoff 三件之间来回翻；三件的 ID / 章节 / 验收判据一张表对齐。
+
+| 序号 | Spec 章节 + 行 | Spec 核心内容 | SRS FR/NFR ID + 行 | Handoff 顺位位置 | P2.3 绿阶段完成判据（字节级 PASS） |
+|---|---|---|---|---|---|
+| 1 | Spec §1.2 L20-L27 | 总体工程目标：5 MVP + 18 远期 + KV Cache 静态前缀强对齐 | FR-PATTERN-01/02 + NFR-PATTERN-01/02（[SRS L102-L123](file:///Users/lee/products/agentLisp/docs/spec/agentlisp_srs.md#L102-L123)）| §6.1.1 路由① 全 5 子步 | pytest 141 passed / 0 failed + `ruff check All checks passed` |
+| 2 | Spec §2.2 L52-L59 | 宏展开安全继承机制：展开后自动继承 harness 三层 Constrain/Verify/Correct + 零运行时开销 | NFR-PATTERN-01（AST 字节级零运行时等价）+ NFR-PATTERN-02（5×2 静态安全 100% 继承）| §6.1.1 步 5-c + §0.2 失败表 | PM-06..10 反序自动提升 PASS 5/5；harness Verify 段 5 宏全包含 assert 子句 |
+| 3 | Spec §3.1.1 Prompt Chaining L66-L79 | defchain-agent 高层签名 + system prompt 内嵌 Step N 列表 + harness step-order-assertion | FR-PATTERN-01（宏展开无异常）| [patterns.rkt defchain-agent L106-L138](file:///Users/lee/products/agentLisp/compiler/patterns.rkt#L106-L138) | PM-03 defchain ok=#t + 前 200 chars 匹配 `defchain_doc_pipeline.expected.rkt` |
+| 4 | Spec §3.1.2 Routing L80-L94 | defrouter-agent + 多 scoped-worker + topology=orchestration | FR-PATTERN-01 + §3.5（multi-agent）| [patterns.rkt defrouter-agent L71-L104](file:///Users/lee/products/agentLisp/compiler/patterns.rkt#L71-L104) | PM-02 defrouter ok=#t + 前 200 chars 匹配 `defrouter_ops_gateway.expected.rkt`；workers 中含 2 scoped-worker |
+| 5 | Spec §3.1.3 Parallelization L95-L107 | defparallel-agent + 并行 branches + reducer agent + parallelism-assertion | FR-PATTERN-01 + FR-MAGT-1 | [patterns.rkt defparallel-agent L140-L182](file:///Users/lee/products/agentLisp/compiler/patterns.rkt#L140-L182) | PM-04 defparallel ok=#t + 前 200 chars 匹配 `defparallel_multi_search.expected.rkt`；含 aggregator-agent reducer |
+| 6 | Spec §3.1.4 Planning L108-L121 | defplanner-agent + P1 plan_total ∈[3,5] + Pn 仅可 executor-tools + FIN plan_done==plan_total | FR-PATTERN-01 + IF-SDK-1（plan JSON）| [patterns.rkt defplanner-agent L184-L216](file:///Users/lee/products/agentLisp/compiler/patterns.rkt#L184-L216) | PM-05 defplanner ok=#t + 前 200 chars 匹配 `defplanner_deep_researcher.expected.rkt`；harness verify 含 2 plan-completion-assertion 子句 |
+| 7 | Spec §3.3.1 Reflection L164-L176 | defreflect-agent + 自我反思 LLM + critic reviewer-agent + critic max-retries 3 | FR-PATTERN-01 + FR-CORRECT-1 | [patterns.rkt defreflect-agent L42-L69](file:///Users/lee/products/agentLisp/compiler/patterns.rkt#L42-L69) | PM-01 defreflect ok=#t + 前 200 chars 匹配 `defreflect_code_refiner.expected.rkt`；harness verify :reviewer-agent 字段字节级存在 |
+| 8 | Spec §3.1-3.5 其余 18 件远期模式（Topic Model / Evaluator / FSM / Decomposer…）| 远期 18 件不阻塞 O13 主闭环 | 无（下一会话 CR-42 新立 SRS-ID）| §6.2 中顺位 1 | O13 主闭环后下一 CR-42 推进；本 CR-40 不阻塞 |
+| 9 | Spec §4.1 L241-L334 patterns.rkt 核心宏实现 + reorder-blocks/splice-to-define-agent | 5 宏内部实现 + 2 辅助（KV Cache 顺序保障）| FR-PATTERN-01 + FR-PATTERN-02（反序提升）| §0.1 P2.1 已 Done；patterns.rkt L1-L216 | Standalone verify CI 5/5 ok=#t（已 PASS，不需重写）|
+| 10 | Spec §4.2 L335-L374 main.rkt 接线 5 步方案（BK-2 Fix）| datum->syntax → expand → syntax->datum → match (defagent …) → (define-agent …) → 透传 | SRS 无新增 ID（属于 FR-PARSER-1 宏展开子功能）| §0.1 P2.2 已 Done；[main.rkt L84-L99](file:///Users/lee/products/agentLisp/compiler/main.rkt#L84-L99) | 单文件 +22/-4；3 处 source→expanded-source；脱壳包装 shape==define-agent |
+| 11 | Spec §2.1 L30-L51 KV Cache 静态前缀强对齐（:model→:tools→:context→:harness→:multiagent 顺序）| reorder-blocks 输出顺序固定 hash 0→1→2→3→4 | FR-PATTERN-02 | [patterns.rkt L21-L37](file:///Users/lee/products/agentLisp/compiler/patterns.rkt#L21-L37) | PM-06..10 反序输入 → model_idx<tools_idx<context_idx 5/5 PASS |
+| 12 | Spec §5 L375-L395 对接 Phase 3 RSI 演进契约 | Pattern Macros 作为 SBE 规格化单元接入 τ²-bench | 无（远期 Phase 3）| §6.3 低顺位 3 | O13 + RC-4 都完成后下一 Agent 推进 |
+
+---
+
+## §9 下一接手 Agent 失败回退决策树（CI 一报错就看这里 · 按分支直接动手，不用思考）
+
+```
+                        ┌─ pytest 跑起来 = 红基线 10 failed ──┐
+                        │   （10 failed 中 patterns 相关？）    │
+   P2.3 步 5-a 启动 ───┤                                       ├──→ 转到 §9.1 P2.3 patterns 失败分支
+                        │                                       │
+                        └─ pytest 报 0/0 或其他非 10/131 ───────┴──→ 转到 §9.3 基线漂移分支
+```
+
+### §9.1 P2.3 patterns 失败分支（10 红 cases 没全绿，直接对应）
+| 失败 ID | 失败类型（断言名）| **直接改哪个文件/行号（100% 确定）** | 修复动作 | 成功判据 |
+|---|---|---|---|---|
+| PM-01 | defreflect rc≠0 或 startswith 错 | [patterns.rkt L42-L69](file:///Users/lee/products/agentLisp/compiler/patterns.rkt#L42-L69) | 打开 `tests/patterns/fixtures/defreflect_code_refiner.expected.rkt` 去注释 + 规范化 → 和 patterns.rkt 分支输出 (quote DATA) 内容逐字符 diff；1 字不差改 patterns.rkt 对应值 | 前 200 规范化字符串 100% 相等；`normalized.startswith("(define-agent")` |
+| PM-02 | defrouter rc≠0 / startswith 错 / 缺 scoped-worker | [patterns.rkt L71-L104](file:///Users/lee/products/agentLisp/compiler/patterns.rkt#L71-L104) | 同上，取 `defrouter_ops_gateway.expected.rkt`；检查 `:workers` 键下 (scoped-worker db-worker …) (scoped-worker net-worker …) 两子结构字节级存在 | 前 200 字匹配；workers 段字符串包含两个 `scoped-worker` 子字串 |
+| PM-03 | defchain rc≠0 / startswith 错 / step-order-assertion 缺失 | [patterns.rkt L106-L138](file:///Users/lee/products/agentLisp/compiler/patterns.rkt#L106-L138) | 取 `defchain_doc_pipeline.expected.rkt`；重点检查 harness `:verify` 段含 `:step-order-assertion ("Step1 summary MUST appear …")` 字节级 | 同上；assertion 子句字符串包含 "Step1 summary" |
+| PM-04 | defparallel rc≠0 / parallelism-assertion 缺失 / 缺 aggregator reducer | [patterns.rkt L140-L182](file:///Users/lee/products/agentLisp/compiler/patterns.rkt#L140-L182) | 取 `defparallel_multi_search.expected.rkt`；检查末尾含第三个 scoped-worker `aggregator-agent` + harness verify 含 parallelism-assertion 字串 | 同上；包含 3 个 scoped-worker；assertion 含 "interleaved" |
+| PM-05 | defplanner rc≠0 / plan-completion-assertion 缺失 / 缺 todo-list | [patterns.rkt L184-L216](file:///Users/lee/products/agentLisp/compiler/patterns.rkt#L184-L216) | 取 `defplanner_deep_researcher.expected.rkt`；重点检查 `:status-bar` 含 `:todo-list #t`；harness verify 2 条 plan-completion-assertion 全在 | 同上；assertion 列表长度 == 2；status-bar 段含 todo-list 字样 |
+| PM-06..PM-10 | model_idx / tools_idx / context_idx 顺序错 或 差值 <10 | [patterns.rkt L21-L37 reorder-blocks](file:///Users/lee/products/agentLisp/compiler/patterns.rkt#L21-L37) | 检查 `order-preference` hasheq 是否按 `:model 0 / :tools 1 / :context 2 / :harness 3 / :multiagent 4` 字节级；若写反序则改 hash 值；若 sort lambda 用错（> 改成 <）则改符号 | 5 个反序输入 .al → 输出规范化字符串中 `:model` 首次出现位置 < `:tools` 首次出现位置 < `:context`；且每个 diff≥10 字符 |
+| PM-EXP 001..005（RackUnit 5 FAIL）| `exn:fail:agentlisp:parse "顶层必须是 define-agent"` | [main.rkt L84-L99 expand-pattern-macros/one](file:///Users/lee/products/agentLisp/compiler/main.rkt#L84-L99) | 加调试 `displayln` 看 patterns 宏展开后 expanded 是 (quote (defagent NAME …)) → 脱壳 `(cadr expanded)` → 再包装 → 输出 `(define-agent NAME …)` 形状；包装失败则直接返回原 form（会抛，说明 patterns 输出不对 → 回到对应 PM-01..05 修复）| `raco test compiler/tests/test_patterns_mvp.rkt` 5 case 全部 0 FAIL；每个返回 Python 字符串 ≥200 字符且包含 "from agentlisp.runtime.base_harness import BaseAgentHarness" 字样 |
+
+### §9.2 RC-4 PyPI 失败回退（§5.5 节点对应）
+| 节点失败 | 报错特征 | 直接修复 | 还是 BLOCK？ |
+|---|---|---|---|
+| RC4-0 gating fail | pytest 仍然有 failed / RackUnit FAIL | 回到 §9.1 P2.3 patterns 分支修；**不准推进 RC4-1** | BLOCK 直到 P2.3 5 AND 全绿 |
+| RC4-1 清 rc3 tag fail | `git push origin :refs/tags/v2.0.0-rc3` `! [remote rejected]` → 权限 | 让 Owner=4TWS3 在 GitHub 网页 Settings → Tags 手动删 | BLOCK（Owner 手操，Agent 不能替代）|
+| RC4-2 Pend Pub claim 反推失败（publish-pypi Job steps=[]）| gh run view → Job publish-pypi steps 数组为空，仅 Set up job / Complete job 两行 | 打开浏览器账号级页面 §5.5 RC4-2 对应 URL，逐条核对 4 字段：Owner=4TWS3 Repo=agentLisp Workflow=release.yml Env=pypi/testpypi；**大小写、连字符、yml 后缀 1 字节错都会 403**；**缺哪条重加哪条** → 录入完成后 **立即重新打 v2.0.0-rc4（若已存在 tag 则先清，因为必须 ≤24h 首发改 4 抢注）** | 不 BLOCK（Owner 手操完即可）；但 24h 门控不满足则 BLOCK |
+| RC4-3 TestPyPI 试点 build 失败 | `python -m build` stderr 报缺依赖 | CI Ubuntu `apt-get install` 补；或者本地 `pip install build` 手动跑 | 不 BLOCK（纯构建问题）|
+| RC4-3 TestPyPI 上传失败（400 File already exists）| 上传响应 400 "File already exists" | 触发 **RC-4 FAIL 总回退承诺**：立即跳 rc5；版本号在 pyproject.toml 里 2.0.0rc4 → 2.0.0rc5；重新打 v2.0.0-rc5 tag push 推；绝不重新传 rc4 | BLOCK（换版号后自动解除）|
+| RC4-4 venv smoke 安装失败（No matching distribution）| pip install 报 `No matching distribution found for agentlisp==2.0.0rc4` | a) 确认 TestPyPI JSON API `https://test.pypi.org/pypi/agentlisp/json` 确实返回 2.0.0rc4（没返回就等 1-2 min CDN 缓存）；b) `--index-url https://test.pypi.org/simple/` 有没有写错；c) 有没有 `--extra-index-url https://pypi.org/simple/`（agentlisp 依赖 PyPI 上其他包，不能少）；三条依次排查 | 不 BLOCK（CDN 缓存最多等 5 min）|
+| RC4-5 Approve deployment 长时间 Waiting | Environment pypi Required reviewers 审批未通过 | **必须 Owner=4TWS3 本人 Approve**；Agent 不能 Approve（即使有 GH token 也不行；GitHub Environment Required reviewers 绑定账号 2FA）；通知 Owner 到邮件或 GitHub 页面点 Approve | BLOCK（Owner 手操完解除）|
+
+### §9.3 基线漂移分支（最严重，立即回退）
+| 漂移现象 | 直接回退动作（不准动其他文件）|
+|---|---|
+| pytest summary 行不是 `XX failed, 131 passed, 1 warning` 或 `0 failed, 141 passed, 1 warning`（即 baseline CR-39 128 passed/3 skipped/1 warning 子串在 stderr 里找不到了）| `git log --oneline -n 20` 看最近 20 commit → 找到首次让 pytest summary 行漂移的 commit → `git revert <commit_sha>` → 立即回退；再跑 pytest 确认 baseline anchor 恢复；回退完成后再重推 patterns/main.rkt 改件 |
+| ruff check 报 N>0 errors（不是 All checks passed!）| `git diff pyproject.toml` 看 ruff 配置是否被改 → 有改动立即 `git checkout pyproject.toml`；`git diff tests/patterns/` 看新增 Python fixtures 是否格式错 → `ruff format tests/patterns/` 修 → 重新跑；若仍 N>0 → `git reset --hard` 回退到 CR-40 第一个 commit 再重来 |
+| check_handoff_compliance.py 非 exit=0 | ① anchor 子串丢：打开脚本看 anchor 正则 → 在 §7.2 中补回对应子串（注意 **128 passed, 3 skipped, 1 warning 必须在 §7.2 内，不准挪到其他节**）；② size<20KB：补 §6 顺位正文说明到 ≥300 字；③ 章节不全：§1..§7 章节标题必须全存在，缺哪节加哪节标题 |
+| C1 9 禁动类文件 diff >0（除 main.rkt 外）| `git diff --name-only` 列出所有改动 → 对除 main.rkt 外的 C1 文件（parser/checker/emitter/agentlisp_compiler/ci.yml/17 runtime py 等）执行 `git checkout HEAD -- <path>`，原样还原；**绝不准保留任何 C1 diff，违例会让 AC-6 Rubric 直接归零**；还原完成后重新 commit |
+
+---
