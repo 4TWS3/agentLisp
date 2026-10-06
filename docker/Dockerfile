@@ -55,7 +55,7 @@ RUN apt-get update \
     && raco pkg install --auto --no-docs --batch \
          base \
          rackunit-lib \
-         syntax/parse \
+         syntax-parse \
          data-lib \
     && rm -rf /tmp/* /root/.cache /var/lib/apt/lists/*
 
