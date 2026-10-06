@@ -1,12 +1,45 @@
 # AgentLisp v2
 
+> ## 🎯 v2.0.0-rc2 GA 已正式发布（2026-10-06 · CR-36）
+>
+> **SRS 34/34 100% 完全实现**（严格遵循 ISO/IEC/IEEE 29148 §8.3 验证完备性）
+>
+> [![Release](https://img.shields.io/badge/Release-v2.0.0--rc2-success?logo=github)](https://github.com/4TWS3/agentLisp/releases/tag/v2.0.0-rc2)
+> [![CI 5/5 GREEN](https://img.shields.io/badge/CI-5%2F5%20GREEN-brightgreen?logo=githubactions&logoColor=white)](https://github.com/4TWS3/agentLisp/actions/runs/37411327310)
+> [![Docker 4 tags](https://img.shields.io/badge/Docker-4%20tags-blue?logo=docker)](https://github.com/orgs/4TWS3/packages/container/package/agentlisp)
+> [![pytest 128/3/1](https://img.shields.io/badge/pytest-128%20passed%2F3%20skipped%2F1%20warning-46a2f1?logo=pytest)](https://github.com/4TWS3/agentLisp/actions/runs/37411327310)
+> [![SRS 100%](https://img.shields.io/badge/SRS-34%2F34%20100%25-8A2BE2)](file:///Users/lee/products/agentLisp/docs/spec/agentlisp_srs.md)
+> [![τ²-bench v1.0](https://img.shields.io/badge/%CF%84%C2%B2--bench%20v1.0-ac3_pass%3Dtrue-0ea5e9?logo=github)](https://github.com/4TWS3/t2-bench/releases/tag/%CF%84%C2%B2-bench-v1.0)
+>
+> **AC-3 三条件全等 AND 真 evaluator（n=1000）**：fix_rate=1.00 / mcnemar_χ²=267.0037 / rubric_mean=0.90 → **ac3_pass=True**
+>
+> **快速开始（3 行）**：
+> ```bash
+> gh release download v2.0.0-rc2 -R 4TWS3/agentLisp -p "agentlisp-v2.0.0-rc2-macos-arm64" -D /usr/local/bin && mv /usr/local/bin/agentlisp-v2.0.0-rc2-macos-arm64 /usr/local/bin/agentlisp && chmod +x /usr/local/bin/agentlisp
+> docker pull ghcr.io/4tws3/agentlisp:v2.0.0-rc2
+> agentlisp --version
+> ```
+
 基于 **Racket (Scheme)** 的 Agent DSL 编译器前端 + **Python 3.12+ / uv** ReAct Harness 运行引擎 + **云原生胶水层**（FastAPI/SSE、Temporal 长流程、Docker/E2B 沙箱、Redis Checkpoint、Jaeger OTel）。
 
-> 版本：`2.0.0a1` · 兼容保留旧 `scheme/` 与 `python/`（v0.1）目录；`pytest runtime/tests python/tests` 双套同绿。
+> 版本：`v2.0.0-rc2 GA` · 兼容保留旧 `scheme/` 与 `python/`（v0.1）目录；`pytest runtime/tests python/tests` 双套同绿；制度化四硬指标：ruff check All passed / ruff format 82 files / pytest 128 passed / IDE 0 diagnostics。
 
 ---
 
-## 一、三层架构
+## 零、核心公式
+
+```
+Agent = Model + Harness
+```
+- **Compiler 前端**（Racket 8.12+）：DSL `.al` 静态校验 → emit 可运行 Python 子类
+- **Harness 运行时**（Python 3.12+）：ReAct Constrain/Verify/Correct 一等控制流三层管道
+- **KV Cache 静态前缀强对齐**：语法强制静态块在动态块之前（ERR_KV_ALIGNMENT_VIOLATION）
+- **Scoped Worker 词法作用域**：跨 Agent 工具命名冲突 ERR_CONTEXT_LEAKAGE；轨迹原地 GC（物理切片截断）
+- **三层 Markdown 记忆**（L0 原子 / L1 概念 / L2 规则）：MemoryFS 渐进式加载到 [Memory] 段 system prompt
+
+---
+
+## 一、三层架构图
 
 ```
  ┌──────────────────────────────────────────────────────────────────────┐

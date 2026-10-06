@@ -71,9 +71,8 @@ jobs:
               Write-Error "PyInstaller did not produce dist\agentlisp.exe"
               exit 1
           }
-          if ($PSVersionTable.PSVersion.Major -ge 5) {
-              New-Item -ItemType HardLink -Force -Path (Join-Path (Get-Location) "dist\agentlisp.exe") -Target $dst | Out-Null
-          }
+          # O5: 不再创建无 tag 无 platform 的 agentlisp.exe duplicate 硬链接（create-release merge-multiple
+          #    会聚合三平台产物，裸名互相覆盖且与带名版本字节全等造成 Release 资产视觉冗余）
           Write-Host "--- dist/ final ---"
           Get-ChildItem dist/
 
@@ -145,8 +144,8 @@ jobs:
           dst="dist/agentlisp-${tag}-${os_tag}-${arch}"
           test -f "$src" || { echo "PyInstaller did not produce $src"; exit 1; }
           mv "$src" "$dst"
-          # 同时留一份无 tag 无 platform 的 agentlisp，兼容固定名脚本
-          ln "$dst" "dist/agentlisp"
+          # O5: 不再创建无 tag 无 platform 的 agentlisp duplicate 硬链接（create-release merge-multiple
+          #    会聚合三平台产物，裸名互相覆盖且与带名版本字节全等造成 Release 资产视觉冗余）
           echo "--- dist/ final ---"
           ls -la dist/
 
@@ -174,6 +173,9 @@ jobs:
         run: |
           set -euo pipefail
           cd release-artifacts
+          # O5 兜底：移除历史 build 中可能残留的无 tag 无 platform 裸名（agentlisp / agentlisp.exe），
+          #    确保最终 Release 资产只含「agentlisp-{tag}-{os}-{arch}」带名格式（+ whl + sdist + SHA256SUMS）
+          rm -f agentlisp agentlisp.exe
           # 只校验二进制 / wheel / sdist 等产物，跳过已存在的 SHA256SUMS 递归问题
           # 兼容 GNU/BSD/Windows 三平台 find：不用 GNU-only -printf，用 sed 去 ./ 前缀
           find . -maxdepth 1 -type f ! -name SHA256SUMS | LC_ALL=C sort | sed 's|^\./||' | xargs sha256sum > SHA256SUMS

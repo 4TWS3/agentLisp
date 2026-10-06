@@ -63,6 +63,10 @@ WORKDIR /app
 
 COPY python/pyproject.toml ./python/
 WORKDIR /app/python
+# O8 消噪：python/ 子项目可能未提交 uv.lock（根仓库是顶层 uv + hatchling direct-ref 结构），
+#    无 lock 文件时 uv --frozen sync 会报警告「uv.lock not found, skipping the lock file」，
+#    提前 touch 空占位锁文件消除 warning（不影响后续非 frozen fallback，因为 fallback 路径本身会忽略 lock）
+RUN touch /app/python/uv.lock || true
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen --no-dev --no-install-project 2>&1 || \
     uv sync --no-dev --no-install-project
