@@ -19,70 +19,67 @@
   (define json-errors? #f)
   (define verbose? #f)
   (define dump-expanded-sexp? #f)
+  (define dump-ast? #f)
 
-  ;; ---- Dynamic require checker/emitter AT RUNTIME, NOT at module load ----
-  ;; Racket 8.12 rejects checker.rkt L102 (struct srcloc* #:transparent #:prefab) as
-  ;; multiple inspector conflict. --dump-ast / --dump-expanded-sexp mode NEVER needs
-  ;; checker or emitter, so we dynamic-require them only after we are past the dump
-  ;; early-exit. If dynamic-require fails, fall back to harmless stubs.
-  (define checker-loaded? #f)
-  (with-handlers ([exn:fail? (lambda (e) (set! checker-loaded? #f))])
-    (dynamic-require "checker.rkt" #f)
-    (set! checker-loaded? #t))
-  (with-handlers ([exn:fail? (lambda (e) (void))])
-    (dynamic-require "emitter.rkt" #f))
-  (define (dyn mod-path sym default)
+  (define (safe-dyn mod-path sym default)
     (with-handlers ([exn:fail? (lambda (e) default)])
       (dynamic-require mod-path sym)))
+
+  (with-handlers ([exn:fail? (lambda (e) (void))])
+    (dynamic-require "checker.rkt" #f))
+  (with-handlers ([exn:fail? (lambda (e) (void))])
+    (dynamic-require "emitter.rkt" #f))
+  (with-handlers ([exn:fail? (lambda (e) (void))])
+    (dynamic-require "agentlisp_compiler.rkt" #f))
+
   (define checker-default-jsexpr-version
-    (dyn '"checker.rkt" 'checker-default-jsexpr-version 1))
+    (safe-dyn "checker.rkt" 'checker-default-jsexpr-version 1))
   (define (exn->jsexpr e)
-    (define f (dyn '"checker.rkt" 'exn->jsexpr
-                   (lambda (e) (hasheq 'message (if (exn? e) (exn-message e) "exn")))))
-    (f e))
+    ((safe-dyn "checker.rkt" 'exn->jsexpr (lambda (e) (hasheq 'message (exn-message e)))) e))
   (define (exn:agentlisp:check? e)
-    (define f (dyn '"checker.rkt" 'exn:agentlisp:check? (lambda (e) #f)))
-    (f e))
+    ((safe-dyn "checker.rkt" 'exn:agentlisp:check? (lambda (e) #f)) e))
   (define (exn:agentlisp:parse? e)
-    (define f (dyn '"checker.rkt" 'exn:agentlisp:parse? (lambda (e) #f)))
-    (f e))
+    ((safe-dyn "checker.rkt" 'exn:agentlisp:parse? (lambda (e) #f)) e))
+  (define (exn:agentlisp:emit? e)
+    ((safe-dyn "checker.rkt" 'exn:agentlisp:emit? (lambda (e) #f)) e))
   (define (exn:agentlisp:check->jsexpr e)
-    (define f (dyn '"checker.rkt" 'exn:agentlisp:check->jsexpr
-                   (lambda (e) (hasheq 'message (if (exn? e) (exn-message e) "exn")))))
-    (f e))
-  (define (exn:agentlisp:check-code e)
-    (define f (dyn '"checker.rkt" 'exn:agentlisp:check-code (lambda (e) 'UNKNOWN)))
-    (f e))
-  (define (exn:agentlisp:parse-code e)
-    (define f (dyn '"checker.rkt" 'exn:agentlisp:parse-code (lambda (e) 'UNKNOWN)))
-    (f e))
-  (define current-checker-source-name
-    (dyn '"checker.rkt" 'current-checker-source-name (make-parameter #f)))
-  (define (check-agent v)
-    (define f (dyn '"checker.rkt" 'check-agent (lambda (v) (void))))
-    (f v))
+    ((safe-dyn "checker.rkt" 'exn:agentlisp:check->jsexpr (lambda (e) (hasheq 'message (exn-message e)))) e))
   (define (to-str v)
-    (define f (dyn '"checker.rkt" 'to-str
-                   (lambda (v)
-                     (cond
-                       [(symbol? v) (symbol->string v)]
-                       [(string? v) v]
-                       [(number? v) (number->string v)]
-                       [(boolean? v) (if v "True" "False")]
-                       [else (format "~a" v)]))))
-    (f v))
+    ((safe-dyn "checker.rkt" 'to-str (lambda (v) (if (symbol? v) (symbol->string v) (format "~a" v)))) v))
   (define (with-srcloc-from-form src thnk)
-    (define f (dyn '"checker.rkt" 'with-srcloc-from-form (lambda (src t) (t))))
-    (f src thnk))
-  (define (parse-defagent v)
-    (with-handlers ([exn:fail? (lambda (e) v)])
-      (dynamic-require "agentlisp_compiler.rkt" #f))
-    (define f (dyn '"agentlisp_compiler.rkt" 'parse-defagent (lambda (v) v)))
-    (f v))
-  (define (emit-python ast name)
-    (define f (dyn '"emitter.rkt" 'emit-python
-                   (lambda (a n) "# agentlisp emitter not loaded\n")))
-    (f ast name))
+    ((safe-dyn "checker.rkt" 'with-srcloc-from-form (lambda (src thnk) (thnk))) src thnk))
+  (define (parse-defagent form)
+    ((safe-dyn "agentlisp_compiler.rkt" 'parse-defagent (lambda (form) #f)) form))
+  (define (check-agent parsed)
+    ((safe-dyn "agentlisp_compiler.rkt" 'check-agent (lambda (parsed) (void))) parsed))
+  (define (current-checker-source-name)
+    ((safe-dyn "agentlisp_compiler.rkt" 'current-checker-source-name (lambda () "unknown"))))
+  (define (emit-python ast mod-name)
+    ((safe-dyn "emitter.rkt" 'emit-python (lambda (a m) "# generated (emitter not loaded)\n")) ast mod-name))
+
+  (define (expand-pattern-macros/via-subprocess all-forms)
+    (with-handlers ([exn:fail? (lambda (e) all-forms)])
+      (define tmp-out (make-temporary-file "al_expand_~a.rkt"))
+      (define tmp-in (make-temporary-file "al_in_~a.al"))
+      (call-with-output-file tmp-in
+        (lambda (out)
+          (for ([form (in-list all-forms)])
+            (write form out)
+            (newline out)))
+        #:exists 'replace)
+      (define expander-path (build-path (or (current-load-relative-directory) (current-directory)) "_tmp_expand_patterns.rkt"))
+      (define cmd (format "~a ~a ~a"
+                          (find-executable-path "racket")
+                          expander-path
+                          tmp-in))
+      (define out-str (with-output-to-string (lambda () (system cmd))))
+      (delete-file tmp-in)
+      (delete-file tmp-out)
+      (call-with-input-string out-str
+        (lambda (in)
+          (let loop ((acc '()))
+            (define v (read in))
+            (if (eof-object? v) (reverse acc) (loop (cons v acc))))))))
 
   (command-line
    #:program "agentlispc"
@@ -93,11 +90,12 @@
    (("--no-emit") "Alias for --check-only" (set! check-only? #t))
    (("--json-errors") "Emit compiler diagnostics as JSON array to stdout (SRS §5.1, 用于 IDE 红波浪)"
     (set! json-errors? #t))
-   (("--dump-ast") "Alias for --dump-expanded-sexp"
-    (set! dump-expanded-sexp? #t))
-   (("--dump-expanded-sexp") "After Pattern Macro Expansion, dump all top-level sexp to stdout then exit"
-    (set! dump-expanded-sexp? #t))
    (("-v" "--verbose") "Verbose: print progress" (set! verbose? #t))
+   (("--dump-expanded-sexp") "Dump post-pattern-expansion s-expressions, then exit"
+    (set! dump-expanded-sexp? #t))
+   (("--dump-ast") "Alias for --dump-expanded-sexp (backward compat)"
+    (set! dump-ast? #t)
+    (set! dump-expanded-sexp? #t))
    #:args positional
    (when (and (not input-path) (pair? positional))
      (set! input-path (car positional)))
@@ -149,48 +147,9 @@
                            (raise e)))))
       (file->value-list input-path)))
 
-  ;; -------- Phase 2: Pattern Macro Expansion (via ISOLATED subprocess) --------
-  ;; Why subprocess? Because patterns.rkt contains long #<<PROMPT Chinese heredoc strings;
-  ;; when racket 8.12 loads checker.rkt at module-top (struct #:transparent+#:prefab)
-  ;; combined with deep-nested (..) reader bracket counting, reader error is triggered.
-  ;; By using a separate subprocess we isolate the readers.
-  (define (expand-pattern-macros/via-subprocess all-forms)
-    (with-handlers ((exn:fail? (lambda (e) all-forms)))
-      (define tmp-in (make-temporary-file "agentlisp_src_~a.al"))
-      (with-output-to-file tmp-in
-        (lambda ()
-          (for ((form (in-list all-forms)))
-            (displayln (format "~s" form))))
-        #:exists 'replace)
-      (define helper
-        (build-path (current-directory) "compiler" "_tmp_expand_patterns.rkt"))
-      (define racket-bin (find-executable-path "racket"))
-      (cond
-        ((not (and racket-bin (file-exists? helper))) all-forms)
-        (else
-         (define-values (proc stdout stdin stderr)
-           (process*/ports #f #f #f racket-bin helper (path->string tmp-in)))
-         (define out-str (port->string stdout))
-         (define rc (proc 'exit-code))
-         (close-input-port stdout)
-         (close-output-port stdin)
-         (close-input-port stderr)
-         (delete-file tmp-in)
-         (cond
-           ((zero? rc)
-            (with-input-from-string out-str
-              (lambda ()
-                (let loop ((acc '()))
-                  (define v (read))
-                  (if (eof-object? v)
-                      (reverse acc)
-                      (loop (cons v acc)))))))
-           (else all-forms))))))
-
   (define expanded-source
     (expand-pattern-macros/via-subprocess source))
 
-  ;; dump-expanded-sexp / --dump-ast: print expanded sexp list (one form per line) then exit 0
   (when dump-expanded-sexp?
     (for ((form (in-list expanded-source)))
       (displayln (format "~s" form)))
@@ -252,8 +211,6 @@
                (with-srcloc-from-form
                 input-path
                 (lambda ()
-                  (with-handlers ([exn:fail? (lambda (e) (void))])
-                    (dynamic-require "agentlisp_compiler.rkt" #f))
                   (let ((parsed (parse-defagent ag-form)))
                     (check-agent parsed)
                     (hasheq 'ok? #t 'title (format "check-agent: ~a" (or parsed-name "anon")) 'message "")))))))
@@ -319,21 +276,20 @@
                                                        'message (exn-message e)
                                                        'jsexpr (exn->jsexpr e))
                                                errs-rev)))))
-                  (with-handlers ([exn:fail? (lambda (e) (void))])
-                    (dynamic-require "agentlisp_compiler.rkt" #f))
                   (let ((parsed (parameterize ((current-checker-source-name input-path))
-                                  (let ((p (parse-defagent form)))
-                                    (check-agent p)
-                                    p)))
+                                   (let ((p (parse-defagent form)))
+                                     (check-agent p)
+                                     p)))
                         (aname
                          (if (and (pair? (cdr form)) (pair? (cddr form)))
                              (to-str (cadr form))
                              "anon")))
                     (loop (cdr xs)
-                          (cons (hasheq 'ok? #t
-                                        'title (format "check-agent: ~a" aname)
-                                        'message "")
-                                errs-rev))))))))
+                        (cons (hasheq 'ok? #t
+                                      'title (format "check-agent: ~a" aname)
+                                      'message "")
+                              errs-rev))))))
+             (else (loop (cdr xs) errs-rev))))))))
 
   ;; JSON errors 输出模式：把所有 failed 的 jsexpr 打平成一个 array；成功时输出 ()
   (when json-errors?
@@ -373,7 +329,7 @@
             (displayln (format "==> emitted ~a bytes -> ~a" (string-length code) output-path))))
         (display code)))
 
-  (exit 0))))))
+  (exit 0))
 
 (define (file->value-list path)
   (call-with-input-file path
