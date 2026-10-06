@@ -6,9 +6,7 @@
 (define pkg-authors '(agentlisp))
 
 (define deps
-  '("base"
-    "rackunit-lib"
-    "syntax/parse"
+  '("rackunit-lib"
     "data-lib"))
 
 (define build-deps

@@ -92,8 +92,10 @@ COPY config /app/config
 RUN chmod +x /app/docker/entrypoint.sh \
     && ln -sf /app/python/pyproject.toml /app/pyproject.toml
 
-RUN raco pkg install --auto --no-docs --batch --link /app/scheme 2>&1 || \
-    raco pkg install --auto --no-docs --batch --type dir --name agent-dsl /app/scheme
+RUN cd /app \
+    && ls scheme/ \
+    && raco pkg install --auto --no-docs --batch --link ./scheme 2>&1 || \
+       raco pkg install --auto --no-docs --batch --type dir --name agent-dsl ./scheme
 
 # ===== OCI Image Format Specification 标注（ANNOTATIONS 1.0）=====
 # 5 个标准键 org.opencontainers.image.{source,version,revision,created,title}
