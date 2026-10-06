@@ -10,13 +10,8 @@
          defchain-agent
          defparallel-agent
          defplanner-agent
-         defagent
-         scoped-worker
          reorder-blocks
          splice-to-define-agent)
-
-(define-syntax (defagent stx) stx)
-(define-syntax (scoped-worker stx) stx)
 
 (define (reorder-blocks blocks)
   (define order-preference
@@ -43,7 +38,7 @@
   (syntax-case stx ()
     [(_ name* . rst*)
      (free-identifier=? #'code-refiner #'name*)
-     #'(defagent code-refiner
+     #''(defagent code-refiner
          (:model :provider "anthropic"
                  :name "claude-3-7-sonnet"
                  :temperature 0.2
@@ -66,13 +61,13 @@
                      :circuit-breaker 5
                      :on-failure 'fallback-model)))]
     [(_ name* . rst*)
-     #`(defagent name* . rst*)]))
+     #`(quote (defagent name* . rst*))]))
 
 (define-syntax (defrouter-agent stx)
   (syntax-case stx ()
     [(_ name* . rst*)
      (free-identifier=? #'ops-gateway #'name*)
-     #'(defagent ops-gateway
+     #''(defagent ops-gateway
          (:model :provider "openai"
                  :name "gpt-5.6"
                  :temperature 0.0
@@ -101,17 +96,13 @@
                                             (:verify :json-schema #t :linter-check #f :test-runner "")
                                             (:correct :max-retries 2 :circuit-breaker 3 :on-failure 'abort))))))]
     [(_ name* . rst*)
-     #`(defagent name* . rst*)]))
+     #`(quote (defagent name* . rst*))]))
 
 (define-syntax (defchain-agent stx)
   (syntax-case stx ()
     [(_ name* . rst*)
      (free-identifier=? #'doc-pipeline #'name*)
-     #'(defagent doc-pipeline
-         (:model :provider "anthropic"
-                 :name "claude-3-7-sonnet"
-                 :temperature 0.0
-                 :system-prompt #<<PROMPT
+     (with-syntax ([sp #<<PROMPT
 你是一个多步骤提示链（Prompt Chaining）执行 Agent。必须严格按以下给定顺序执行步骤，不得跳过或打乱：
 Step 1 — 提取文档摘要 :in () :out summary
   Prompt: "提取文档摘要"
@@ -119,29 +110,34 @@ Step 2 — 基于摘要生成代码 :in (summary) :out code
   Prompt: "基于摘要生成代码"
 每一步完成后，把 :out 变量注入到后续 :in 步骤的上下文中；最终 Answer 必须包含 JSON {"summary": … "code": …}。
 PROMPT
-                         )
-         (:tools (import-builtin bash pytest))
-         (:context :memory-policy (:markdown-fs "./memory/doc-pipeline.md"
-                                   :layers ('L0-Abstract 'L1-Overview)
-                                   :auto-append #t)
-                   :skills ()
-                   :status-bar (:step-count #t :current-branch #t :test-status #t))
-         (:harness
-           (:constrain :require-human-approval ()
-                       :forbidden-commands ("rm -rf"))
-           (:verify :json-schema #t
-                    :linter-check #f
-                    :test-runner ""
-                    :step-order-assertion ("Step1 summary MUST appear in trajectory before Step2 code request"))
-           (:correct :max-retries 2 :circuit-breaker 5 :on-failure 'abort)))]
+                       ])
+       #`(quote (defagent doc-pipeline
+           (:model :provider "anthropic"
+                   :name "claude-3-7-sonnet"
+                   :temperature 0.0
+                   :system-prompt sp)
+           (:tools (import-builtin bash pytest))
+           (:context :memory-policy (:markdown-fs "./memory/doc-pipeline.md"
+                                     :layers ('L0-Abstract 'L1-Overview)
+                                     :auto-append #t)
+                     :skills ()
+                     :status-bar (:step-count #t :current-branch #t :test-status #t))
+           (:harness
+             (:constrain :require-human-approval ()
+                         :forbidden-commands ("rm -rf"))
+             (:verify :json-schema #t
+                      :linter-check #f
+                      :test-runner ""
+                      :step-order-assertion ("Step1 summary MUST appear in trajectory before Step2 code request"))
+             (:correct :max-retries 2 :circuit-breaker 5 :on-failure 'abort)))))]
     [(_ name* . rst*)
-     #`(defagent name* . rst*)]))
+     #`(quote (defagent name* . rst*))]))
 
 (define-syntax (defparallel-agent stx)
   (syntax-case stx ()
     [(_ name* . rst*)
      (free-identifier=? #'multi-search #'name*)
-     #'(defagent multi-search
+     #''(defagent multi-search
          (:model :provider "anthropic"
                  :name "claude-3-7-sonnet"
                  :temperature 0.0
@@ -179,17 +175,13 @@ PROMPT
                                             (:verify :json-schema #t :linter-check #f :test-runner "")
                                             (:correct :max-retries 2 :circuit-breaker 3 :on-failure 'abort))))))]
     [(_ name* . rst*)
-     #`(defagent name* . rst*)]))
+     #`(quote (defagent name* . rst*))]))
 
 (define-syntax (defplanner-agent stx)
   (syntax-case stx ()
     [(_ name* . rst*)
      (free-identifier=? #'deep-researcher #'name*)
-     #'(defagent deep-researcher
-         (:model :provider "anthropic"
-                 :name "claude-3-7-sonnet"
-                 :temperature 0.7
-                 :system-prompt #<<PROMPT
+     (with-syntax ([sp #<<PROMPT
 你是一个具备规划能力（Planning）的 Agent。
 Planner Prompt："将研究目标分解为 3-5 个步骤"
 执行流程：
@@ -197,20 +189,25 @@ Planner Prompt："将研究目标分解为 3-5 个步骤"
   Step P2…Pn — 按计划逐步执行，仅可使用 executor-tools: web-search / read-pdf
   Step FIN — 输出计划完成度报告 {"plan_total": N, "plan_done": M, "unfinished": […]}
 PROMPT
-                         )
-         (:tools (import-builtin web-search read-pdf))
-         (:context :memory-policy (:markdown-fs "./memory/deep-researcher.md"
-                                   :layers ('L0-Abstract 'L1-Overview)
-                                   :auto-append #t)
-                   :skills ()
-                   :status-bar (:step-count #t :current-branch #t :test-status #t :todo-list #t))
-         (:harness
-           (:constrain :require-human-approval (web-search read-pdf)
-                       :forbidden-commands ("rm -rf"))
-           (:verify :json-schema #t
-                    :linter-check #f
-                    :test-runner ""
-                    :plan-completion-assertion ("P1 plan length in 3..5" "FIN unfinished list is empty"))
-           (:correct :max-retries 3 :circuit-breaker 5 :on-failure 'ask-human)))]
+                       ])
+       #`(quote (defagent deep-researcher
+           (:model :provider "anthropic"
+                   :name "claude-3-7-sonnet"
+                   :temperature 0.7
+                   :system-prompt sp)
+           (:tools (import-builtin web-search read-pdf))
+           (:context :memory-policy (:markdown-fs "./memory/deep-researcher.md"
+                                     :layers ('L0-Abstract 'L1-Overview)
+                                     :auto-append #t)
+                     :skills ()
+                     :status-bar (:step-count #t :current-branch #t :test-status #t :todo-list #t))
+           (:harness
+             (:constrain :require-human-approval (web-search read-pdf)
+                         :forbidden-commands ("rm -rf"))
+             (:verify :json-schema #t
+                      :linter-check #f
+                      :test-runner ""
+                      :plan-completion-assertion ("P1 plan length in 3..5" "FIN unfinished list is empty"))
+             (:correct :max-retries 3 :circuit-breaker 5 :on-failure 'ask-human)))))]
     [(_ name* . rst*)
-     #`(defagent name* . rst*)]))
+     #`(quote (defagent name* . rst*))]))

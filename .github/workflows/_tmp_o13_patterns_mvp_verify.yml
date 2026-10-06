@@ -35,9 +35,8 @@ jobs:
                    racket/function)
           (require "compiler/patterns.rkt")
 
-          ;; DSL primitives — no-op identity macros so expand doesn't complain about unbound
-          (define-syntax (defagent stx) stx)
-          (define-syntax (scoped-worker stx) stx)
+          (define-namespace-anchor anc)
+          (define ns (namespace-anchor->namespace anc))
 
           (define (normalize-sexp str)
             (with-input-from-string str
@@ -47,9 +46,8 @@ jobs:
                       (string-trim (string-join (reverse out) " "))
                       (loop (read) (cons (format "~s" tok) out)))))))
 
-          (define-syntax-rule (expand+normalize form)
-            (let ([stx (expand #'form)])
-              (normalize-sexp (format "~s" (syntax->datum stx)))))
+          (define (expand+normalize form)
+            (normalize-sexp (format "~s" (eval form ns))))
 
           (define (load-fixture path)
             (normalize-sexp (file->string path)))
