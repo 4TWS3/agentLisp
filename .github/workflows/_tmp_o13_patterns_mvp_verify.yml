@@ -27,15 +27,14 @@ jobs:
       - name: Verify 5 macros standalone expand against fixtures (NO main.rkt wiring)
         shell: bash -euxo pipefail {0}
         run: |
-          # Standalone verifier: require patterns, extract stx, expand, syntax->datum, normalize, compare first 200 chars
-          cat > /tmp/expand_verify.rkt <<'RKT'
-          #lang racket/base
+          cat > expand_verify.rkt <<'RKT'
+          #lang racket
           (require racket/match
                    racket/string
                    racket/port
-                   racket/function
-                   (only-in racket load/load-config))
-          (load "../../compiler/patterns.rkt")
+                   racket/function)
+          (require "compiler/patterns.rkt")
+
           (define (normalize-sexp str)
             (with-input-from-string str
               (thunk
@@ -43,28 +42,34 @@ jobs:
                   (if (eof-object? tok)
                       (string-trim (string-join (reverse out) " "))
                       (loop (read) (cons (format "~s" tok) out)))))))
+
           (define-syntax-rule (expand+normalize form)
-            (let ([stx (expand-syntax #'form)])
+            (let ([stx (expand #'form)])
               (normalize-sexp (format "~s" (syntax->datum stx)))))
+
           (define (load-fixture path)
             (normalize-sexp (file->string path)))
+
           (define (same-head? actual expected nchars)
             (string=? (substring actual 0 (min nchars (string-length actual)))
                       (substring expected 0 (min nchars (string-length expected)))))
+
           (define *results* (make-hash))
           (define (register name ok? detail)
             (hash-set! *results* name (cons ok? detail)))
+
           (define (check-macro name form expected-file n)
-            (with-handlers ([exn:fail? (lambda (e) (register name #f (format "exn: ~a" (exn-message e))))])
+            (with-handlers ([exn:fail? (lambda (e)
+                                          (register name #f (format "exn: ~a" (exn-message e))))])
               (let* ([out (expand+normalize form)]
                      [exp (load-fixture expected-file)]
                      [head-ok? (same-head? out exp n)])
                 (register name head-ok?
-                          (format "head ~a chars match=~a; actual-head=~s; expected-head=~s"
+                          (format "head ~a chars match=~a\n actual-head=~s\n expected-head=~s"
                                   n head-ok?
-                                  (substring out 0 (min 120 (string-length out)))
-                                  (substring exp 0 (min 120 (string-length exp))))))))
-          ;; 1. defreflect
+                                  (substring out 0 (min 300 (string-length out)))
+                                  (substring exp 0 (min 300 (string-length exp))))))))
+
           (check-macro 'defreflect
             (defreflect-agent code-refiner
               :provider "anthropic"
@@ -74,7 +79,7 @@ jobs:
               :max-retries 3)
             "tests/patterns/fixtures/defreflect_code_refiner.expected.rkt"
             200)
-          ;; 2. defrouter
+
           (check-macro 'defrouter
             (defrouter-agent ops-gateway
               :model ("anthropic" "claude-3-5-haiku")
@@ -83,7 +88,7 @@ jobs:
                        (:intent 'doc-writer => scribe)))
             "tests/patterns/fixtures/defrouter_ops_gateway.expected.rkt"
             200)
-          ;; 3. defchain
+
           (check-macro 'defchain
             (defchain-agent doc-pipeline
               :model ("qwen" "qwen-plus")
@@ -91,7 +96,7 @@ jobs:
                       ("按 DCAF 2.0 原子动作分层抽取 L0~L3 知识点" knowledge-atoms)))
             "tests/patterns/fixtures/defchain_doc_pipeline.expected.rkt"
             180)
-          ;; 4. defparallel
+
           (check-macro 'defparallel
             (defparallel-agent multi-search
               :branches ((search-a "官方文档源 + PyPI README")
@@ -101,7 +106,7 @@ jobs:
               :model ("openai" "gpt-5"))
             "tests/patterns/fixtures/defparallel_multi_search.expected.rkt"
             180)
-          ;; 5. defplanner
+
           (check-macro 'defplanner
             (defplanner-agent deep-researcher
               :model ("anthropic" "claude-3-7-sonnet")
@@ -109,18 +114,21 @@ jobs:
               :executor-tools (bash wget curl))
             "tests/patterns/fixtures/defplanner_deep_researcher.expected.rkt"
             200)
-          ;; Print summary JSON
+
           (call-with-output-file "/tmp/patterns_verify.json"
             (lambda (out)
               (for/list ([(k v) (in-hash *results*)])
                 (displayln (format "RESULT name=~a ok=~a detail=~a" k (car v) (cdr v)))))
             #:exists 'replace)
-          ;; Exit nonzero if any failed
           (define failures (for/sum ([(k v) (in-hash *results*)] #:when (not (car v))) 1))
+          (printf "SUMMARY failures=~a/5\n" failures)
+          (flush-output)
           (exit failures)
           RKT
-          cp /tmp/expand_verify.rkt compiler/tests/_patterns_expand_verify.rkt
-          cd compiler/tests && racket _patterns_expand_verify.rkt
+          ls -la expand_verify.rkt
+          racket expand_verify.rkt 2>&1 | tee /tmp/expand_stdout.log
+          echo "--- LOG TAIL ---"
+          tail -20 /tmp/expand_stdout.log || true
 
       - name: Upload verification log
         if: always()
