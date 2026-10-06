@@ -57,7 +57,7 @@ RUN apt-get update \
          rackunit-lib \
          syntax/parse \
          data-lib \
-         json-lib \
+         json \
     && rm -rf /tmp/* /root/.cache /var/lib/apt/lists/*
 
 FROM builder-base AS builder
