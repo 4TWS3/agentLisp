@@ -13,6 +13,8 @@
          "patterns.rkt")
 
 (module+ main
+  (define-namespace-anchor anc)
+  (define ns (namespace-anchor->namespace anc))
   (define input-path #f)
   (define output-path #f)
   (define check-only? #f)
@@ -90,24 +92,14 @@
     (cond
       [(and (pair? form)
             (memq (car form)
-                  '(defreflect-agent
-                    defrouter-agent
-                    defchain-agent
-                    defparallel-agent
-                    defplanner-agent)))
+                  '(defreflect-agent defrouter-agent defchain-agent defparallel-agent defplanner-agent)))
        (with-handlers ([exn:fail? (lambda (e) form)])
-         (let* ([stx (datum->syntax #f form)]
-                [expanded-stx (expand stx)]
-                [expanded (syntax->datum expanded-stx)])
-           (define inner
-             (and (pair? expanded)
-                  (eq? (car expanded) 'quote)
-                  (pair? (cdr expanded))
-                  (cadr expanded)))
-           (if (and (pair? inner)
-                    (eq? (car inner) 'defagent))
-               (cons 'define-agent (cdr inner))
-               form)))]
+         (define expanded (eval form ns))
+         (cond
+           [(and (pair? expanded)
+                 (eq? (car expanded) 'defagent))
+            (cons 'define-agent (cdr expanded))]
+           [else form]))]
       [else form]))
 
   (define expanded-source
