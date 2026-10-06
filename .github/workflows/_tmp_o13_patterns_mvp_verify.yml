@@ -34,7 +34,8 @@ jobs:
                    racket/string
                    racket/port
                    racket/function
-                   "compiler/patterns.rkt")
+                   (only-in racket load/load-config))
+          (load "../../compiler/patterns.rkt")
           (define (normalize-sexp str)
             (with-input-from-string str
               (thunk
