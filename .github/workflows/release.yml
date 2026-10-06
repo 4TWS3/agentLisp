@@ -34,19 +34,18 @@ jobs:
           enable-cache: false
 
       - name: Install dependencies and build wheel + sdist
-        working-directory: python
         shell: pwsh
         run: |
           uv sync --no-dev
-          uv build
+          uv add --dev build
+          uv run python -m build --wheel --sdist
           Get-ChildItem dist/
 
       - name: Package CLI exe with PyInstaller → rename with tag + platform
-        working-directory: python
         shell: pwsh
         run: |
           uv sync --extra dev
-          uv run pyinstaller --onefile --name agentlisp agentlisp_runtime/cli.py
+          uv run pyinstaller --onefile --name agentlisp python/agentlisp_runtime/cli.py
           $tag = "${{ github.ref_name }}"
           $src = Join-Path (Get-Location) "dist\agentlisp.exe"
           $dst = Join-Path (Get-Location) ("dist\agentlisp-" + $tag + "-windows-x86_64.exe")
@@ -67,7 +66,7 @@ jobs:
         with:
           name: windows-x64-release
           path: |
-            python/dist/*
+            dist/*
           retention-days: 30
 
   build-linux:
@@ -92,17 +91,16 @@ jobs:
           enable-cache: false
 
       - name: Build wheels + sdist
-        working-directory: python
         run: |
           uv sync --no-dev
-          uv build
+          uv add --dev build
+          uv run python -m build --wheel --sdist
 
       - name: Package CLI singlefile with PyInstaller → rename with tag + os/arch
-        working-directory: python
         run: |
           set -euo pipefail
           uv sync --extra dev
-          uv run pyinstaller --onefile --name agentlisp agentlisp_runtime/cli.py
+          uv run pyinstaller --onefile --name agentlisp python/agentlisp_runtime/cli.py
           tag="${GITHUB_REF_NAME}"
           arch="$(uname -m)"
           case "${{ matrix.os }}" in
@@ -122,7 +120,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.os }}-release
-          path: python/dist/*
+          path: dist/*
           retention-days: 30
 
   create-release:
