@@ -6,11 +6,12 @@
          racket/string
          racket/format
          racket/pretty
+         racket/port
+         racket/system
          json
          "parser.rkt"
          "checker.rkt"
-         "emitter.rkt"
-         "patterns.rkt")
+         "emitter.rkt")
 
 (module+ main
   (define-namespace-anchor anc)
@@ -88,23 +89,42 @@
                            (raise e)))])
       (file->value-list input-path)))
 
+  (define (expand-pattern-macros/via-subprocess all-forms)
+    (with-handlers ([exn:fail? (lambda (e) all-forms)])
+      (define tmp-in (make-temporary-file "agentlisp_src_~a.al"))
+      (with-output-to-file tmp-in
+        (lambda ()
+          (for ([form (in-list all-forms)])
+            (displayln (format "~s" form))))
+        #:exists 'replace)
+      (define helper
+        (build-path (current-directory) "compiler" "_tmp_expand_patterns.rkt"))
+      (define-values (proc stdout stdin stderr)
+        (process*/ports #f #f #f (find-executable-path "racket") helper (path->string tmp-in)))
+      (define out-str (port->string stdout))
+      (define err-str (port->string stderr))
+      (define rc (proc 'exit-code))
+      (close-input-port stdout)
+      (close-output-port stdin)
+      (close-input-port stderr)
+      (delete-file tmp-in)
+      (cond
+        [(zero? rc)
+         (with-input-from-string out-str
+           (thunk
+             (let loop ([acc '()])
+               (define v (read))
+               (if (eof-object? v)
+                   (reverse acc)
+                   (loop (cons v acc))))))]
+        [else all-forms])))
+
   (define (expand-pattern-macros/one form)
-    (cond
-      [(and (pair? form)
-            (memq (car form)
-                  '(defreflect-agent defrouter-agent defchain-agent defparallel-agent defplanner-agent)))
-       (with-handlers ([exn:fail? (lambda (e) form)])
-         (define expanded (eval form ns))
-         (cond
-           [(and (pair? expanded)
-                 (eq? (car expanded) 'defagent))
-            (cons 'define-agent (cdr expanded))]
-           [else form]))]
-      [else form]))
+    ;; Per-form left alone now; full list handled above. Kept for type-compat.
+    form)
 
   (define expanded-source
-    (for/list ([form (in-list source)])
-      (expand-pattern-macros/one form)))
+    (expand-pattern-macros/via-subprocess source))
 
   (when dump-expanded-sexp?
     (for ([form (in-list expanded-source)])
