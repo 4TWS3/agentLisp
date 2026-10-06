@@ -211,11 +211,10 @@
                    (values (and name (to-str name)) #t)))
                (with-srcloc-from-form
                 input-path
-                (begin
-                  (require "agentlisp_compiler.rkt")
-                  (define parsed (parse-defagent ag-form))
-                  (check-agent parsed)
-                  (hasheq 'ok? #t 'title (format "check-agent: ~a" (or parsed-name "anon")) 'message ""))))))
+                (lambda ()
+                  (let ((parsed (parse-defagent ag-form)))
+                    (check-agent parsed)
+                    (hasheq 'ok? #t 'title (format "check-agent: ~a" (or parsed-name "anon")) 'message "")))))))
          combined-results)
         (else
          (list (hasheq 'ok? #t 'title "empty-ast" 'message "no define-agent forms, trivially pass static checks"))))))
@@ -278,19 +277,19 @@
                                                        'message (exn-message e)
                                                        'jsexpr (exn->jsexpr e))
                                                errs-rev)))))
-                  (local-require "agentlisp_compiler.rkt")
-                  (parameterize ((current-checker-source-name input-path))
-                    (define parsed (parse-defagent form))
-                    (check-agent parsed))
-                  (define aname
-                    (if (and (pair? (cdr form)) (pair? (cddr form)))
-                        (to-str (cadr form))
-                        "anon"))
-                  (loop (cdr xs)
+                  (let ((parsed (parameterize ((current-checker-source-name input-path))
+                                   (let ((p (parse-defagent form)))
+                                     (check-agent p)
+                                     p)))
+                        (aname
+                         (if (and (pair? (cdr form)) (pair? (cddr form)))
+                             (to-str (cadr form))
+                             "anon")))
+                    (loop (cdr xs)
                         (cons (hasheq 'ok? #t
                                       'title (format "check-agent: ~a" aname)
                                       'message "")
-                              errs-rev)))))
+                              errs-rev))))))
              (else (loop (cdr xs) errs-rev))))))))
 
   ;; JSON errors 输出模式：把所有 failed 的 jsexpr 打平成一个 array；成功时输出 ()
