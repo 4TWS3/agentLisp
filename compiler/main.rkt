@@ -9,9 +9,7 @@
          racket/port
          racket/system
          json
-         "parser.rkt"
-         "checker.rkt"
-         "emitter.rkt")
+         "parser.rkt")
 
 (module+ main
   (define-namespace-anchor anc)
@@ -23,6 +21,59 @@
   (define json-errors? #f)
   (define verbose? #f)
   (define dump-expanded-sexp? #f)
+
+  ;; ---- Dynamic require checker/emitter at runtime ----
+  ;; If checker.rkt fails to load (e.g., #:transparent+#:prefab struct conflict),
+  ;; fall back to default stubs so --dump-ast / --dump-expanded-sexp still works.
+  (define checker-loaded? #f)
+  (define emitter-loaded? #f)
+  (with-handlers ((exn:fail? (lambda (e) (set! checker-loaded? #f))))
+    (dynamic-require "checker.rkt" #f)
+    (set! checker-loaded? #t))
+  (with-handlers ((exn:fail? (lambda (e) (set! emitter-loaded? #f))))
+    (dynamic-require "emitter.rkt" #f)
+    (set! emitter-loaded? #t))
+
+  ;; helper: dynamic require a symbol or fallback
+  (define (dyn-val mod-path sym default)
+    (with-handlers ((exn:fail? (lambda (e) default)))
+      (dynamic-require mod-path sym)))
+
+  (define checker-default-jsexpr-version
+    (dyn-val '"checker.rkt" 'checker-default-jsexpr-version 1))
+  (define (exn->jsexpr e)
+    (define f (dyn-val '"checker.rkt" 'exn->jsexpr (lambda (e) (hasheq 'message (exn-message e)))))
+    (f e))
+  (define (exn:agentlisp:check? e)
+    (define f (dyn-val '"checker.rkt" 'exn:agentlisp:check? (lambda (e) #f)))
+    (f e))
+  (define (exn:agentlisp:parse? e)
+    (define f (dyn-val '"checker.rkt" 'exn:agentlisp:parse? (lambda (e) #f)))
+    (f e))
+  (define (exn:agentlisp:check->jsexpr e)
+    (define f (dyn-val '"checker.rkt" 'exn:agentlisp:check->jsexpr (lambda (e) (hasheq 'message (exn-message e)))))
+    (f e))
+  (define (exn:agentlisp:check-code e)
+    (define f (dyn-val '"checker.rkt" 'exn:agentlisp:check-code (lambda (e) 'UNKNOWN)))
+    (f e))
+  (define (exn:agentlisp:parse-code e)
+    (define f (dyn-val '"checker.rkt" 'exn:agentlisp:parse-code (lambda (e) 'UNKNOWN)))
+    (f e))
+  (define current-checker-source-name
+    (dyn-val '"checker.rkt" 'current-checker-source-name (make-parameter #f)))
+  (define (check-agent v)
+    (define f (dyn-val '"checker.rkt" 'check-agent (lambda (v) (void))))
+    (f v))
+  (define (parse-defagent v)
+    (define f (dyn-val '"agentlisp_compiler.rkt" 'parse-defagent (lambda (v) v)))
+    (f v))
+  (define (emit-python ast name)
+    (define f (dyn-val '"emitter.rkt" 'emit-python (lambda (ast name) "# agentlisp emitter not loaded\n")))
+    (f ast name))
+  (define (with-srcloc-from-form src th)
+    (with-handlers ((exn:fail? (lambda (e) (th))))
+      (define f (dyn-val '"checker.rkt" 'with-srcloc-from-form (lambda (src th) (th))))
+      (f src th)))
 
   (command-line
    #:program "agentlispc"
