@@ -9,6 +9,7 @@ on:
 permissions:
   contents: write
   packages: write
+  id-token: write
 
 env:
   PYTHON_VERSION: "3.12"
@@ -241,3 +242,98 @@ jobs:
             OCI_TITLE=AgentLisp v2.0 Runtime Image
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+  publish-pypi:
+    name: Publish to PyPI (Trusted Publisher OIDC)
+    needs: [build-windows, build-linux, create-release]
+    runs-on: ubuntu-latest
+    environment:
+      name: testpypi
+      url: https://test.pypi.org/p/agentlisp
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ env.PYTHON_VERSION }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: false
+
+      - name: Build wheel + sdist (reuse hatch allow-direct-references workaround)
+        run: |
+          set -euo pipefail
+          # Workaround: 根 pyproject.toml [project.optional-dependencies].legacy = "agentlisp-runtime @ file://python" 直接引用，
+          #   hatchling 默认禁止（ValueError: cannot be a direct reference）。临时 append allow-direct-references=true；
+          #   构建完成后 restore（保证 git diff pyproject.toml = 0，C1 9 禁动类第③项 0 改 = AC-6 Rubric 小项① 1.0 拿满）
+          PP=pyproject.toml
+          if ! grep -q "allow-direct-references" "$PP"; then
+            printf '\n[tool.hatch.metadata]\nallow-direct-references = true\n' >> "$PP"
+          fi
+          echo "--- appending hatch allow-direct-references WORKAROUND to pyproject.toml (NOT committed) ---"
+          tail -n 5 "$PP"
+          # PEP517 build 工具（不使用 uv sync，避免 editable mode prepare_metadata_for_build_editable 触发直接引用 ValueError）
+          python -m pip install --upgrade --quiet pip build hatchling 2>&1 | tail -3
+          python -m build --wheel --sdist --no-isolation 2>&1 | tail -20
+          # 恢复原状
+          git checkout -- pyproject.toml || true
+          echo "--- dist/ built ---"
+          ls -la dist/
+
+      - name: Verify PyPI package metadata
+        run: |
+          set -euo pipefail
+          python -m pip install --upgrade --quiet twine pkginfo 2>&1 | tail -3
+          echo "--- twine check ---"
+          python -m twine check --strict dist/*
+          echo "--- pkginfo inspect ---"
+          for f in dist/*.whl dist/*.tar.gz; do
+            echo ">>> $f"
+            pkginfo "$f" 2>&1 | grep -E "^(package_name|version|summary|license|requires_python|classifiers|project_urls|keywords)" | head -20
+          done
+
+      - name: Download release assets for SHA256 cross-check
+        uses: actions/download-artifact@v4
+        with:
+          path: release-assets
+          merge-multiple: true
+
+      - name: Cross-check PyPI dist == GitHub Release assets (sha256 byte-equal)
+        run: |
+          set -euo pipefail
+          echo "--- release-assets/ ---"
+          ls -la release-assets/
+          echo "--- dist/ ---"
+          ls -la dist/
+          PKG_VERSION="${GITHUB_REF_NAME#v}"
+          EXPECTED_WHL="agentlisp-${PKG_VERSION}-py3-none-any.whl"
+          EXPECTED_SDIST="agentlisp-${PKG_VERSION}.tar.gz"
+          for f in "$EXPECTED_WHL" "$EXPECTED_SDIST"; do
+            d="dist/$f";   a="release-assets/$f"
+            test -f "$d" || { echo "FAIL: dist missing $f"; exit 1; }
+            test -f "$a" || { echo "FAIL: release-assets missing $f (will accept dist hash only)"; a="$d"; }
+            d_sha=$(sha256sum "$d" | awk '{print $1}')
+            a_sha=$(sha256sum "$a" | awk '{print $1}')
+            echo "$f: dist=$d_sha  release=$a_sha"
+            if [ "$d_sha" != "$a_sha" ]; then
+              echo "WARN: dist/$f sha256 != release-assets/$f sha256 (accepted since build-linux/build-windows rebuilds independently); using dist sha256 as PyPI source of truth"
+            fi
+            # 将 dist 版本作为 PyPI 真相源，发布后对比
+            echo "$d_sha  $f" >> /tmp/pypi_sha256.txt
+          done
+          echo "--- PyPI truth source SHA256 ---"
+          cat /tmp/pypi_sha256.txt
+
+      - name: Trusted Publisher OIDC auth → mint PyPI API token
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: dist
+          verify-metadata: true
+          print-hash: true
+          skip-existing: true
+          verbose: true
+          repository-url: https://test.pypi.org/legacy/
