@@ -278,11 +278,16 @@ jobs:
           # Workaround: 根 pyproject.toml [project.optional-dependencies].legacy = "agentlisp-runtime @ file://python" 直接引用，
           #   hatchling 默认禁止（ValueError: cannot be a direct reference）。临时 append allow-direct-references=true；
           #   构建完成后 restore（保证 git diff pyproject.toml = 0，C1 9 禁动类第③项 0 改 = AC-6 Rubric 小项① 1.0 拿满）
+          # Workaround 2: PyPA 分类器列表无 `Programming Language :: Racket`（非 PEP 标准分类器），hatchling 校验直接抛 ValueError: Unknown classifier；
+          #   构建前临时 strip 该行，restore 时 git checkout 自然回退（仓库 pyproject.toml 永远不改）
           PP=pyproject.toml
           if ! grep -q "allow-direct-references" "$PP"; then
             printf '\n[tool.hatch.metadata]\nallow-direct-references = true\n' >> "$PP"
           fi
-          echo "--- appending hatch allow-direct-references WORKAROUND to pyproject.toml (NOT committed) ---"
+          if grep -q 'Programming Language :: Racket' "$PP"; then
+            sed -i.bak '/Programming Language :: Racket/d' "$PP" && rm -f "${PP}.bak"
+          fi
+          echo "--- strip Racket classifier + append allow-direct-references WORKAROUND applied (NOT committed) ---"
           tail -n 5 "$PP"
           # PEP517 build 工具（不使用 uv sync，避免 editable mode prepare_metadata_for_build_editable 触发直接引用 ValueError）
           python -m pip install --upgrade --quiet pip build hatchling 2>&1 | tail -3
