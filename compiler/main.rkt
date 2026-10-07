@@ -75,7 +75,10 @@
       (parameterize ((current-namespace ns))
         (for/list ((form (in-list all-forms)))
           (define expanded (eval form))
-          expanded))))
+          (cond
+            [(and (pair? expanded) (eq? (car expanded) 'defagent))
+             (cons 'define-agent (cdr expanded))]
+            [else expanded]))))))
 
   (command-line
    #:program "agentlispc"
@@ -325,7 +328,7 @@
             (displayln (format "==> emitted ~a bytes -> ~a" (string-length code) output-path))))
         (display code)))
 
-  (exit 0))
+  (exit 0)
 
 (define (file->value-list path)
   (call-with-input-file path

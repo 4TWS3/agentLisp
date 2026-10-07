@@ -31,8 +31,59 @@
         (lambda (a b)
           (< (pref-of (tag-of a)) (pref-of (tag-of b))))))
 
-(define (splice-to-define-agent name expanded-blocks)
-  `(define-agent ,name ,@expanded-blocks))
+(define (plist->blocks plist)
+  (define model-kw '(#:provider #:model-name #:temperature #:system-prompt #:max-tokens #:top-p))
+  (define model-sym '(provider model-name temperature system-prompt max-tokens top-p))
+  (define tools-kw '(#:tools #:executor-tools))
+  (define tools-sym '(tools executor-tools))
+  (define context-kw '(#:context-policy #:context))
+  (define context-sym '(context-policy context))
+  (define harness-kw '(#:critic #:max-retries #:circuit-breaker #:constrain #:verify #:correct #:reviewer-agent #:forbidden-commands #:require-human-approval #:on-failure #:step-order-assertion #:parallelism-assertion #:plan-completion-assertion #:json-schema #:linter-check #:test-runner #:linter #:reviewer))
+  (define harness-sym '(critic max-retries circuit-breaker constrain verify correct reviewer-agent forbidden-commands require-human-approval on-failure step-order-assertion parallelism-assertion plan-completion-assertion json-schema linter-check test-runner linter reviewer))
+  (define multiagent-kw '(#:routes #:steps #:branches #:reducer #:planner-prompt #:topology #:workers))
+  (define multiagent-sym '(routes steps branches reducer planner-prompt topology workers))
+  (define kw->block (make-hash))
+  (for-each (lambda (k) (hash-set! kw->block k ':model)) (append model-kw model-sym))
+  (for-each (lambda (k) (hash-set! kw->block k ':tools)) (append tools-kw tools-sym))
+  (for-each (lambda (k) (hash-set! kw->block k ':context)) (append context-kw context-sym))
+  (for-each (lambda (k) (hash-set! kw->block k ':harness)) (append harness-kw harness-sym))
+  (for-each (lambda (k) (hash-set! kw->block k ':multiagent)) (append multiagent-kw multiagent-sym))
+  (define (canon-k k)
+    (cond
+      [(keyword? k) (string->keyword (keyword->string k))]
+      [(symbol? k) (string->keyword (symbol->string k))]
+      [else k]))
+  (define buckets (make-hash))
+  (let loop ((xs plist))
+    (cond
+      [(null? xs) (void)]
+      [(null? (cdr xs)) (void)]
+      [else
+       (let ((k (car xs)) (v (cadr xs)))
+         (define b (hash-ref kw->block (canon-k k) #:default (if (keyword? k) (string->symbol (keyword->string k)) (if (symbol? k) k (string->symbol (format "~s" k))))))
+         (define tag (cond
+                      [(hash-has-key? kw->block (canon-k k)) (hash-ref kw->block (canon-k k))]
+                      [else ':unknown]))
+         (hash-update! buckets tag (lambda (old) (append old (if (eqv? tag ':tools)
+                                                                  (list v)
+                                                                  (if (eqv? tag ':context)
+                                                                      (list v)
+                                                                      (list k v))))) (lambda () (list tag)))
+         (loop (cddr xs)))]))
+  (for/list ((tag (in-list '(:model :tools :context :harness :multiagent :unknown)))
+             #:when (hash-has-key? buckets tag))
+    (hash-ref buckets tag)))
+
+(define (ensure-blocks blocks)
+  (define required '(:model :tools :context))
+  (define (block-tag b) (cond
+                         [(and (pair? b) (keyword? (car b))) (car b)]
+                         [(and (pair? b) (symbol? (car b))) (string->keyword (symbol->string (car b)))]
+                         [else ':notablock]))
+  (define existing-tags (map block-tag blocks))
+  (define to-add (filter (lambda (tag) (not (memv tag existing-tags))) required))
+  (define new-blocks (append blocks (map (lambda (tag) (list tag)) to-add)))
+  (filter (lambda (b) (not (null? b))) new-blocks))
 
 (define-syntax (defreflect-agent stx)
   (syntax-case stx ()
@@ -61,7 +112,8 @@
                      :circuit-breaker 5
                      :on-failure 'fallback-model)))]
     [(_ name* . rst*)
-     #`(quote (defagent name* . rst*))]))
+     #`(let ((blocks (reorder-blocks (ensure-blocks (plist->blocks (list . rst*))))))
+         (cons 'define-agent (cons 'name* blocks))))])
 
 (define-syntax (defrouter-agent stx)
   (syntax-case stx ()
@@ -96,7 +148,8 @@
                                             (:verify :json-schema #t :linter-check #f :test-runner "")
                                             (:correct :max-retries 2 :circuit-breaker 3 :on-failure 'abort))))))]
     [(_ name* . rst*)
-     #`(quote (defagent name* . rst*))]))
+     #`(let ((blocks (reorder-blocks (ensure-blocks (plist->blocks (list . rst*))))))
+         (cons 'define-agent (cons 'name* blocks))))])
 
 (define-syntax (defchain-agent stx)
   (syntax-case stx ()
@@ -131,7 +184,8 @@ PROMPT
                       :step-order-assertion ("Step1 summary MUST appear in trajectory before Step2 code request"))
              (:correct :max-retries 2 :circuit-breaker 5 :on-failure 'abort)))))]
     [(_ name* . rst*)
-     #`(quote (defagent name* . rst*))]))
+     #`(let ((blocks (reorder-blocks (ensure-blocks (plist->blocks (list . rst*))))))
+         (cons 'define-agent (cons 'name* blocks))))])
 
 (define-syntax (defparallel-agent stx)
   (syntax-case stx ()
@@ -175,7 +229,8 @@ PROMPT
                                             (:verify :json-schema #t :linter-check #f :test-runner "")
                                             (:correct :max-retries 2 :circuit-breaker 3 :on-failure 'abort))))))]
     [(_ name* . rst*)
-     #`(quote (defagent name* . rst*))]))
+     #`(let ((blocks (reorder-blocks (ensure-blocks (plist->blocks (list . rst*))))))
+         (cons 'define-agent (cons 'name* blocks))))])
 
 (define-syntax (defplanner-agent stx)
   (syntax-case stx ()
@@ -210,4 +265,5 @@ PROMPT
                       :plan-completion-assertion ("P1 plan length in 3..5" "FIN unfinished list is empty"))
              (:correct :max-retries 3 :circuit-breaker 5 :on-failure 'ask-human)))))]
     [(_ name* . rst*)
-     #`(quote (defagent name* . rst*))]))
+     #`(let ((blocks (reorder-blocks (ensure-blocks (plist->blocks (list . rst*))))))
+         (cons 'define-agent (cons 'name* blocks))))])
