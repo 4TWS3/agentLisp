@@ -261,14 +261,14 @@ def check_32rows_scn_eq_pas(srs: str, stderr_list: list[str]) -> None:
         scn_sum += scn
         pas_sum += pas
     row_diff = abs(rows - 32)
-    allow_scn_neq_pas = (os.environ.get("AGENTLISP_O13_TDD_RED_PHASE", "") == "1") or (
+    allow_scn_neq_pas = (
         os.environ.get("AGENTLISP_ROADMAP_ALLOW_SCN_NEQ_PAS", "") == "1"
     )
     if scn_sum != pas_sum and not allow_scn_neq_pas:
         stderr_list.append(
             "ROADMAP-SCENARIO-SUM-MISMATCH: "
             f"rows={rows}? ScnSum={scn_sum} PasSum={pas_sum} "
-            f"expect_PasSum==ScnSum (fail_on_diff=true；O13 TDD 红阶段可导出 AGENTLISP_O13_TDD_RED_PHASE=1 跳过此检查)"
+            f"expect_PasSum==ScnSum (fail_on_diff=true；若需临时跳过此核查可导出 AGENTLISP_ROADMAP_ALLOW_SCN_NEQ_PAS=1)"
         )
         return
     if row_diff > 1:

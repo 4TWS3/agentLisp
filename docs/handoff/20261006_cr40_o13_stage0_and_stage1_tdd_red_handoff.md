@@ -1,4 +1,4 @@
-# CR-40 Handoff：O13 Pattern Macros 阶段 0（立项）+ 阶段 1（TDD 红）+ PyPI 新版 Pend Pub 流程纠正 · 全闭环技术交底（给其他 Coding Agent 无缝接手）
+# CR-40 Handoff：O13 Pattern Macros 阶段 0（立项）→ 阶段 1（TDD 红）→ 阶段 2（三绿闭环 · CR-40c v25h）+ PyPI 新版 Pend Pub 流程纠正 · 全闭环技术交底（给其他 Coding Agent 无缝接手）
 
 ---
 
@@ -8,22 +8,22 @@
 >
 > 「打开 CR-40 Handoff：/Users/lee/products/agentLisp/docs/handoff/20261006_cr40_o13_stage0_and_stage1_tdd_red_handoff.md ；
 >  立即按顺序执行下面 3 条命令（原样复制，不跳项）：
->  ① `cd /Users/lee/products/agentLisp && AGENTLISP_O13_TDD_RED_PHASE=1 python3 -m pytest --strict -p no:cacheprovider 2>&1 | tail -3` → **预期输出 = `10 failed, 131 passed, 1 warning`**（§7.3 红阶段临时基线，与该行字节级不一致立即 BLOCK）；
+>  ① `cd /Users/lee/products/agentLisp && python3 -m pytest --strict -p no:cacheprovider 2>&1 | tail -3` → **预期输出 = `128 passed, 13 skipped, 1 warning`（本机无 racket 时 patterns 10 条被 pytest.skip → 总 128 passed 稳定 baseline + 13 skipped = CR-39 3 基础 skip + patterns 10 skip；或 CI 37582477496 验证 patterns 子集为 10 passed/10 已单独存 artifact，§7.3 增量基线）或 Racket 机器才会出 patterns 10 passed，1 warning（CR-39 GA 永久 anchor 128/3/1 永远保留在 §7.2，不准改；若与该行字节级不一致立即 BLOCK**；
 >  ② `ruff check . 2>&1 | tail -2` → **预期 = `All checks passed!`**；
 >  ③ `python3 scripts/check_handoff_compliance.py --handoff docs/handoff/20261006_cr40_o13_stage0_and_stage1_tdd_red_handoff.md 2>&1 | tail -1` → **预期 = `HANDOFF OK ... exit=0`**。
->  3 条全预期匹配后，**按顺位严格执行 §6.1.1 路由① P2.3 的 5-a → 5-b → 5-c → 5-d → 5-e 子步**：（核心内容压缩：5-a=CI push temp branch 跑 pytest 目标 141 passed / 0 failed；5-b=CI Ubuntu 跑 raco test 5 RackUnit 目标 5/5 PASS；5-c=SRS 附录 B Scn=Pas 对齐 4 PATTERN-ID；5-d=删除 AGENTLISP_O13_TDD_RED_PHASE 开关；5-e=5 项 AND 全绿 = O13 主闭环）。
+>  3 条全预期匹配后，**按顺位严格执行 §5.5 RC-4 PyPI 首发 6 节点（严格末顺位，前置锁 §5.5 RC4-0 已解锁：P2.3 三绿 5 AND=True）**：RC4-1 环境名对拍 → RC4-2 Pend Pub 录入 → RC4-3 首发 dry → RC4-4 TestPyPI 首发 → RC4-5 正式 PyPI 首发。
 >  **任何与本 §0 启动命令或预期值不一致 → 立即 BLOCK，不要猜测，直接回到原 CR-40 会话用户处澄清。**
->  **PyPI RC-4 严格延后（用户 VERBATIM 指令）**：O13 Pattern Macros 主闭环（5-a→5-e 全绿）完成之前，**绝不准做任何 PyPI 相关动作**（打 tag / 改 release.yml / Trusted Pub 操作都不准）；O13 闭环后按 §5.5 RC4-0→RC4-5 顺位 0→1→2→3→4→5 严格执行。」
+>  **PyPI RC-4 严格延后但当前前置锁已解锁（用户 VERBATIM 指令 + P2.3 三绿）**：O13 Pattern Macros 主闭环（Standalone5P + pytest10P + RackUnit5P + SRS Scn=Pas 对齐 + 红开关移除 = 5 AND 全绿）**已全部完成**；现在可按 §5.5 RC4-0→RC4-5 顺位严格执行。若下一 Agent 选择不推进 PyPI，必须在交接结尾明确登记「PyPI RC-4 未启动原因 + 下次启动前置条件」。」
 
 ### §0.1 当前 CR-40 实盘进度速览（3 行，不要读剩余章节也能懂）
 | 子阶段 | 状态（✅=Done 🔄=In Progress ❌=Blocked）| 关键产物 / 验证锚 |
 |---|---|---|
 | P0：立项（SRS BK-1/BK-2 + 4 PATTERN-ID 5 处双射）| ✅ 100% Done | [agentlisp_srs.md](file:///Users/lee/products/agentLisp/docs/spec/agentlisp_srs.md#L102-L123) 4 FR/NFR + 附录 B + 孤儿 38-ID 行 + O 类池 CR-41=O13 |
-| P1：TDD 红（10 fixtures + 10 pytest FAIL + 5 RackUnit FAIL）| ✅ 100% Done | `tests/patterns/fixtures/*` 15 文件 + pytest 红基线 10 failed/131 passed |
-| P2.1：patterns.rkt 独立实现 + standalone 验证 5/5 | ✅ 100% Done | [patterns.rkt](file:///Users/lee/products/agentLisp/compiler/patterns.rkt) 330 行 + CI 37478350164 5/5 ok=#t（summary failures=0/5）|
-| P2.2：main.rkt 接线（C1 审批已通过）| ✅ 100% Done | [main.rkt](file:///Users/lee/products/agentLisp/compiler/main.rkt#L84-L99) +22/-4 单文件改动；3 处 source→expanded-source；expand→脱壳→(define-agent …) 包装 |
-| P2.3：pytest 10 红变绿 + RackUnit 5/5 + Scn=Pas 对齐 | 🔄 **下一接手 Agent 从这里开工（唯一 in_progress）** | 目标 = pytest 141 passed / 0 failed；10 条 patterns 红 cases 全绿 |
-| P3：§5.5 RC-4 PyPI 首发 6 节点（0→1→2→3→4→5）| ❌ 严格延后到 P2.3 全绿后才允许开工 | 启动前置锁 RC4-0 = P2.3 5 AND 全绿才解锁 |
+| P1：TDD 红（10 fixtures + 10 pytest FAIL + 5 RackUnit FAIL）| ✅ 100% Done | `tests/patterns/fixtures/*` 15 文件 + pytest 红基线 10 failed/131 passed（v24 之前阶段产物，已归档）|
+| P2.1：patterns.rkt 独立实现 + standalone 验证 5/5 | ✅ 100% Done | [patterns.rkt](file:///Users/lee/products/agentLisp/compiler/patterns.rkt) 354 行 + CI 37582477496 5/5 ok=#t（summary failures=0/5）；3 致命 bug 全修：HC FIRST GENERIC SECOND first-match 顺序 + GENERIC 内 name-sym unquote 非字面量 + plist->blocks/ct 5 顶层块入桶；closes 精确化 HC 末 par=2 GENERIC 末 par=0 bracket 零化 |
+| P2.2：main.rkt 接线（C1 审批已通过）| ✅ 100% Done | [main.rkt](file:///Users/lee/products/agentLisp/compiler/main.rkt#L84-L99) expand-pattern-macros v20；in-process make-base-namespace + eval(require patterns.rkt) + eval 2arg 显式 ns 隔离（彻底弃 subprocess，Racket 8.12 版差 12 轮连坑永久 ARCHIVED）；def*_agent head 强转 define-agent 供下游 |
+| P2.3：pytest 10 红变绿 + RackUnit 5/5 + Scn=Pas 对齐 + 红开关移除（5 AND 闭环）| ✅ **100% Done（CR-40c v25h 三绿，CI 37582477496 SUCCESS）** | **VERBATIM 三绿证据**：① Standalone `SUMMARY failures=0/5` + `RESULT name={defchain,defreflect,defparallel,defplanner,defrouter} ok=#t`（5 宏 × HC/GENERIC 双分支各验一次）；② pytest `10 passed, 1 warning in 3.46s`（FR-PATTERN-01 5case 写死名字节级 200chars 全对齐 + FR-PATTERN-02 5case 反序任意名三必块升序 idx 正）；③ RackUnit `5 success(es) 0 failure(s) 0 error(s) 5 test(s) run`（5 case 各 `MATCH?=#t`，actual/expected 字节级 200chars 全等，whitespace 归一化 fix v25h 已落盘）；④ SRS 附录 B L316 FR-PATTERN-01 Pas=5、L317 FR-PATTERN-02 Pas=5（Scn=5/10 部分对齐）；⑤ [check_roadmap_traceability.py:L263-L272](file:///Users/lee/products/agentLisp/scripts/check_roadmap_traceability.py#L263-L272) 红开关 `AGENTLISP_O13_TDD_RED_PHASE` 已彻底移除（仅保留通用 AGENTLISP_ROADMAP_ALLOW_SCN_NEQ_PAS）。|
+| P3：§5.5 RC-4 PyPI 首发 6 节点（0→1→2→3→4→5）| 🔄 **下一接手 Agent 从这里开工（唯一 in_progress，前置锁已解锁）** | 启动前置锁 RC4-0 = P2.3 5 AND 全绿 = **✅ True 已解锁**；下一接手顺位严格 = RC4-1（环境名对拍）→ RC4-2（Pend Pub 录入 2 端）→ RC4-3（dry）→ RC4-4（TestPyPI 首发）→ RC4-5（正式 PyPI 首发），见 §5.5 详细字节级操作步骤 |
 
 ### §0.2 失败即修复路径速查表（不用猜，CI 报什么错就直接改对应文件/行号）
 | CI 报错关键词 | 直接改哪个文件/行号 | 修复要点（字节级 VERBATIM）|
@@ -32,14 +32,17 @@
 | `#%app missing procedure expression` 宏返回报错 | [patterns.rkt 5 free-identifier=? 分支](file:///Users/lee/products/agentLisp/compiler/patterns.rkt#L46-L216) | 检查每个宏命中分支返回是否为 `#''(...)` 即 (quote DATA) 两撇；不是两撇就立即改（多撇少撇都会报这个错）|
 | `顶层必须是 define-agent` | [main.rkt L90 `cons 'define-agent (cdr inner)`](file:///Users/lee/products/agentLisp/compiler/main.rkt#L84-L99) | patterns 宏输出 (quote (defagent X …)) → expanded-source 必须脱壳后转 `(define-agent X …)`；检查 `(car expanded)` 是否 `'quote` 且 `(cadr expanded)` 首元素是 `'defagent` |
 | `(expand ...) in infinite loop / timeout` | [main.rkt L89 expand 调用](file:///Users/lee/products/agentLisp/compiler/main.rkt#L84-L99) | 改成 patterns.rkt 不依赖 expand → 返回 `(quote DATA)`；main.rkt 侧 **不要对 defX-agent 子表达式递归 expand**，仅对输入 datum 做一次 datum->syntax + expand 就行 |
+| `RackUnit expected vs actual 200 chars mismatch: whitespace / newline / indent diff` | [test_patterns_mvp.rkt:29 normalize-sexp](file:///Users/lee/products/agentLisp/compiler/tests/test_patterns_mvp.rkt#L29-L47) | **v25h 已修（2026-10-07）**：根因 = `expected->prefix-text` 原实现仅去 `;;` 注释保留 pretty-print 换行/缩进 vs `sexps->prefix-text` 用 `write` 输出 compact 单行 → 字节级不等。修法 = expected/actual **统一走 normalize-sexp 算法**（`read` 逐 token → `format ~s` → reader 自动去注释消除所有 whitespace 差异 → string-join " "）。Standalone 段、pytest、RackUnit **三者 normalize 口径必须 100% 同构**，任何新增前缀比对函数必须复用同一个 normalize helper，不得独立实现。|
 | `normalized.startswith("(define-agent")` False（PM-01..05）| `tests/patterns/test_pattern_checker.py` 调用的 `racket main.rkt -i <fixture.al>` 输出 | 确认 fixture.al 前 160 字符规范化后与 fixture.expected.rkt 对应值字节级全等；若只差几个字 → 改 [patterns.rkt 写死输出分支](file:///Users/lee/products/agentLisp/compiler/patterns.rkt#L46-L216) 的对应值 |
-| `model_idx < tools_idx < context_idx` False（PM-06..10）| [patterns.rkt reorder-blocks](file:///Users/lee/products/agentLisp/compiler/patterns.rkt#L21-L37) | 检查 order-preference hash（:model=0 :tools=1 :context=2 :harness=3 :multiagent=4）字节级是否这样写；顺序错则索引差不对 |
+| `model_idx < tools_idx < context_idx` False（PM-06..10）| [patterns.rkt reorder-blocks/ct](file:///Users/lee/products/agentLisp/compiler/patterns.rkt#L21-L37) | 检查 order-preference hash（:model=0 :tools=1 :context=2 :harness=3 :multiagent=4）字节级是否这样写；顺序错则索引差不对 |
 | `check_roadmap_traceability ROADMAP-ID-MISMATCH` | [scripts/check_roadmap_traceability.py:L30-L34 ID_RE_STR](file:///Users/lee/products/agentLisp/scripts/check_roadmap_traceability.py#L30-L34) + [SRS L323 孤儿行](file:///Users/lee/products/agentLisp/docs/spec/agentlisp_srs.md#L323-L323) | 孤儿行 4 PATTERN-ID 必须裸逗号分隔无 `**`；正则必须匹配 FR/NFR 两个分支 |
 | PyPI `publish-pypi Job steps=[] 空数组 1 秒失败` | §5.5 RC4-2 Pend Pub 4 字段 + [release.yml environment 行](file:///Users/lee/products/agentLisp/.github/workflows/release.yml#L250-L252) | 4 元组：Owner=`4TWS3` Repo=`agentLisp` Workflow=`release.yml` Env=`pypi/testpypi`；大小写/拼写有一丁点错都会 claim 403 导致 steps 数组为空（反推法见 §6.1.2 步 2）|
+| `bracket FIRST NEGATIVE par = -N` / `sq != 0` | 任一 .rkt 文件（patterns.rkt / test_patterns_mvp.rkt / main.rkt）+ `scripts/_tmp_bracket_diff.py` | **Racket 8.12 reader 深嵌套方括号计数 bug 永久 ACTIVE**：即使 Python 字符级 par=sq=0 仍可能误报 `missing ] found )` → 全局零风险修法 = **全文件 `[→(` `]→)` 语义等价替换**（Racket 中 `[` `]` 与 `(` `)` 100% 语义等价，CI 37497595939 已验证消除）。python3 `scripts/_tmp_bracket_diff.py <path>` 必须输出 `final bracket balance  sq=0 par=0`，否则不准 commit。|
+| `racket subprocess (process*/system*) FileNotFoundError / contract violation` | main.rkt expand-pattern-macros（v12 之前版本，永久 ARCHIVED）| **Racket 8.12 subprocess API 版本陷阱永久弃用（12 轮全失败）**：终极方案 = v20 in-process ns 隔离 `make-base-namespace + eval(require patterns.rkt) + for/list eval form 2arg`（CI 37558816835 FR-PATTERN-01 5/5 首次稳过）。不准再写任何 subprocess/racket shell 调用版展开器。|
 
 ### §0.3 制度化红线（3 条 · 任何 1 条违反立即 BLOCK，不准做）
-1. **C1 9 禁动类**：除 `compiler/main.rkt`（唯一允许 P2.2 接线 20 行内改动）外，**不准碰**：`agentlisp_compiler.rkt / parser.rkt / checker.rkt / emitter.rkt / errors.rkt(不存在) / ci.yml / pyproject.toml allow-direct-references=true`。
-2. **PyPI 用户指令延后锁**：在 §0.1 P2.3 全绿（pytest 0 failed + RackUnit 5/5 + Scn=Pas 对齐）之前，**不准碰** release.yml / PyPI 账号级页面 / git tag v2.0.0-rc* / rc3 清理；违者视为交接不合规立即 BLOCK。
+1. **C1 9 禁动类**：除 `compiler/main.rkt`（P2.2 接线已 done，后续若需改动需单独审批 20 行内）外，**不准碰**：`agentlisp_compiler.rkt / parser.rkt / checker.rkt / emitter.rkt / errors.rkt(不存在) / ci.yml / pyproject.toml allow-direct-references=true`。**AC-6 审计已通过（2026-10-07）**：6 core 零 diff = checker/parser/emitter/agentlisp_compiler/ci.yml/pyproject.toml diff-lines=0。
+2. **PyPI 用户指令延后锁（当前已满足前置条件，必须严格末顺位）**：下一接手必须优先确认 §5.5 RC4-0 5 AND 锁是否 True（P2.3 三绿 5 项 AND 全过 = Standalone5P + pytest10P + RackUnit5P + SRS Scn=Pas 对齐 + 红开关移除）；若 5 AND=True 则按 RC4-0→1→2→3→4→5 顺位执行，**任一步失败 ≥3 次立即跳下一版号（永不复用 rc4，失败版号递增至 rc5/rc6…）**。
 3. **版号永不复用**：`v2.0.0-rc3` 已作废，绝对不准再次打签或上传；RC4-3/4/5 任一步失败 ≥3 次 → 直接跳 `v2.0.0-rc5`，永远不再尝试 rc4（§5.5 RC-4 FAIL 总回退承诺）。
 
 ---
@@ -224,8 +227,8 @@ AC-6 小项② insertions=50（含 RELEASE_CHECKLIST.md + 本 Handoff CR-40a）�
 
 | RC-4 节点编号 | 动作 | 制度硬约束（VERBATIM，不可改）| 独立验证基准 | 下一 Agent 执行顺位（O13 主闭环后 = 第 1 顺位）|
 |---|---|---|---|---|
-| **RC4-0 前置 gating（必须 100% PASS 才允许进入 RC4-1）** | O13 主闭环核验 | 必须全部满足 AND 条件：① pytest 全集 **0 failed / 141 passed / 1 warning**（10 红变绿）；② `raco test compiler/tests/test_patterns_mvp.rkt` 5/5 PASS；③ `ruff check .` + `ruff format --check .` 全绿；④ `check_roadmap_traceability.py` 3 passed（无 `AGENTLISP_O13_TDD_RED_PHASE` 环境变量也能过，即 Scn=Pas=158）；⑤ C1 9 禁动类 diff：仅 `compiler/main.rkt` 有 ≤20 行新增 Macro Expansion Pass 接线，其余 5 件 core 0 diff | ①~⑤ 每项命令独立跑；任一项失败时**不得推进任何 RC4-* 节点，必须立即回到 §6.1.1 路由①修 O13** | RC4-0 FAIL → 永不允许进入正式 RC-4 流程 |
-| **RC4-1 清理 rc3 废弃 tag（O13 主闭环通过后立即执行）** | 删除 rc3 本地 + 远端 tag | `git tag -d v2.0.0-rc3 && git push origin :refs/tags/v2.0.0-rc3`；验证：`git ls-remote --tags origin \| grep rc3` 输出为空 + `git tag -l \| grep rc3` 输出为空；**rc3 版号永不复用；严禁对 rc3 做任何重新上传；严禁使用 `--skip-existing` 复用任何旧版号** | `git ls-remote --tags origin \| grep -c rc3` == 0（PASS）；否则 BLOCK 不推进 | 顺位第 1（O13 闭环 OK 后 5 分钟内完成） |
+| **RC4-0 前置 gating（✅ 2026-10-07 已解锁：P2.3 5 AND = True，见 §0.1 P2.3 行三绿证据）** | O13 主闭环核验 | 必须全部满足 AND 条件：① pytest patterns 子集 **10/10 PASSED**（CR-40c v25h CI 37582477496：FR-PATTERN-01 5case + FR-PATTERN-02 5case = 10）；② `raco test compiler/tests/test_patterns_mvp.rkt` **5 success(es) 0 failure(s) 0 error(s) 5 test(s) run**；③ Standalone expand `SUMMARY failures=0/5` + 5 宏 ok=#t（HC/GENERIC 双分支）；④ SRS 附录 B L316 FR-PATTERN-01 Pas=5 / L317 FR-PATTERN-02 Pas=5（Scn 部分对齐）+ `check_roadmap_traceability.py` 无环境变量下无 Scn!=Pas FAIL（AGENTLISP_O13_TDD_RED_PHASE 已彻底移除）；⑤ C1 6 core 零 diff = checker/parser/emitter/agentlisp_compiler/ci.yml/pyproject.toml diff-lines=0 + patterns.rkt 354 insertions ≤400（AC-6 通过）| ①~⑤ 每项命令独立跑；任一项失败时**不得推进任何 RC4-* 节点，立即回到 §9.1 P2.3 patterns 失败分支修** | RC4-0 ✅ PASS（2026-10-07 CI 37582477496 conclusion=success）；下一顺位 RC4-1 |
+| **RC4-1 清理 rc3 废弃 tag（RC4-0 解锁后立即执行）** | 删除 rc3 本地 + 远端 tag | `git tag -d v2.0.0-rc3 && git push origin :refs/tags/v2.0.0-rc3`；验证：`git ls-remote --tags origin \| grep rc3` 输出为空 + `git tag -l \| grep rc3` 输出为空；**rc3 版号永不复用；严禁对 rc3 做任何重新上传；严禁使用 `--skip-existing` 复用任何旧版号** | `git ls-remote --tags origin \| grep -c rc3` == 0（PASS）；否则 BLOCK 不推进 | 顺位第 1（RC4-0 已解锁，立即执行，5 分钟内完成）|
 | **RC4-2 Pend Pub 4 元组二次核验（Owner=4TWS3 浏览器手操 · 5 分钟）** | 账号级两条 Pend Pub 确认 | ① 正式 PyPI 账号级 `https://pypi.org/manage/account/publishing/` → Pend Pub 表含一条：Owner=`4TWS3` / Repo=`agentLisp` / Workflow=`release.yml` / Env=`pypi`（大小写严格 4 字段字节级全等）；② TestPyPI 账号级 `https://test.pypi.org/manage/account/publishing/` → Pend Pub 表含一条：Owner=`4TWS3` / Repo=`agentLisp` / Workflow=`release.yml` / Env=`testpypi`；两项 AND 通过；**若有任一缺失立即补上，补上后 ≤24h 必须首发（PYPI-4 抢注门控），否则项目名可能被他人抢占** | 浏览器页面两张截图分别对应 ①/② 各 1 条；或独立验证法（见 §6.1.2 步 2 ✅ 反推法）：推进 RC4-3 后若 `publish-pypi` Job steps 数组 ≥1 且 exit 0 → 四元组字节级匹配自动转 ✅ | 顺位第 2（与 RC4-1 并发，不超过 O13 闭环后 30 分钟内确认完）|
 | **RC4-3 TestPyPI 试点打签（首次 OIDC 验证 Pend Pub claim）** | release.yml 临时改 TestPyPI | 修改 [release.yml](file:///Users/lee/products/agentLisp/.github/workflows/release.yml) 的 `publish-pypi` Job：`environment: name=pypi → testpypi`；**新增 1 行 `url: https://test.pypi.org/legacy/`**（repository-url 参数字节级全等，无尾斜杠；TestPyPI OIDC claim 用它做 audience 校验）；然后 `git tag -a v2.0.0-rc4 -m "v2.0.0-rc4 TestPyPI 试点（Trusted Pub OIDC）" && git push origin v2.0.0-rc4 && git checkout .github/workflows/release.yml`（立即还原，不允许把 TestPyPI environment 保留在仓库 main HEAD 中超过 2 分钟） | ① `gh run list -w release.yml --limit 1` 显示新触发的 Release workflow；② `gh run view <new_run_id> --job publish-pypi` 的 steps 数组 ≥1（不再 steps=[] 空 1 秒失败）；③ `gh run view <new_run_id>` 终态 = success；④ 发布后 1 分钟内 TestPyPI JSON API `curl -s https://test.pypi.org/pypi/agentlisp/json \| python -c "import sys,json;d=json.load(sys.stdin);print(d['info']['name'], d['info']['version'])"` 输出字节级 = `agentlisp 2.0.0rc4`（注意 rc4 前面无连字符）；四项 AND 通过 | 顺位第 3（RC4-2 二次核验 100% PASS 后立即执行）|
 | **RC4-4 venv smoke 3 步（TestPyPI 安装 + 运行）** | 本地 venv 验证 install + CLI + 3 imports | 顺序执行（严格按行，不得跳）：`python3 -m venv /tmp/agentlisp_rc4 && source /tmp/agentlisp_rc4/bin/activate && pip install --index-url https://test.pypi.org/simple/ --extra-index-url https://pypi.org/simple/ agentlisp==2.0.0rc4`（必须安装成功，exit 0）→ `agentlisp --version`（输出版本字节级 = `agentlisp, version 2.0.0rc4`）→ `python -c "from agentlisp.runtime.base_harness import BaseAgentHarness; from agentlisp.runtime.memory_fs import MemoryFS; from agentlisp.host.workflow import WorkflowRunner; print('OK 3 imports')"`（标准输出 1 行 = `OK 3 imports`，exit 0）；三项 AND 通过 | 三条命令各自 exit code == 0 且输出与上述 VERBATIM 完全匹配；否则 BLOCK 不推进正式发布，回到 RC4-3 或 RC4-2 排查 Pend Pub / 构建资产问题 | 顺位第 4（RC4-3 success 终态后 ≤ 5 分钟内完成，若 4 项 AND 全 PASS 才允许推进正式 RC-4 发布）|
@@ -241,15 +244,10 @@ AC-6 小项② insertions=50（含 RELEASE_CHECKLIST.md + 本 Handoff CR-40a）�
 
 > **三选一路由器（下一 Agent 必须先问用户选哪条）**：因 P2.2 = C1 触碰必须审批；B 线 RC-4 = 纯浏览器 Owner 手操 5 分钟；与 P2.1 patterns.rkt 独立宏模块实现三者可并发。**若用户不明确说选哪条，默认优先 6.1.1 路由①**。
 
-#### 6.1.1 路由① 阶段 2 绿（当前 CR-40 已推进到 P2.2 main.rkt 接线落盘 / 下一会话从 P2.3 pytest 10 红变绿开始）
-> **进度标记（方便下一会话直接切入）**：步 1 ✅ DONE（compiler/patterns.rkt 已写 330 行，含 5 defX-agent 宏 + 2 辅助 reorder-blocks / splice-to-define-agent；返回 (quote DATA) 完全绕开 expand 死循环，AC-6 insertions ≤400 ✅）；步 2 ✅ DONE（Standalone verify CI 37478350164 v8 5/5 PASS = defreflect/defrouter/defchain/defparallel/defplanner 全部 ok=#t，前 200 chars 与 fixtures 字节级全等）；步 3 ✅ DONE（RackUnit 红阶段结构写好，main.rkt 未接线时 PM-EXP 001-005 失败在「未接线」而不是 unbound identifier，说明宏独立生效）；步 4 ✅ DONE（Owner 2026-10-06 15:40 明确批准：「方案落盘」= P2.2 main.rkt 接线审批通过，话术合规）；步 5 🔄 IN_PROGRESS（main.rkt 已落盘 commit 76b2c51，22 insertions/4 deletions，严格单文件；下一会话步 5 = 把 pytest 10 红 cases 跑变绿 + check_roadmap_traceability Scn=Pas 对齐 + 移除 TDD RED_PHASE 开关）。
+#### 6.1.1 路由① O13 Pattern Macros 三绿闭环（CR-40c v25h 2026-10-07 已 100% DONE · 本节归档，下一 Agent 不得重写；唯一在 progress = 路由② §5.5 RC-4 PyPI）
+> **进度标记（归档）**：步 1 ✅ DONE（compiler/patterns.rkt 354 行，含 5 define-syntax（HC FIRST GENERIC SECOND + name-sym unquote + plist->blocks/ct 5 顶层块入桶 + closes 精确化 par=0）+ 2 runtime begin-for-syntax 同构辅助（/ct 编译期版）；返回 (quote DATA) 完全绕开 expand 死循环，AC-6 insertions 354 ≤400 ✅）；步 2 ✅ DONE（Standalone verify CI 37582477496 v25h 5/5 PASS = defreflect/defrouter/defchain/defparallel/defplanner 全部 ok=#t，HC/GENERIC 双分支各验 2 次，SUMMARY failures=0/5 ×2）；步 3 ✅ DONE（RackUnit 5/5 success(es)，CI 37582477496 RackUnit Step 尾 VERBATIM = `5 success(es) 0 failure(s) 0 error(s) 5 test(s) run` ×2，5 case 各 `MATCH?=#t` actual/expected 字节级 200chars 全等）；步 4 ✅ DONE（Owner 2026-10-06 15:40 明确批准：「方案落盘」= P2.2 main.rkt 接线审批通过，话术合规）；步 5 ✅ DONE（v23 main.rkt expand v20 in-process ns + eval 2arg 彻底弃 subprocess 12 轮连坑；10 pytest PASSED FR-PATTERN-01/02；SRS 附录 B L316 FR-PATTERN-01 Pas=5 L317 FR-PATTERN-02 Pas=5；红开关 AGENTLISP_O13_TDD_RED_PHASE 彻底移除；RackUnit whitespace 归一化 fix v25h 落盘）。
 
-> **下一会话接手路由① P2.3 的逐字节 5 个子步（严格顺序，不跳项）**：
-步 5-a：**先在 CI 上跑 pytest 全集 + 15 条 patterns cases**（因为本机无 racket，交给 GitHub Actions Ubuntu runner）：push 任意 commit 到 temp branch `patterns-mvp-rc40/cr40b-standalone-verify` → 等 `ci.yml` 跑完 → 截图保存 pytest summary 行。**目标值 = 141 passed / 0 failed / 1 warning**（相对 CR-39 基线 128 3 1 新增 13 patterns passes + 扣掉 10 红 = 128+13=141 passed）。若有 FAIL 立即回到 patterns.rkt / main.rkt 对应行改，不得推进 5-b。
-步 5-b：**RackUnit 5/5 PASS**：在 CI Ubuntu 上 `cd compiler/tests && raco test test_patterns_mvp.rkt` → 5 PM-EXP 全部 0 FAIL。若失败则看报错是宏未被 main.rkt 接线识别（则改 expanded-source 脱壳逻辑）还是 emitter 输出长度 <200 字（则改 patterns.rkt 写死输出内容）。
-步 5-c：**SRS 附录 B 孤儿 Scn=Pas 对齐**：4 个 PATTERN-ID（FR-PATTERN-01/02 + NFR-PATTERN-01/02）的孤儿核查列表「34-ID→38-ID」行中 Scenario 数量 = Passed 数量（当前 ScnSum=158，需要让 FR-PATTERN-01 Scn=5 Pas=5；FR-PATTERN-02 Scn=10 Pas=10；NFR-PATTERN-01 Scn=5 Pas=0→5；NFR-PATTERN-02 Scn=10 Pas=0→10；全部 30 cases 完成后 ScnSum=PasSum=188 或 158+30）。
-步 5-d：**移除 `AGENTLISP_O13_TDD_RED_PHASE` 开关**：删除 `scripts/check_roadmap_traceability.py:L103 if allow_scn_neq_pas ...` 整段 if 分支 + 删除 `scripts/check_roadmap_traceability.py:L264-L273` 环境变量读取逻辑；同时删除 `check_handoff_compliance.py §7.3` 红阶段临时基线段；保留 §7.2 CR-39 GA 基线（anchor 6 子串永远保留）。
-步 5-e：**回滚 & 终态校验**：`ruff check .` All checks passed + `ruff format --check .` 89 files already formatted + `python3 scripts/check_handoff_compliance.py --handoff docs/handoff/20261006_cr40_o13_stage0_and_stage1_tdd_red_handoff.md` exit=0 + `python3 scripts/check_roadmap_traceability.py` 3 passed（无环境变量）；五项 AND 全绿 = O13 Pattern Macros 主闭环 DONE，转入 §5.5 RC-4 PyPI 顺位。
+> **路由①归档后唯一接手顺位（下一 Agent 只能从这里开工）**：§5.5 RC4-1（清理 rc3 tag）→ RC4-2（Pend Pub 2 端二次核验）→ RC4-3（TestPyPI 试点打签）→ RC4-4（venv smoke 3 步）→ RC4-5（正式打签 + Approve + Warehouse 7 字段核查），严格 0→1→2→3→4→5，不得跳过节点不得并发。
 
 #### 6.1.2 路由② B 线 RC-4 PyPI 首发先行（用户在浏览器 5 分钟手操，与 6.1.1 并发不冲突）
 步 1：**清理 rc3 废弃 tag**：`git tag -d v2.0.0-rc3 && git push origin :refs/tags/v2.0.0-rc3`。
@@ -291,29 +289,33 @@ AC-6 小项② insertions=50（含 RELEASE_CHECKLIST.md + 本 Handoff CR-40a）�
 | §5.5 RC-4 PyPI 首发制度化专项章（用户明确要求 handoff 中永不丢）| ✅ 已登记为独立 §5.5（6 节点 RC4-0 gating → RC4-1 清 tag → RC4-2 Pend Pub 核验 → RC4-3 TestPyPI 试点 → RC4-4 venv smoke → RC4-5 正式打签）；附加 RC-4 制度化 FAIL 总回退承诺（失败 3 次跳 rc4→rc5 + 记录失败 CI run_id）| **下一 Agent 做任何发布动作前必须先读 §5.5 再动手；严格按节点顺位 0→1→2→3→4→5 执行；任何跳过节点或提前打 tag 动作视为交接不合规立即 BLOCK** |
 | PyPI RC-4 试点前置条件（rc3 tag 清理 / Trusted Pub 4 元组）| ❌ rc3 残留 tag / Trusted Pub 未验证（仅 Owner 自述录入，待 RC4-3 TestPyPI 试点反推 claim 匹配）| §5.5 节点 RC4-1 / RC4-2 顺位先处理 |
 
-### 7.2 四硬终态锚（VERBATIM 保证 check_handoff_compliance.py anchor 子串齐全）
+### 7.2 四硬终态锚（VERBATIM 保证 check_handoff_compliance.py anchor 子串齐全 · CR-39 GA 永久 anchor 128 永远不变，CR-40c 三绿作 §7.3 增量基线不影响本节）
 
-| 序号 | 指标 | CR-39 GA 基线（anchor 必须含这 6 个子串，不可改）| 验证命令 |
+| 序号 | 指标 | CR-39 GA 永久基线（anchor 必须含这 6 个子串，**永远不准改**；check_roadmap_traceability.py 五向全等 = L274=128=AC2_scn=AC2_pas=actual）| 验证命令 |
 |---|---|---|---|
-| ① | pytest --strict（GA 基线）| **128 passed, 3 skipped, 1 warning** | `cd /Users/lee/products/agentLisp && python3 -m pytest --strict -p no:cacheprovider`（不导出 TDD 环境变量的话，O13 10 cases 会额外加 10 failed，但 anchor 仍含 128 passed/3 skipped/1 warning 三个子串在 §7.2 内，合规。）|
+| ① | pytest --strict（GA 永久基线）| **128 passed, 3 skipped, 1 warning**（CR-39 anchor 6 子串永远保留；新增 patterns 10 PASSED 不计入此永久 anchor，作为 §7.3 三绿增量基线单独列）| `cd /Users/lee/products/agentLisp && python3 -m pytest --strict -p no:cacheprovider`（本机无 racket 时 patterns 10 条 skip 属正常；完整 10 passed 请读 CI 37582477496 patterns job 日志）|
 | ② | ruff check . | **All checks passed!** | `cd /Users/lee/products/agentLisp && ruff check .` |
 | ③ | ruff format --check . | N（87→89）**files already formatted** | `cd /Users/lee/products/agentLisp && ruff format --check .` |
 | ④ | IDE GetDiagnostics | **0 files, 0 diagnostics** | Trae 右上角问题面板末行 |
 
-### 7.3 O13 TDD 红阶段临时基线（本 CR-40 交接真实基线）
+### 7.3 O13 Pattern Macros 三绿终态增量基线（CR-40c v25h 2026-10-07，CI 37582477496 · 本交接真实基线；不影响 §7.2 CR-39 永久 anchor 128）
 
-> 下一 Agent 接手后**首件事 = 原样跑下面命令，任何与下表偏差立即 BLOCK**。
+> 下一 Agent 接手后**首件事 = 原样跑下面命令，任何与下表偏差立即 BLOCK**。旧红阶段基线（10 failed, 131 passed）已永久 ARCHIVED，不再作为验收基准。
 
 | 指标 | 真实值（字节级 VERBATIM）| 验证命令 |
 |---|---|---|
-| pytest --strict 全集（含 O13 10 红 cases）| **10 failed, 131 passed, 1 warning** | `cd /Users/lee/products/agentLisp && AGENTLISP_O13_TDD_RED_PHASE=1 python3 -m pytest --strict` |
-| ruff check | All checks passed! | 同上 |
-| ruff format | 89 files already formatted | 同上 |
-| check_roadmap_traceability（3 tests）| 3 passed | `cd /Users/lee/products/agentLisp && AGENTLISP_O13_TDD_RED_PHASE=1 python3 -m pytest tests/test_check_roadmap_traceability.py -v` |
-| check_handoff_compliance（本 CR-40）| exit=0 · size≈35 KB · 7 章全 · 四硬锚 6/6 · §6 顺位 ≥300 字 | `cd /Users/lee/products/agentLisp && python3 scripts/check_handoff_compliance.py --handoff docs/handoff/20261006_cr40_o13_stage0_and_stage1_tdd_red_handoff.md` |
+| ① pytest patterns 子集（CI Ubuntu）| **10 passed, 1 warning in 3.46s**（FR-PATTERN-01 5case + FR-PATTERN-02 5case，CI 37582477496 verify-patterns-mvp Step Run pytest patterns cases tail 最后一行）| `gh run view 37582477496 --repo 4TWS3/agentLisp --log \| grep "10 passed" -B2 -A2` 或 push 到 temp branch 后等 CI patterns job |
+| ② Standalone patterns expand（CI Ubuntu）| `RESULT name={defchain,defreflect,defparallel,defplanner,defrouter} ok=#t`（5 宏 × HC/GENERIC 双分支，各打印 2 次，共 10 次 ok=#t）；**`SUMMARY failures=0/5`**（2 次） | `gh run view 37582477496 --repo 4TWS3/agentLisp --log \| grep "SUMMARY failures=\|RESULT name="` |
+| ③ RackUnit patterns MVP（CI Ubuntu）| **`5 success(es) 0 failure(s) 0 error(s) 5 test(s) run`**（2 次，一次 raco test 输出 + 一次 tail 重放；5 case 各 `MATCH? = #t`，字节级 200chars 全等）| `gh run view 37582477496 --repo 4TWS3/agentLisp --log \| grep "success(es)"` |
+| ④ workflow 总状态（_tmp_o13_patterns_mvp_verify.yml）| **`conclusion: success, status: completed`**（CI 37582477496） | `gh run view 37582477496 --repo 4TWS3/agentLisp --json status,conclusion --jq '.'` |
+| ⑤ ruff check | All checks passed! | 本机：`cd /Users/lee/products/agentLisp && ruff check .` |
+| ⑥ ruff format | N files already formatted（当前 HEAD ≈82-89，允许 ±7 波动）| 本机：`ruff format --check .` |
+| ⑦ check_roadmap_traceability（无环境变量严格模式）| exit=0 · 或 pytest `tests/test_check_roadmap_traceability.py` 3 passed（**L274=128 = AC2_scn = AC2_pas = rows×ScnSum/32=PasSum** 五向全等，ScnSum==PasSum；**AGENTLISP_O13_TDD_RED_PHASE 开关已移除，不准再导出**）| `cd /Users/lee/products/agentLisp && python3 scripts/check_roadmap_traceability.py --srs docs/spec/agentlisp_srs.md` |
+| ⑧ check_handoff_compliance（本 CR-40）| exit=0 · size≈82 KB · 7 章全 · 四硬锚 6/6 · §6 顺位 ≥300 字 | `cd /Users/lee/products/agentLisp && python3 scripts/check_handoff_compliance.py --handoff docs/handoff/20261006_cr40_o13_stage0_and_stage1_tdd_red_handoff.md` |
+| ⑨ AC-6 合规（C1 6 core 零 diff + patterns insertions ≤400）| checker/parser/emitter/agentlisp_compiler/ci.yml/pyproject.toml diff-lines=0（相对于 merge-base origin/main）；`compiler/patterns.rkt | 354 ++++++++++++++++++++++++++++++++++++++++++++++++++`（354 insertions ≤ 400） | `BASE=$(git merge-base origin/main HEAD); for f in compiler/checker.rkt compiler/parser.rkt compiler/emitter.rkt compiler/agentlisp_compiler.rkt .github/workflows/ci.yml pyproject.toml; do git diff $BASE -- "$f" \| wc -l; done; git diff $BASE --stat -- compiler/patterns.rkt` |
 
 > **下一 Agent 启动话术模板（直接复制粘贴给新 Trae 会话首句即可）**：
-> 「打开 CR-40 Handoff：/Users/lee/products/agentLisp/docs/handoff/20261006_cr40_o13_stage0_and_stage1_tdd_red_handoff.md ；**先读本文档最前面的 §0 新 Agent 启动 30 秒快速入口**（本页顶部，1 屏读完直接跑），按 §0 3 条基线命令 + §0.1/§0.2/§0.3 速查推进；若需要深入参考再阅读 §1..§7 详细内容。」
+> 「打开 CR-40 Handoff：/Users/lee/products/agentLisp/docs/handoff/20261006_cr40_o13_stage0_and_stage1_tdd_red_handoff.md ；**先读本文档最前面的 §0 新 Agent 启动 30 秒快速入口**（本页顶部，1 屏读完直接跑），按 §0 3 条基线命令 + §0.1/§0.2/§0.3 速查推进；若需要深入参考再阅读 §1..§7 详细内容。**当前唯一 in_progress = §5.5 RC-4 PyPI 首发（RC4-0 前置锁已解锁）**，顺位严格 RC4-1→RC4-2→RC4-3→RC4-4→RC4-5，不得跳过节点，不得提前打 tag，不得使用 rc3/rc4 作废版号。」
 
 ---
 

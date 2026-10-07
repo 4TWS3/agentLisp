@@ -6,39 +6,43 @@
          racket/file
          racket/port
          racket/path
-         racket/runtime-path
+         racket/string
          "../patterns.rkt")
 
-(define-runtime-path FIXTURES-DIR
-  (build-path (current-directory) ".." ".." "tests" "patterns" "fixtures"))
+(define FIXTURES-DIR-PARTS (list (current-directory) ".." ".." "tests" "patterns" "fixtures"))
 
 (define (fixture-path basename)
-  (build-path FIXTURES-DIR basename))
+  (apply build-path (append FIXTURES-DIR-PARTS (list basename))))
 
 (define N 200)
-
-(define *ns* (current-namespace))
 
 (define (fixture->expanded-sexps al-path)
   (call-with-input-file al-path
     (lambda (in)
-      (parameterize ((current-namespace *ns*))
-        (let loop ((acc '()))
-          (define v (read in))
-          (if (eof-object? v)
-              (reverse acc)
-              (loop (cons (eval v) acc))))))))
+      (define current-mod-ns (variable-reference->namespace (#%variable-reference)))
+      (let loop ((acc '()))
+        (define v (read in))
+        (if (eof-object? v)
+            (reverse acc)
+            (loop (cons (eval v current-mod-ns) acc)))))))
+
+(define (normalize-sexp str)
+  (with-input-from-string str
+    (thunk
+      (let loop ((tok (read)) (out '()))
+        (if (eof-object? tok)
+            (string-trim (string-join (reverse out) " "))
+            (loop (read) (cons (format "~s" tok) out)))))))
 
 (define (sexps->prefix-text xs n)
   (let ((s (call-with-output-string
             (lambda (out)
               (for ((x (in-list xs)))
-                (write x out)
-                (newline out))))))
+                (write x out))))))
     (substring s 0 (min n (string-length s)))))
 
 (define (expected->prefix-text expected-path n)
-  (define s (file->string expected-path))
+  (define s (normalize-sexp (file->string expected-path)))
   (substring s 0 (min n (string-length s))))
 
 (define (check-prefix= al-name)
