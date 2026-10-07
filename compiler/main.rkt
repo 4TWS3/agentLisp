@@ -77,13 +77,19 @@
                                 (fprintf (current-error-port) "; expand-pattern-macros IN-PROCESS EXCEPTION: ~a\n" (exn-message e))
                                 all-forms)])
     (define ns (make-base-namespace))
+    (eval '(require racket/base racket/port racket/file racket/path racket/runtime-path racket/pretty) ns)
     (eval `(require (file ,(path->string PATTERNS-PATH))) ns)
-    (parameterize ((current-namespace ns))
-      (for/list ((form (in-list all-forms)))
-        (define expanded (eval form))
+    (for/list ((form (in-list all-forms)))
+      (with-handlers ([exn:fail? (lambda (e)
+                                    (fprintf (current-error-port) "; expand-single FAIL: ~a\n" (exn-message e))
+                                    form)])
+        (define expanded (eval form ns))
         (cond
           [(and (pair? expanded) (eq? (car expanded) 'defagent))
            (cons 'define-agent (cdr expanded))]
+          [(and (pair? expanded) (memq (car expanded) '(defreflect-agent defrouter-agent defchain-agent defparallel-agent defplanner-agent)))
+           (fprintf (current-error-port) "; WARN: macro-expand did not rewrite ~s head (returning unchanged)\n" (car expanded))
+           expanded]
           [else expanded])))))
 
 (define (check-ast/legacy a expanded-source input-path)
