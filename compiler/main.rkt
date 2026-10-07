@@ -74,29 +74,16 @@
 
 (define (expand-pattern-macros/via-subprocess all-forms)
   (with-handlers ([exn:fail? (lambda (e)
-                                (with-output-to-file "/tmp/expand_outer.log" (lambda () (printf "OUTER EXN: ~a~n" (exn-message e))) #:exists 'append)
+                                (fprintf (current-error-port) "; expand-pattern-macros OUTER EXN: ~a~n" (exn-message e))
                                 all-forms)])
-    (parameterize ((current-output-port (current-error-port)))
-      (with-output-to-file "/tmp/expand_outer.log" (lambda () (printf "starting expand, PATTERNS-PATH=~a~n" PATTERNS-PATH)) #:exists 'replace))
     (define ns (make-base-namespace))
-    (parameterize ((current-namespace ns))
-      (namespace-attach-module (current-module-declare-name) ''#%builtin ns)
-      (namespace-require 'racket/base)
-      (namespace-require 'racket/syntax)
-      (namespace-require 'racket/string)
-      (namespace-require 'racket/match)
-      (namespace-require `(file ,(path->string PATTERNS-PATH)))
-      (with-output-to-file "/tmp/expand_outer.log" (lambda () (printf "ns loaded OK, forms count=~a~n" (length all-forms))) #:exists 'append))
+    (eval '(require racket/base racket/port racket/file racket/path racket/runtime-path racket/syntax racket/string racket/match racket/pretty) ns)
+    (eval `(require (file ,(path->string PATTERNS-PATH))) ns)
     (for/list ((form (in-list all-forms)))
       (with-handlers ([exn:fail? (lambda (e)
-                                    (with-output-to-file "/tmp/expand_single.log"
-                                      (lambda () (printf "FORM ~s FAIL ~a~n" (and (pair? form) (car form)) (exn-message e)))
-                                      #:exists 'append)
+                                    (fprintf (current-error-port) "; expand-single ~s FAIL: ~a~n" (and (pair? form) (car form)) (exn-message e))
                                     form)])
         (define expanded (eval form ns))
-        (with-output-to-file "/tmp/expand_single.log"
-          (lambda () (printf "FORM ~s -> EXPANDED HEAD ~s~n" (and (pair? form) (car form)) (and (pair? expanded) (car expanded))))
-          #:exists 'append)
         (cond
           [(and (pair? expanded) (eq? (car expanded) 'defagent))
            (cons 'define-agent (cdr expanded))]
