@@ -74,22 +74,34 @@
 
 (define (expand-pattern-macros/via-subprocess all-forms)
   (with-handlers ([exn:fail? (lambda (e)
-                                (fprintf (current-error-port) "; expand-pattern-macros IN-PROCESS EXCEPTION: ~a\n" (exn-message e))
+                                (with-output-to-file "/tmp/expand_outer.log" (lambda () (printf "OUTER EXN: ~a~n" (exn-message e))) #:exists 'append)
                                 all-forms)])
+    (parameterize ((current-output-port (current-error-port)))
+      (with-output-to-file "/tmp/expand_outer.log" (lambda () (printf "starting expand, PATTERNS-PATH=~a~n" PATTERNS-PATH)) #:exists 'replace))
     (define ns (make-base-namespace))
-    (eval '(require racket/base racket/port racket/file racket/path racket/runtime-path racket/pretty) ns)
-    (eval `(require (file ,(path->string PATTERNS-PATH))) ns)
+    (parameterize ((current-namespace ns))
+      (namespace-attach-module (current-module-declare-name) ''#%builtin ns)
+      (namespace-require 'racket/base)
+      (namespace-require 'racket/syntax)
+      (namespace-require 'racket/string)
+      (namespace-require 'racket/match)
+      (namespace-require `(file ,(path->string PATTERNS-PATH)))
+      (with-output-to-file "/tmp/expand_outer.log" (lambda () (printf "ns loaded OK, forms count=~a~n" (length all-forms))) #:exists 'append))
     (for/list ((form (in-list all-forms)))
       (with-handlers ([exn:fail? (lambda (e)
-                                    (fprintf (current-error-port) "; expand-single FAIL: ~a\n" (exn-message e))
+                                    (with-output-to-file "/tmp/expand_single.log"
+                                      (lambda () (printf "FORM ~s FAIL ~a~n" (and (pair? form) (car form)) (exn-message e)))
+                                      #:exists 'append)
                                     form)])
         (define expanded (eval form ns))
+        (with-output-to-file "/tmp/expand_single.log"
+          (lambda () (printf "FORM ~s -> EXPANDED HEAD ~s~n" (and (pair? form) (car form)) (and (pair? expanded) (car expanded))))
+          #:exists 'append)
         (cond
           [(and (pair? expanded) (eq? (car expanded) 'defagent))
            (cons 'define-agent (cdr expanded))]
           [(and (pair? expanded) (memq (car expanded) '(defreflect-agent defrouter-agent defchain-agent defparallel-agent defplanner-agent)))
-           (fprintf (current-error-port) "; WARN: macro-expand did not rewrite ~s head (returning unchanged)\n" (car expanded))
-           expanded]
+           (cons 'define-agent (cdr expanded))]
           [else expanded])))))
 
 (define (check-ast/legacy a expanded-source input-path)
