@@ -83,9 +83,9 @@
               (define serr (port->string perr))
               (close-input-port pout)
               (close-input-port perr)
-              (string-append
-               (and (not (equal? serr "")) (format "; STDERR: ~a\n" serr))
-               sout))
+              (if (equal? serr "")
+                  sout
+                  (string-append (format "; STDERR: ~a\n" serr) sout)))
             ""))
       (delete-file tmp-in)
       (call-with-input-string out-str
