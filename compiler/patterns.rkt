@@ -23,11 +23,11 @@
   (define (tag-of b)
     (define maybe-tag (and (pair? b) (car b)))
     (cond
-      [(keyword? maybe-tag) maybe-tag]
-      [(symbol? maybe-tag) (string->keyword (symbol->string maybe-tag))]
-      [else ':unknown]))
+      ((keyword? maybe-tag) maybe-tag)
+      ((symbol? maybe-tag) (string->keyword (symbol->string maybe-tag)))
+      (else ':unknown)))
   (define (pref-of tag) (hash-ref order-preference tag 999))
-  (sort (for/list ([b (in-list blocks)]) b)
+  (sort (for/list ((b (in-list blocks))) b)
         (lambda (a b)
           (< (pref-of (tag-of a)) (pref-of (tag-of b))))))
 
@@ -50,26 +50,26 @@
   (for-each (lambda (k) (hash-set! kw->block k ':multiagent)) (append multiagent-kw multiagent-sym))
   (define (canon-k k)
     (cond
-      [(keyword? k) (string->keyword (keyword->string k))]
-      [(symbol? k) (string->keyword (symbol->string k))]
-      [else k]))
+      ((keyword? k) (string->keyword (keyword->string k)))
+      ((symbol? k) (string->keyword (symbol->string k)))
+      (else k)))
   (define buckets (make-hash))
   (let loop ((xs plist))
     (cond
-      [(null? xs) (void)]
-      [(null? (cdr xs)) (void)]
-      [else
+      ((null? xs) (void))
+      ((null? (cdr xs)) (void))
+      (else
        (let ((k (car xs)) (v (cadr xs)))
          (define b (hash-ref kw->block (canon-k k) #:default (if (keyword? k) (string->symbol (keyword->string k)) (if (symbol? k) k (string->symbol (format "~s" k))))))
          (define tag (cond
-                      [(hash-has-key? kw->block (canon-k k)) (hash-ref kw->block (canon-k k))]
-                      [else ':unknown]))
+                      ((hash-has-key? kw->block (canon-k k)) (hash-ref kw->block (canon-k k)))
+                      (else ':unknown)))
          (hash-update! buckets tag (lambda (old) (append old (if (eqv? tag ':tools)
                                                                   (list v)
                                                                   (if (eqv? tag ':context)
                                                                       (list v)
                                                                       (list k v))))) (lambda () (list tag)))
-         (loop (cddr xs)))]))
+         (loop (cddr xs))))))
   (for/list ((tag (in-list '(:model :tools :context :harness :multiagent :unknown)))
              #:when (hash-has-key? buckets tag))
     (hash-ref buckets tag)))
@@ -77,9 +77,9 @@
 (define (ensure-blocks blocks)
   (define required '(:model :tools :context))
   (define (block-tag b) (cond
-                         [(and (pair? b) (keyword? (car b))) (car b)]
-                         [(and (pair? b) (symbol? (car b))) (string->keyword (symbol->string (car b)))]
-                         [else ':notablock]))
+                         ((and (pair? b) (keyword? (car b))) (car b))
+                         ((and (pair? b) (symbol? (car b))) (string->keyword (symbol->string (car b))))
+                         (else ':notablock)))
   (define existing-tags (map block-tag blocks))
   (define to-add (filter (lambda (tag) (not (memv tag existing-tags))) required))
   (define new-blocks (append blocks (map (lambda (tag) (list tag)) to-add)))
@@ -87,7 +87,7 @@
 
 (define-syntax (defreflect-agent stx)
   (syntax-case stx ()
-    [(_ name* . rst*)
+    ((_ name* . rst*)
      (free-identifier=? #'code-refiner #'name*)
      #''(defagent code-refiner
          (:model :provider "anthropic"
@@ -110,14 +110,14 @@
                     :reviewer-agent "检查代码逻辑漏洞")
            (:correct :max-retries 3
                      :circuit-breaker 5
-                     :on-failure 'fallback-model)))]
-    [(_ name* . rst*)
+                     :on-failure 'fallback-model))))
+    ((_ name* . rst*)
      #`(let ((blocks (reorder-blocks (ensure-blocks (plist->blocks (list . rst*))))))
-         (cons 'define-agent (cons 'name* blocks))))])
+         (cons 'define-agent (cons 'name* blocks))))))
 
 (define-syntax (defrouter-agent stx)
   (syntax-case stx ()
-    [(_ name* . rst*)
+    ((_ name* . rst*)
      (free-identifier=? #'ops-gateway #'name*)
      #''(defagent ops-gateway
          (:model :provider "openai"
@@ -146,16 +146,16 @@
                                   (:tools (import-builtin bash))
                                   (:harness (:constrain :require-human-approval () :forbidden-commands ("rm -rf"))
                                             (:verify :json-schema #t :linter-check #f :test-runner "")
-                                            (:correct :max-retries 2 :circuit-breaker 3 :on-failure 'abort))))))]
-    [(_ name* . rst*)
+                                            (:correct :max-retries 2 :circuit-breaker 3 :on-failure 'abort)))))))
+    ((_ name* . rst*)
      #`(let ((blocks (reorder-blocks (ensure-blocks (plist->blocks (list . rst*))))))
-         (cons 'define-agent (cons 'name* blocks))))])
+         (cons 'define-agent (cons 'name* blocks))))))
 
 (define-syntax (defchain-agent stx)
   (syntax-case stx ()
-    [(_ name* . rst*)
+    ((_ name* . rst*)
      (free-identifier=? #'doc-pipeline #'name*)
-     (with-syntax ([sp #<<PROMPT
+     (with-syntax ((sp #<<PROMPT
 你是一个多步骤提示链（Prompt Chaining）执行 Agent。必须严格按以下给定顺序执行步骤，不得跳过或打乱：
 Step 1 — 提取文档摘要 :in () :out summary
   Prompt: "提取文档摘要"
@@ -163,7 +163,7 @@ Step 2 — 基于摘要生成代码 :in (summary) :out code
   Prompt: "基于摘要生成代码"
 每一步完成后，把 :out 变量注入到后续 :in 步骤的上下文中；最终 Answer 必须包含 JSON {"summary": … "code": …}。
 PROMPT
-                       ])
+                       ))
        #`(quote (defagent doc-pipeline
            (:model :provider "anthropic"
                    :name "claude-3-7-sonnet"
@@ -182,14 +182,14 @@ PROMPT
                       :linter-check #f
                       :test-runner ""
                       :step-order-assertion ("Step1 summary MUST appear in trajectory before Step2 code request"))
-             (:correct :max-retries 2 :circuit-breaker 5 :on-failure 'abort)))))]
-    [(_ name* . rst*)
+             (:correct :max-retries 2 :circuit-breaker 5 :on-failure 'abort))))))
+    ((_ name* . rst*)
      #`(let ((blocks (reorder-blocks (ensure-blocks (plist->blocks (list . rst*))))))
-         (cons 'define-agent (cons 'name* blocks))))])
+         (cons 'define-agent (cons 'name* blocks))))))
 
 (define-syntax (defparallel-agent stx)
   (syntax-case stx ()
-    [(_ name* . rst*)
+    ((_ name* . rst*)
      (free-identifier=? #'multi-search #'name*)
      #''(defagent multi-search
          (:model :provider "anthropic"
@@ -227,24 +227,24 @@ PROMPT
                                   (:tools (import-builtin bash))
                                   (:harness (:constrain :require-human-approval () :forbidden-commands ("rm -rf"))
                                             (:verify :json-schema #t :linter-check #f :test-runner "")
-                                            (:correct :max-retries 2 :circuit-breaker 3 :on-failure 'abort))))))]
-    [(_ name* . rst*)
+                                            (:correct :max-retries 2 :circuit-breaker 3 :on-failure 'abort)))))))
+    ((_ name* . rst*)
      #`(let ((blocks (reorder-blocks (ensure-blocks (plist->blocks (list . rst*))))))
-         (cons 'define-agent (cons 'name* blocks))))])
+         (cons 'define-agent (cons 'name* blocks))))))
 
 (define-syntax (defplanner-agent stx)
   (syntax-case stx ()
-    [(_ name* . rst*)
+    ((_ name* . rst*)
      (free-identifier=? #'deep-researcher #'name*)
-     (with-syntax ([sp #<<PROMPT
+     (with-syntax ((sp #<<PROMPT
 你是一个具备规划能力（Planning）的 Agent。
 Planner Prompt："将研究目标分解为 3-5 个步骤"
 执行流程：
-  Step P1 — 在 trajectory 首部输出计划 JSON {"plan": ["步骤1", "步骤2", "步骤3", …]}，步骤数必须 ∈ [3, 5]
+  Step P1 — 在 trajectory 首部输出计划 JSON {"plan": ("步骤1", "步骤2", "步骤3", …)}，步骤数必须 ∈ (3, 5)
   Step P2…Pn — 按计划逐步执行，仅可使用 executor-tools: web-search / read-pdf
-  Step FIN — 输出计划完成度报告 {"plan_total": N, "plan_done": M, "unfinished": […]}
+  Step FIN — 输出计划完成度报告 {"plan_total": N, "plan_done": M, "unfinished": (…)}
 PROMPT
-                       ])
+                       ))
        #`(quote (defagent deep-researcher
            (:model :provider "anthropic"
                    :name "claude-3-7-sonnet"
@@ -263,7 +263,7 @@ PROMPT
                       :linter-check #f
                       :test-runner ""
                       :plan-completion-assertion ("P1 plan length in 3..5" "FIN unfinished list is empty"))
-             (:correct :max-retries 3 :circuit-breaker 5 :on-failure 'ask-human)))))]
-    [(_ name* . rst*)
+             (:correct :max-retries 3 :circuit-breaker 5 :on-failure 'ask-human))))))
+    ((_ name* . rst*)
      #`(let ((blocks (reorder-blocks (ensure-blocks (plist->blocks (list . rst*))))))
-         (cons 'define-agent (cons 'name* blocks))))])
+         (cons 'define-agent (cons 'name* blocks))))))
