@@ -22,7 +22,7 @@
 (define (fixture->expanded-sexps al-path)
   (call-with-input-file al-path
     (lambda (in)
-      (parameterize ([current-namespace *ns*])
+      (parameterize ((current-namespace *ns*))
         (let loop ((acc '()))
           (define v (read in))
           (if (eof-object? v)
