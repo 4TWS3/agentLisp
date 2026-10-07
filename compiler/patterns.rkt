@@ -11,7 +11,8 @@
          defparallel-agent
          defplanner-agent
          reorder-blocks
-         splice-to-define-agent)
+         plist->blocks
+         ensure-blocks)
 
 (define (reorder-blocks blocks)
   (define order-preference
