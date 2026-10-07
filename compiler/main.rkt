@@ -81,17 +81,23 @@
                rkt-path (and EXPANDER-PATH (file-exists? EXPANDER-PATH)) tmp-in)
       (define out-str
         (if (and rkt-path (file-exists? EXPANDER-PATH))
-            (let-values (((pout pin pid perr pctl) (process* rkt-path EXPANDER-PATH tmp-in)))
-              (close-output-port pin)
-              (define sout (port->string pout))
-              (define serr (port->string perr))
-              (close-input-port pout)
-              (close-input-port perr)
-              (fprintf (current-error-port) "; expand DEBUG: subprocess returned sout-len=~a serr-len=~a\n"
-                       (string-length sout) (string-length serr))
-              (if (equal? serr "")
-                  sout
-                  (string-append (format "; STDERR: ~a\n" serr) sout)))
+            (call-with-values
+                (lambda () (process* rkt-path EXPANDER-PATH tmp-in))
+              (lambda vals
+                (define pout (list-ref vals 0))
+                (define pin (list-ref vals 1))
+                (define pid  (list-ref vals 2))
+                (define perr (list-ref vals 3))
+                (close-output-port pin)
+                (define sout (port->string pout))
+                (define serr (port->string perr))
+                (close-input-port pout)
+                (close-input-port perr)
+                (fprintf (current-error-port) "; expand DEBUG: subprocess returned pid=~a nvals=~a sout-len=~a serr-len=~a\n"
+                         pid (length vals) (string-length sout) (string-length serr))
+                (if (equal? serr "")
+                    sout
+                    (string-append (format "; STDERR: ~a\n" serr) sout))))
             (begin
               (fprintf (current-error-port) "; expand DEBUG: missing rkt or expander file\n")
               "")))
