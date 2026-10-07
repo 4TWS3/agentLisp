@@ -78,11 +78,14 @@
         #:exists 'replace)
       (define rkt-path (find-executable-path "racket"))
       (fprintf (current-error-port) "; expand DEBUG: rkt-path=~a expander-exists?=~a tmp-in=~a\n"
-               rkt-path (and EXPANDER-PATH (file-exists? EXPANDER-PATH)) tmp-in)
+               rkt-path (and EXPANDER-PATH (file-exists? EXPANDER-PATH)) EXPANDER-PATH)
       (define out-str
         (if (and rkt-path (file-exists? EXPANDER-PATH))
-            (let* ((cmd (list* rkt-path EXPANDER-PATH tmp-in))
-                   (pinfo (process cmd)))
+            (let* ((cmd (list (path->string rkt-path)
+                             (path->string EXPANDER-PATH)
+                             (path->string tmp-in)))
+              (fprintf (current-error-port) "; expand DEBUG: cmd=~s\n" cmd)
+              (define pinfo (process cmd))
               (fprintf (current-error-port) "; expand DEBUG: process returned pinfo?=~a len=~a\n"
                        (list? pinfo) (if (list? pinfo) (length pinfo) 0))
               (when (and (list? pinfo) (>= (length pinfo) 4))
@@ -107,7 +110,7 @@
         (lambda (in)
           (let loop ((acc '()))
             (define v (read in))
-            (if (eof-object? v) (reverse acc) (loop (cons v acc))))))))
+            (if (eof-object? v) (reverse acc) (loop (cons v acc)))))))))
 
   (command-line
    #:program "agentlispc"
