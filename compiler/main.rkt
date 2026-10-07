@@ -14,6 +14,7 @@
          "parser.rkt")
 
 (define-runtime-path EXPANDER-PATH "_tmp_expand_patterns.rkt")
+(define-runtime-path PATTERNS-PATH "patterns.rkt")
 
 (module+ main
   (define input-path #f)
@@ -67,56 +68,14 @@
 
   (define (expand-pattern-macros/via-subprocess all-forms)
     (with-handlers ([exn:fail? (lambda (e)
-                                  (fprintf (current-error-port) "; expand-pattern-macros EXCEPTION: ~a\n" (exn-message e))
+                                  (fprintf (current-error-port) "; expand-pattern-macros IN-PROCESS EXCEPTION: ~a\n" (exn-message e))
                                   all-forms)])
-      (define tmp-in (make-temporary-file "al_in_~a.al"))
-      (call-with-output-file tmp-in
-        (lambda (out)
-          (for ([form (in-list all-forms)])
-            (write form out)
-            (newline out)))
-        #:exists 'replace)
-      (define rkt-path (find-executable-path "racket"))
-      (fprintf (current-error-port) "; expand DEBUG: rkt-path=~a expander-exists?=~a tmp-in=~a\n"
-               rkt-path (and EXPANDER-PATH (file-exists? EXPANDER-PATH)) EXPANDER-PATH)
-      (define out-str
-        (cond
-          [(and rkt-path (file-exists? EXPANDER-PATH))
-           (let* ((cmd (list (path->string rkt-path)
-                            (path->string EXPANDER-PATH)
-                            (path->string tmp-in)))
-                  (_ (fprintf (current-error-port) "; expand DEBUG: cmd=~s\n" cmd))
-                  (rkt-bin (list-ref cmd 0))
-                  (exp-path (list-ref cmd 1))
-                  (in-path (list-ref cmd 2))
-                  (sout-port (open-output-string))
-                  (serr-port (open-output-string))
-                  (ok? (parameterize ((current-output-port sout-port)
-                                      (current-error-port serr-port))
-                         (system* rkt-bin exp-path in-path)))
-                  (sout (get-output-string sout-port))
-                  (serr (get-output-string serr-port)))
-             (fprintf (current-error-port) "; expand DEBUG: system* returned ok?=~a sout-len=~a serr-len=~a\n"
-                      ok? (string-length sout) (string-length serr))
-             (if ok?
-                 (if (equal? serr "")
-                     sout
-                     (begin
-                       (fprintf (current-error-port) "; expand DEBUG: system* stderr (len=~a):\n~a\n"
-                                (string-length serr) serr)
-                       sout))
-                 (begin
-                   (fprintf (current-error-port) "; expand DEBUG: system* FAILED (ok?=#f), stderr:\n~a\n" serr)
-                   "")))]
-          [else
-           (fprintf (current-error-port) "; expand DEBUG: missing rkt or expander file\n")
-           ""]))
-      (delete-file tmp-in)
-      (call-with-input-string (or out-str "")
-        (lambda (in)
-          (let loop ((acc '()))
-            (define v (read in))
-            (if (eof-object? v) (reverse acc) (loop (cons v acc))))))))
+      (define ns (make-base-namespace))
+      (eval `(require (file ,(path->string PATTERNS-PATH))) ns)
+      (parameterize ((current-namespace ns))
+        (for/list ((form (in-list all-forms)))
+          (define expanded (eval form))
+          expanded))))
 
   (command-line
    #:program "agentlispc"
