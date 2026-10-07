@@ -25,7 +25,6 @@
 (define dump-expanded-sexp? #f)
 (define dump-ast? #f)
 
-(module+ main
 
   (define (safe-dyn mod-path sym default)
     (with-handlers ([exn:fail? (lambda (e) default)])
@@ -79,7 +78,7 @@
           (cond
             [(and (pair? expanded) (eq? (car expanded) 'defagent))
              (cons 'define-agent (cdr expanded))]
-            [else expanded]))))))
+            [else expanded])))))
 
   (command-line
    #:program "agentlispc"
