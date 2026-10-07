@@ -159,7 +159,7 @@ jobs:
           racket compiler/main.rkt --dump-ast tests/patterns/fixtures/defreflect_code_refiner.al 2>&1 | head -c 300
           echo
           echo "-- Now full pytest patterns suite --"
-          python3 -m pytest tests/patterns/test_pattern_checker.py -v 2>&1 | tee /tmp/pytest_patterns.log || true
+          python3 -m pytest tests/patterns/test_pattern_checker.py -v 2>&1 | tee /tmp/pytest_patterns.log
           echo "===== pytest patterns summary tail 20 ====="
           tail -20 /tmp/pytest_patterns.log
 
@@ -167,7 +167,7 @@ jobs:
         shell: bash -euxo pipefail {0}
         run: |
           cd compiler/tests
-          raco test test_patterns_mvp.rkt 2>&1 | tee /tmp/rackunit_patterns.log || true
+          raco test test_patterns_mvp.rkt 2>&1 | tee /tmp/rackunit_patterns.log
           echo "===== RackUnit patterns summary tail 25 ====="
           tail -25 /tmp/rackunit_patterns.log
 

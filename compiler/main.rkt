@@ -9,8 +9,11 @@
          racket/port
          racket/system
          racket/path
+         racket/runtime-path
          json
          "parser.rkt")
+
+(define-runtime-path EXPANDER-PATH "_tmp_expand_patterns.rkt")
 
 (module+ main
   (define input-path #f)
@@ -71,11 +74,10 @@
             (write form out)
             (newline out)))
         #:exists 'replace)
-      (define expander-path (build-path (or (current-load-relative-directory) (current-directory)) "_tmp_expand_patterns.rkt"))
       (define rkt-path (find-executable-path "racket"))
       (define out-str
-        (if (and rkt-path (file-exists? expander-path))
-            (let-values (((pout pin pid perr pctl) (process* rkt-path expander-path tmp-in)))
+        (if (and rkt-path (file-exists? EXPANDER-PATH))
+            (let-values (((pout pin pid perr pctl) (process* rkt-path EXPANDER-PATH tmp-in)))
               (close-output-port pin)
               (define s (port->string pout))
               (close-input-port pout)

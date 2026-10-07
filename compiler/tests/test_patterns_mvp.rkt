@@ -5,6 +5,7 @@
          racket/function
          racket/file
          racket/port
+         racket/path
          racket/runtime-path
          "../patterns.rkt")
 
