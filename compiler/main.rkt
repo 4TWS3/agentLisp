@@ -16,15 +16,16 @@
 (define-runtime-path EXPANDER-PATH "_tmp_expand_patterns.rkt")
 (define-runtime-path PATTERNS-PATH "patterns.rkt")
 
+(define input-path #f)
+(define output-path #f)
+(define check-only? #f)
+(define emit-python? #t)
+(define json-errors? #f)
+(define verbose? #f)
+(define dump-expanded-sexp? #f)
+(define dump-ast? #f)
+
 (module+ main
-  (define input-path #f)
-  (define output-path #f)
-  (define check-only? #f)
-  (define emit-python? #t)
-  (define json-errors? #f)
-  (define verbose? #f)
-  (define dump-expanded-sexp? #f)
-  (define dump-ast? #f)
 
   (define (safe-dyn mod-path sym default)
     (with-handlers ([exn:fail? (lambda (e) default)])
