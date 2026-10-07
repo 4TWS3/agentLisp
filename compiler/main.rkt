@@ -8,6 +8,7 @@
          racket/pretty
          racket/port
          racket/system
+         racket/path
          json
          "parser.rkt")
 
