@@ -86,26 +86,28 @@
                             (path->string EXPANDER-PATH)
                             (path->string tmp-in)))
                   (_ (fprintf (current-error-port) "; expand DEBUG: cmd=~s\n" cmd))
-                  (pinfo (process cmd)))
-             (fprintf (current-error-port) "; expand DEBUG: process returned pinfo?=~a len=~a\n"
-                      (list? pinfo) (if (list? pinfo) (length pinfo) 0))
-             (if (not (and (list? pinfo) (>= (length pinfo) 4)))
+                  (rkt-bin (list-ref cmd 0))
+                  (exp-path (list-ref cmd 1))
+                  (in-path (list-ref cmd 2))
+                  (sout-port (open-output-string))
+                  (serr-port (open-output-string))
+                  (ok? (parameterize ((current-output-port sout-port)
+                                      (current-error-port serr-port))
+                         (system* rkt-bin exp-path in-path)))
+                  (sout (get-output-string sout-port))
+                  (serr (get-output-string serr-port)))
+             (fprintf (current-error-port) "; expand DEBUG: system* returned ok?=~a sout-len=~a serr-len=~a\n"
+                      ok? (string-length sout) (string-length serr))
+             (if ok?
+                 (if (equal? serr "")
+                     sout
+                     (begin
+                       (fprintf (current-error-port) "; expand DEBUG: system* stderr (len=~a):\n~a\n"
+                                (string-length serr) serr)
+                       sout))
                  (begin
-                   (fprintf (current-error-port) "; expand DEBUG: process returned bad pinfo\n")
-                   "")
-                 (let* ((pout (list-ref pinfo 0))
-                        (pin (list-ref pinfo 1))
-                        (perr (list-ref pinfo 3)))
-                   (close-output-port pin)
-                   (let* ((sout (port->string pout))
-                          (serr (port->string perr)))
-                     (close-input-port pout)
-                     (close-input-port perr)
-                     (fprintf (current-error-port) "; expand DEBUG: subprocess sout-len=~a serr-len=~a\n"
-                              (string-length sout) (string-length serr))
-                     (if (equal? serr "")
-                         sout
-                         (string-append (format "; STDERR: ~a\n" serr) sout))))))]
+                   (fprintf (current-error-port) "; expand DEBUG: system* FAILED (ok?=#f), stderr:\n~a\n" serr)
+                   "")))]
           [else
            (fprintf (current-error-port) "; expand DEBUG: missing rkt or expander file\n")
            ""]))
