@@ -8,7 +8,7 @@
 >
 > 「打开 CR-40 Handoff：/Users/lee/products/agentLisp/docs/handoff/20261006_cr40_o13_stage0_and_stage1_tdd_red_handoff.md ；
 >  立即按顺序执行下面 3 条命令（原样复制，不跳项）：
->  ① `cd /Users/lee/products/agentLisp && python3 -m pytest --strict -p no:cacheprovider 2>&1 | tail -3` → **预期输出 = `128 passed, 13 skipped, 1 warning`（本机无 racket 时 patterns 10 条被 pytest.skip → 总 128 passed 稳定 baseline + 13 skipped = CR-39 3 基础 skip + patterns 10 skip；或 CI 37582477496 验证 patterns 子集为 10 passed/10 已单独存 artifact，§7.3 增量基线）或 Racket 机器才会出 patterns 10 passed，1 warning（CR-39 GA 永久 anchor 128/3/1 永远保留在 §7.2，不准改；若与该行字节级不一致立即 BLOCK**；
+>  ① `cd /Users/lee/products/agentLisp && python3 -m pytest --strict -p no:cacheprovider 2>&1 | tail -3` → **预期输出 = `128 passed, 13 skipped, 1 warning`（本机无 Racket → `tests/patterns/test_pattern_checker.py` 用 `pytestmark = skipif(not shutil.which("racket"))` 集体 skip 10 条，与原 CR-39 3 skipped 合计 = 13 skipped；128 passed=CR-39 GA 永久 anchor 永远不变；Racket 机器（CI Ubuntu 8.12+）则输出 `138 passed, 3 skipped, 1 warning` = patterns 10 PASSED 额外计入；三绿字节级证据请读 CI 37582477496 artifact §7.3 增量基线，若与该行字节级不一致立即 BLOCK**；
 >  ② `ruff check . 2>&1 | tail -2` → **预期 = `All checks passed!`**；
 >  ③ `python3 scripts/check_handoff_compliance.py --handoff docs/handoff/20261006_cr40_o13_stage0_and_stage1_tdd_red_handoff.md 2>&1 | tail -1` → **预期 = `HANDOFF OK ... exit=0`**。
 >  3 条全预期匹配后，**按顺位严格执行 §5.5 RC-4 PyPI 首发 6 节点（严格末顺位，前置锁 §5.5 RC4-0 已解锁：P2.3 三绿 5 AND=True）**：RC4-1 环境名对拍 → RC4-2 Pend Pub 录入 → RC4-3 首发 dry → RC4-4 TestPyPI 首发 → RC4-5 正式 PyPI 首发。

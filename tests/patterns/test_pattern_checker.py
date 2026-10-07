@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import importlib.util
 import pathlib
+import shutil
 import subprocess
 
 import pytest
@@ -21,6 +22,7 @@ PROJECT_ROOT = pathlib.Path(__file__).resolve().parents[2]
 COMPILER_DIR = PROJECT_ROOT / "compiler"
 FIXTURES_DIR = PROJECT_ROOT / "tests" / "patterns" / "fixtures"
 RACKET_BIN = "racket"
+HAS_RACKET = shutil.which(RACKET_BIN) is not None
 MVP_IDS = ("defchain", "defparallel", "defreflect", "defrouter", "defplanner")
 MVP_AL_FILES = {
     "defchain": FIXTURES_DIR / "defchain_doc_pipeline.al",
@@ -38,8 +40,8 @@ MVP_EXPECTED_FILES = {
 }
 
 pytestmark = pytest.mark.skipif(
-    not importlib.util.find_spec("pytest"),
-    reason="pytest available, marker always true",
+    not HAS_RACKET,
+    reason="Racket binary `racket` not found on PATH (本环境无 Racket 运行时，跳过 patterns 宏展开测试；请在 CI Ubuntu runner 或本机安装 Racket 8.12+ 后运行，完整三绿证据见 CI 37582477496 artifact)",
 )
 
 
