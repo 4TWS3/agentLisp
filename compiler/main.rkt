@@ -80,37 +80,41 @@
       (fprintf (current-error-port) "; expand DEBUG: rkt-path=~a expander-exists?=~a tmp-in=~a\n"
                rkt-path (and EXPANDER-PATH (file-exists? EXPANDER-PATH)) EXPANDER-PATH)
       (define out-str
-        (if (and rkt-path (file-exists? EXPANDER-PATH))
-            (let* ((cmd (list (path->string rkt-path)
-                             (path->string EXPANDER-PATH)
-                             (path->string tmp-in)))
-              (fprintf (current-error-port) "; expand DEBUG: cmd=~s\n" cmd)
-              (define pinfo (process cmd))
-              (fprintf (current-error-port) "; expand DEBUG: process returned pinfo?=~a len=~a\n"
-                       (list? pinfo) (if (list? pinfo) (length pinfo) 0))
-              (when (and (list? pinfo) (>= (length pinfo) 4))
-                (define pout (list-ref pinfo 0))
-                (define pin (list-ref pinfo 1))
-                (define perr (list-ref pinfo 3))
-                (close-output-port pin)
-                (define sout (port->string pout))
-                (define serr (port->string perr))
-                (close-input-port pout)
-                (close-input-port perr)
-                (fprintf (current-error-port) "; expand DEBUG: subprocess sout-len=~a serr-len=~a\n"
-                         (string-length sout) (string-length serr))
-                (if (equal? serr "")
-                    sout
-                    (string-append (format "; STDERR: ~a\n" serr) sout))))
-            (begin
-              (fprintf (current-error-port) "; expand DEBUG: missing rkt or expander file\n")
-              "")))
+        (cond
+          [(and rkt-path (file-exists? EXPANDER-PATH))
+           (let* ((cmd (list (path->string rkt-path)
+                            (path->string EXPANDER-PATH)
+                            (path->string tmp-in)))
+                  (_ (fprintf (current-error-port) "; expand DEBUG: cmd=~s\n" cmd))
+                  (pinfo (process cmd)))
+             (fprintf (current-error-port) "; expand DEBUG: process returned pinfo?=~a len=~a\n"
+                      (list? pinfo) (if (list? pinfo) (length pinfo) 0))
+             (if (not (and (list? pinfo) (>= (length pinfo) 4)))
+                 (begin
+                   (fprintf (current-error-port) "; expand DEBUG: process returned bad pinfo\n")
+                   "")
+                 (let* ((pout (list-ref pinfo 0))
+                        (pin (list-ref pinfo 1))
+                        (perr (list-ref pinfo 3)))
+                   (close-output-port pin)
+                   (let* ((sout (port->string pout))
+                          (serr (port->string perr)))
+                     (close-input-port pout)
+                     (close-input-port perr)
+                     (fprintf (current-error-port) "; expand DEBUG: subprocess sout-len=~a serr-len=~a\n"
+                              (string-length sout) (string-length serr))
+                     (if (equal? serr "")
+                         sout
+                         (string-append (format "; STDERR: ~a\n" serr) sout))))))]
+          [else
+           (fprintf (current-error-port) "; expand DEBUG: missing rkt or expander file\n")
+           ""]))
       (delete-file tmp-in)
       (call-with-input-string (or out-str "")
         (lambda (in)
           (let loop ((acc '()))
             (define v (read in))
-            (if (eof-object? v) (reverse acc) (loop (cons v acc)))))))))
+            (if (eof-object? v) (reverse acc) (loop (cons v acc))))))))
 
   (command-line
    #:program "agentlispc"
