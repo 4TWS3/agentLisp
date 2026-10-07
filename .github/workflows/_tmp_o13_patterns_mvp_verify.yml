@@ -147,7 +147,7 @@ jobs:
         shell: bash -euxo pipefail {0}
         run: |
           python3 -m pip install --upgrade pip
-          python3 -m pip install pytest ruff pytest-cov
+          python3 -m pip install pytest pytest-bdd ruff pytest-cov
           python3 -m pip install -e . 2>&1 | tail -3 || true
 
       - name: Run pytest patterns cases

@@ -73,9 +73,15 @@
         #:exists 'replace)
       (define expander-path (build-path (or (current-load-relative-directory) (current-directory)) "_tmp_expand_patterns.rkt"))
       (define rkt-path (find-executable-path "racket"))
-      (define out-str (if (and rkt-path (file-exists? expander-path))
-                         (with-output-to-string (lambda () (system* rkt-path expander-path tmp-in)))
-                         ""))
+      (define out-str
+        (if (and rkt-path (file-exists? expander-path))
+            (let-values (((pout pin pid perr pctl) (process* rkt-path expander-path tmp-in)))
+              (close-output-port pin)
+              (define s (port->string pout))
+              (close-input-port pout)
+              (close-input-port perr)
+              s)
+            ""))
       (delete-file tmp-in)
       (call-with-input-string out-str
         (lambda (in)
