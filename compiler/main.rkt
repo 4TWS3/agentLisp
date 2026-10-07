@@ -79,10 +79,13 @@
         (if (and rkt-path (file-exists? EXPANDER-PATH))
             (let-values (((pout pin pid perr pctl) (process* rkt-path EXPANDER-PATH tmp-in)))
               (close-output-port pin)
-              (define s (port->string pout))
+              (define sout (port->string pout))
+              (define serr (port->string perr))
               (close-input-port pout)
               (close-input-port perr)
-              s)
+              (string-append
+               (and (not (equal? serr "")) (format "; STDERR: ~a\n" serr))
+               sout))
             ""))
       (delete-file tmp-in)
       (call-with-input-string out-str
