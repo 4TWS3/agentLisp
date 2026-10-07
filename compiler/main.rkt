@@ -66,7 +66,9 @@
     ((safe-dyn "emitter.rkt" 'emit-python (lambda (a m) "# generated (emitter not loaded)\n")) ast mod-name))
 
   (define (expand-pattern-macros/via-subprocess all-forms)
-    (with-handlers ([exn:fail? (lambda (e) all-forms)])
+    (with-handlers ([exn:fail? (lambda (e)
+                                  (fprintf (current-error-port) "; expand-pattern-macros EXCEPTION: ~a\n" (exn-message e))
+                                  all-forms)])
       (define tmp-in (make-temporary-file "al_in_~a.al"))
       (call-with-output-file tmp-in
         (lambda (out)
@@ -75,6 +77,8 @@
             (newline out)))
         #:exists 'replace)
       (define rkt-path (find-executable-path "racket"))
+      (fprintf (current-error-port) "; expand DEBUG: rkt-path=~a expander-exists?=~a tmp-in=~a\n"
+               rkt-path (and EXPANDER-PATH (file-exists? EXPANDER-PATH)) tmp-in)
       (define out-str
         (if (and rkt-path (file-exists? EXPANDER-PATH))
             (let-values (((pout pin pid perr pctl) (process* rkt-path EXPANDER-PATH tmp-in)))
@@ -83,10 +87,14 @@
               (define serr (port->string perr))
               (close-input-port pout)
               (close-input-port perr)
+              (fprintf (current-error-port) "; expand DEBUG: subprocess returned sout-len=~a serr-len=~a\n"
+                       (string-length sout) (string-length serr))
               (if (equal? serr "")
                   sout
                   (string-append (format "; STDERR: ~a\n" serr) sout)))
-            ""))
+            (begin
+              (fprintf (current-error-port) "; expand DEBUG: missing rkt or expander file\n")
+              "")))
       (delete-file tmp-in)
       (call-with-input-string out-str
         (lambda (in)
