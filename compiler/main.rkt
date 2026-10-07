@@ -81,20 +81,21 @@
                rkt-path (and EXPANDER-PATH (file-exists? EXPANDER-PATH)) tmp-in)
       (define out-str
         (if (and rkt-path (file-exists? EXPANDER-PATH))
-            (call-with-values
-                (lambda () (process* rkt-path EXPANDER-PATH tmp-in))
-              (lambda vals
-                (define pout (list-ref vals 0))
-                (define pin (list-ref vals 1))
-                (define pid  (list-ref vals 2))
-                (define perr (list-ref vals 3))
+            (let* ((cmd (list* rkt-path EXPANDER-PATH tmp-in))
+                   (pinfo (process cmd)))
+              (fprintf (current-error-port) "; expand DEBUG: process returned pinfo?=~a len=~a\n"
+                       (list? pinfo) (if (list? pinfo) (length pinfo) 0))
+              (when (and (list? pinfo) (>= (length pinfo) 4))
+                (define pout (list-ref pinfo 0))
+                (define pin (list-ref pinfo 1))
+                (define perr (list-ref pinfo 3))
                 (close-output-port pin)
                 (define sout (port->string pout))
                 (define serr (port->string perr))
                 (close-input-port pout)
                 (close-input-port perr)
-                (fprintf (current-error-port) "; expand DEBUG: subprocess returned pid=~a nvals=~a sout-len=~a serr-len=~a\n"
-                         pid (length vals) (string-length sout) (string-length serr))
+                (fprintf (current-error-port) "; expand DEBUG: subprocess sout-len=~a serr-len=~a\n"
+                         (string-length sout) (string-length serr))
                 (if (equal? serr "")
                     sout
                     (string-append (format "; STDERR: ~a\n" serr) sout))))
@@ -102,7 +103,7 @@
               (fprintf (current-error-port) "; expand DEBUG: missing rkt or expander file\n")
               "")))
       (delete-file tmp-in)
-      (call-with-input-string out-str
+      (call-with-input-string (or out-str "")
         (lambda (in)
           (let loop ((acc '()))
             (define v (read in))
