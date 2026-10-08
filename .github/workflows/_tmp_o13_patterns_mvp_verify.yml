@@ -158,18 +158,21 @@ jobs:
           echo "-- Sanity dump-ast defreflect 300 chars --"
           racket compiler/main.rkt --dump-ast tests/patterns/fixtures/defreflect_code_refiner.al 2>&1 | head -c 300
           echo
-          echo "-- Now full pytest patterns suite --"
-          python3 -m pytest tests/patterns/test_pattern_checker.py -v 2>&1 | tee /tmp/pytest_patterns.log
+          echo "-- Now full pytest patterns suite (V1 5 + V2 10 + NFR01/02 15+15=30 parametrize, 约 10+30+15+15=70 patterns pytest cases) --"
+          python3 -m pytest tests/patterns/test_pattern_checker.py tests/patterns/test_pattern_checker_v2.py -v 2>&1 | tee /tmp/pytest_patterns.log
           echo "===== pytest patterns summary tail 20 ====="
           tail -20 /tmp/pytest_patterns.log
 
-      - name: Run RackUnit patterns MVP
+      - name: Run RackUnit patterns MVP (V1 5/5 + V2 10/10 合计 15 RackUnit 全绿)
         shell: bash -euxo pipefail {0}
         run: |
           cd compiler/tests
           raco test test_patterns_mvp.rkt 2>&1 | tee /tmp/rackunit_patterns.log
-          echo "===== RackUnit patterns summary tail 25 ====="
-          tail -25 /tmp/rackunit_patterns.log
+          echo "===== RackUnit V1 patterns summary tail 10 ====="
+          tail -10 /tmp/rackunit_patterns.log
+          raco test test_patterns_v2_mvp.rkt 2>&1 | tee /tmp/rackunit_v2_patterns.log
+          echo "===== RackUnit V2 patterns summary tail 10 ====="
+          tail -10 /tmp/rackunit_v2_patterns.log
 
       - name: Upload verification log
         if: always()
@@ -184,3 +187,4 @@ jobs:
             /tmp/raco_make.log
             /tmp/pytest_patterns.log
             /tmp/rackunit_patterns.log
+            /tmp/rackunit_v2_patterns.log
