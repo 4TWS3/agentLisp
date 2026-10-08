@@ -9,7 +9,6 @@ on:
 permissions:
   contents: read
   packages: read
-  id-token: read
 
 env:
   PYTHON_VERSION: "3.12"
@@ -295,4 +294,4 @@ jobs:
           test -z "$diff" || { echo "pyproject.toml diff NOT empty"; exit 1; }
           echo "pyproject.toml diff=0 (C1 禁动类合规) PASS"
           # 已在上一步 twine check --strict exit=0 → pass
-          echo "twine check --strict PASS (TR-3.4 3/3 OK")
+          echo "twine check --strict PASS (TR-3.4 3/3 OK)"

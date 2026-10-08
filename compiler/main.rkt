@@ -15,6 +15,7 @@
 
 (define-runtime-path EXPANDER-PATH "_tmp_expand_patterns.rkt")
 (define-runtime-path PATTERNS-PATH "patterns.rkt")
+(define-runtime-path PATTERNS-V2-PATH "patterns_v2.rkt")
 
 (define input-path #f)
 (define output-path #f)
@@ -79,6 +80,7 @@
     (define ns (make-base-namespace))
     (eval '(require racket/base racket/port racket/file racket/path racket/runtime-path racket/syntax racket/string racket/match racket/pretty) ns)
     (eval `(require (file ,(path->string PATTERNS-PATH))) ns)
+    (eval `(require (file ,(path->string PATTERNS-V2-PATH))) ns)
     (for/list ((form (in-list all-forms)))
       (with-handlers ([exn:fail? (lambda (e)
                                     (fprintf (current-error-port) "; expand-single ~s FAIL: ~a~n" (and (pair? form) (car form)) (exn-message e))
@@ -87,7 +89,12 @@
         (cond
           [(and (pair? expanded) (eq? (car expanded) 'defagent))
            (cons 'define-agent (cdr expanded))]
-          [(and (pair? expanded) (memq (car expanded) '(defreflect-agent defrouter-agent defchain-agent defparallel-agent defplanner-agent)))
+          [(and (pair? expanded)
+                (memq (car expanded)
+                      '(defreflect-agent defrouter-agent defchain-agent defparallel-agent defplanner-agent
+                        defpriority-agent defdecomposition-agent deffsm-agent defevaluator-agent
+                        deftopic-model-agent defdecomposer-agent defguardrails-safety-agent
+                        defhitl-agent defexception-agent defexploration-agent)))
            (cons 'define-agent (cdr expanded))]
           [else expanded])))))
 
