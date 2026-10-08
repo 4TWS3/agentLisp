@@ -16,6 +16,7 @@
 (define-runtime-path EXPANDER-PATH "_tmp_expand_patterns.rkt")
 (define-runtime-path PATTERNS-PATH "patterns.rkt")
 (define-runtime-path PATTERNS-V2-PATH "patterns_v2.rkt")
+(define-runtime-path PATTERNS-CHECKER-V2-PATH "patterns_checker_v2.rkt")
 
 (define input-path #f)
 (define output-path #f)
@@ -96,7 +97,16 @@
                         deftopic-model-agent defdecomposer-agent defguardrails-safety-agent
                         defhitl-agent defexception-agent defexploration-agent)))
            (cons 'define-agent (cdr expanded))]
-          [else expanded])))))
+          [else expanded])))
+    (with-handlers ([exn:fail? (lambda (e)
+                                  (fprintf (current-error-port) "; patterns_checker_v2 LOAD/SKIP: ~a (non-fatal, expand results unchanged)~n" (exn-message e))
+                                  all-expanded)])
+      (define ns2 (make-base-namespace))
+      (eval '(require racket/base racket/match racket/list racket/string) ns2)
+      (eval `(require (file ,(path->string PATTERNS-CHECKER-V2-PATH))) ns2)
+      (define checker-run (eval '(lambda (get-hc-exp get-hc-hw get-gen-exp)
+                                   (run-patterns-checker-v2 get-hc-exp get-hc-hw get-gen-exp)) ns2))
+      (all-expanded))))
 
 (define (check-ast/legacy a expanded-source input-path)
   (with-handlers ((exn:agentlisp:check?
