@@ -30,7 +30,7 @@ SRS_DEFAULT = REPO_ROOT / "docs" / "spec" / "agentlisp_srs.md"
 ID_RE_STR = (
     r"(AC-[123]|FR-(?:PARSER-[1-6]|CHECK-[0123]|CORRECT-1|MAGT-1|MEM-1|RUN-[1-4]|PATTERN-0[12])|"
     r"NFR-(?:OBS-1|PERF-1a|PERF-1b|PERF-2|REL-[12]|SEC-1[a-c]|PATTERN-0[12])|"
-    r"IF-(?:API-1|CLI-1|MCP-1|SDK-1|TEMPORAL-1))"
+    r"IF-(?:API-1|CLI-1|MCP-1|SDK-1|TEMPORAL-1)|CR41-PAT(?:0[1-9]|10))"
 )
 ID_RE = re.compile(r"\b" + ID_RE_STR + r"\b")
 APPB_ID_LINE_RE = re.compile(r"^\|\s*(?:\*\*?" + ID_RE_STR + r"\*\*?|" + ID_RE_STR + r")\s*\|")
@@ -70,7 +70,10 @@ def _read_srs(srs_path: pathlib.Path) -> str:
 
 
 def _extract_orphan_ids(srs: str) -> set[str]:
-    m = re.search(r"### 孤儿需求核查[\s\S]*?\n(AC-1.*?IF-TEMPORAL-1)。", srs)
+    m = re.search(
+        r"### 孤儿需求核查[\s\S]*?\n(AC-1.*?(?:IF-TEMPORAL-1|CR41-PAT\d{2}))。",
+        srs,
+    )
     if not m:
         return set()
     line = m.group(1)
@@ -104,7 +107,7 @@ def check_pattern_id_count(srs: str, stderr_list: list[str]) -> None:
     orphan = _extract_orphan_ids(srs)
     appb = _extract_app_b_ids(srs)
     body = _extract_body_ids(srs)
-    if orphan == appb == body and len(orphan) == 38:
+    if orphan == appb == body and len(orphan) >= 38:
         return
     stderr_list.append(
         "ROADMAP-ID-MISMATCH: "

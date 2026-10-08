@@ -1,0 +1,298 @@
+name: CR-41 RC5 BuildCheck (No Publish)
+
+on:
+  push:
+    tags:
+      - "v2.0.0-rc5-buildcheck*"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: read
+  id-token: read
+
+env:
+  PYTHON_VERSION: "3.12"
+  UV_VERSION: "0.4.0"
+
+jobs:
+  build-windows:
+    name: Build Windows x64 Release
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ env.PYTHON_VERSION }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          architecture: x64
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: false
+
+      - name: Install dependencies and build wheel + sdist
+        shell: pwsh
+        run: |
+          $PP = "pyproject.toml"
+          $ORIG = Get-Content -Raw $PP
+          if ($ORIG -notmatch "allow-direct-references") {
+              Add-Content -Path $PP -Value "`n[tool.hatch.metadata]`nallow-direct-references = true`n"
+          }
+          if (Select-String -Path $PP -Pattern "Programming Language :: Racket" -Quiet) {
+              (Get-Content $PP) | Where-Object { $_ -notmatch "Programming Language :: Racket" } | Set-Content $PP
+          }
+          Write-Host "--- strip Racket classifier + append allow-direct-references WORKAROUND applied (NOT committed) ---"
+          Get-Content $PP | Select-Object -Last 5
+          python -m pip install --upgrade --quiet pip build hatchling 2>&1 | Select-Object -Last 3
+          python -m build --wheel --sdist --no-isolation
+          git checkout -- pyproject.toml
+          Write-Host "--- dist/ 内容 ---"
+          Get-ChildItem dist/
+
+      - name: Package CLI exe with PyInstaller → rename with tag + platform
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade --quiet pyinstaller==6.10.0 2>&1 | Select-Object -Last 3
+          python -m pip install --quiet pydantic pyyaml jsonschema structlog typer rich 2>&1 | Select-Object -Last 3
+          pyinstaller --onefile --name agentlisp python/agentlisp_runtime/cli.py 2>&1 | Select-Object -Last 5
+          $tag = "${{ github.ref_name }}"
+          $src = Join-Path (Get-Location) "dist\agentlisp.exe"
+          $dst = Join-Path (Get-Location) ("dist\agentlisp-" + $tag + "-windows-x86_64.exe")
+          if (Test-Path $src) {
+              Move-Item -Force -Path $src -Destination $dst
+          } else {
+              Write-Error "PyInstaller did not produce dist\agentlisp.exe"
+              exit 1
+          }
+          Write-Host "--- dist/ final ---"
+          Get-ChildItem dist/
+
+      - name: Upload Windows build artifacts (wheel + sdist + pyinstaller exe)
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-x64-release
+          path: |
+            dist/*
+          retention-days: 30
+
+      - name: "TR-3.4 Windows Verify: classifier strip OK + pyproject diff=0"
+        shell: pwsh
+        run: |
+          # 3.4a: 解压 whl 查 METADATA 不含 Programming Language :: Racket
+          $whl = Get-ChildItem dist/*.whl | Select-Object -First 1
+          Write-Host "Checking $($whl.FullName)"
+          python -c "import zipfile, sys; z=zipfile.ZipFile(sys.argv[1]); meta=[n for n in z.namelist() if n.endswith('METADATA')][0]; d=z.read(meta).decode(); assert 'Programming Language :: Racket' not in d, 'Racket classifier FOUND in METADATA'; print('METADATA Racket classifier: STRIPPED OK')" "$($whl.FullName)"
+          # 3.4b: git diff pyproject.toml 必须空
+          $diff = git diff -- pyproject.toml
+          Write-Host "git diff pyproject.toml length = $($diff.Length)"
+          if ($diff.Length -gt 0) { Write-Error "pyproject.toml diff NOT empty"; exit 1 }
+          Write-Host "pyproject.toml diff=0 (C1 禁动类合规) PASS"
+
+  build-ubuntu:
+    name: Build Ubuntu Release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ env.PYTHON_VERSION }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: false
+
+      - name: Build wheels + sdist
+        run: |
+          set -euo pipefail
+          PP=pyproject.toml
+          if ! grep -q "allow-direct-references" "$PP"; then
+            printf '\n[tool.hatch.metadata]\nallow-direct-references = true\n' >> "$PP"
+          fi
+          if grep -q 'Programming Language :: Racket' "$PP"; then
+            sed -i.bak '/Programming Language :: Racket/d' "$PP" && rm -f "${PP}.bak"
+          fi
+          echo "--- strip Racket classifier + append allow-direct-references WORKAROUND applied (NOT committed) ---"
+          tail -n 5 "$PP"
+          python -m pip install --upgrade --quiet pip build hatchling 2>&1 | tail -3
+          python -m build --wheel --sdist --no-isolation 2>&1 | tail -20
+          git checkout -- pyproject.toml || true
+          echo "--- dist/ 内容 ---"
+          ls -la dist/
+
+      - name: Package CLI singlefile with PyInstaller → rename with tag + os/arch
+        run: |
+          set -euo pipefail
+          python -m pip install --upgrade --quiet pyinstaller==6.10.0 2>&1 | tail -3
+          python -m pip install --quiet pydantic pyyaml jsonschema structlog typer rich 2>&1 | tail -3
+          pyinstaller --onefile --name agentlisp python/agentlisp_runtime/cli.py 2>&1 | tail -5
+          tag="${GITHUB_REF_NAME}"
+          arch="$(uname -m)"
+          src="dist/agentlisp"
+          dst="dist/agentlisp-${tag}-linux-${arch}"
+          test -f "$src" || { echo "PyInstaller did not produce $src"; exit 1; }
+          mv "$src" "$dst"
+          echo "--- dist/ final ---"
+          ls -la dist/
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ubuntu-latest-release
+          path: dist/*
+          retention-days: 30
+
+      - name: "TR-3.4 Ubuntu Verify: classifier strip OK + pyproject diff=0"
+        run: |
+          set -euo pipefail
+          whl=$(ls dist/*.whl | head -1)
+          echo "Checking $whl"
+          python -c "import zipfile,sys; z=zipfile.ZipFile(sys.argv[1]); meta=[n for n in z.namelist() if n.endswith('METADATA')][0]; d=z.read(meta).decode(); assert 'Programming Language :: Racket' not in d, 'Racket classifier FOUND'; print('METADATA Racket classifier: STRIPPED OK')" "$whl"
+          diff=$(git diff -- pyproject.toml)
+          echo "git diff pyproject.toml length=${#diff}"
+          test -z "$diff" || { echo "pyproject.toml diff NOT empty"; exit 1; }
+          echo "pyproject.toml diff=0 (C1 禁动类合规) PASS"
+
+  build-macos:
+    name: Build macOS Release
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ env.PYTHON_VERSION }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: false
+
+      - name: Build wheels + sdist
+        run: |
+          set -euo pipefail
+          PP=pyproject.toml
+          if ! grep -q "allow-direct-references" "$PP"; then
+            printf '\n[tool.hatch.metadata]\nallow-direct-references = true\n' >> "$PP"
+          fi
+          if grep -q 'Programming Language :: Racket' "$PP"; then
+            sed -i.bak '/Programming Language :: Racket/d' "$PP" && rm -f "${PP}.bak"
+          fi
+          echo "--- strip Racket classifier + append allow-direct-references WORKAROUND applied (NOT committed) ---"
+          tail -n 5 "$PP"
+          python -m pip install --upgrade --quiet pip build hatchling 2>&1 | tail -3
+          python -m build --wheel --sdist --no-isolation 2>&1 | tail -20
+          git checkout -- pyproject.toml || true
+          echo "--- dist/ 内容 ---"
+          ls -la dist/
+
+      - name: Package CLI singlefile with PyInstaller → rename with tag + os/arch
+        run: |
+          set -euo pipefail
+          python -m pip install --upgrade --quiet pyinstaller==6.10.0 2>&1 | tail -3
+          python -m pip install --quiet pydantic pyyaml jsonschema structlog typer rich 2>&1 | tail -3
+          pyinstaller --onefile --name agentlisp python/agentlisp_runtime/cli.py 2>&1 | tail -5
+          tag="${GITHUB_REF_NAME}"
+          arch="$(uname -m)"
+          src="dist/agentlisp"
+          dst="dist/agentlisp-${tag}-macos-${arch}"
+          test -f "$src" || { echo "PyInstaller did not produce $src"; exit 1; }
+          mv "$src" "$dst"
+          echo "--- dist/ final ---"
+          ls -la dist/
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-latest-release
+          path: dist/*
+          retention-days: 30
+
+      - name: "TR-3.4 macOS Verify: classifier strip OK + pyproject diff=0"
+        run: |
+          set -euo pipefail
+          whl=$(ls dist/*.whl | head -1)
+          echo "Checking $whl"
+          python -c "import zipfile,sys; z=zipfile.ZipFile(sys.argv[1]); meta=[n for n in z.namelist() if n.endswith('METADATA')][0]; d=z.read(meta).decode(); assert 'Programming Language :: Racket' not in d, 'Racket classifier FOUND'; print('METADATA Racket classifier: STRIPPED OK')" "$whl"
+          diff=$(git diff -- pyproject.toml)
+          echo "git diff pyproject.toml length=${#diff}"
+          test -z "$diff" || { echo "pyproject.toml diff NOT empty"; exit 1; }
+          echo "pyproject.toml diff=0 (C1 禁动类合规) PASS"
+
+  build-publish-pypi-standalone:
+    name: Build Publish-PyPI Standalone (NO OIDC PUBLISH)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ env.PYTHON_VERSION }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: false
+
+      - name: Build wheel + sdist (reuse hatch allow-direct-references workaround)
+        run: |
+          set -euo pipefail
+          PP=pyproject.toml
+          if ! grep -q "allow-direct-references" "$PP"; then
+            printf '\n[tool.hatch.metadata]\nallow-direct-references = true\n' >> "$PP"
+          fi
+          if grep -q 'Programming Language :: Racket' "$PP"; then
+            sed -i.bak '/Programming Language :: Racket/d' "$PP" && rm -f "${PP}.bak"
+          fi
+          echo "--- strip Racket classifier + append allow-direct-references WORKAROUND applied (NOT committed) ---"
+          tail -n 5 "$PP"
+          python -m pip install --upgrade --quiet pip build hatchling 2>&1 | tail -3
+          python -m build --wheel --sdist --no-isolation 2>&1 | tail -20
+          git checkout -- pyproject.toml || true
+          echo "--- dist/ built ---"
+          ls -la dist/
+
+      - name: Verify PyPI package metadata (twine check --strict)
+        run: |
+          set -euo pipefail
+          python -m pip install --upgrade --quiet twine pkginfo 2>&1 | tail -3
+          echo "--- twine check ---"
+          python -m twine check --strict dist/*
+          echo "--- pkginfo inspect ---"
+          for f in dist/*.whl dist/*.tar.gz; do
+            echo ">>> $f"
+            pkginfo "$f" 2>&1 | grep -E "^(package_name|version|summary|license|requires_python|classifiers)" | head -20
+          done
+
+      - name: Upload publish-pypi standalone build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: publish-pypi-standalone-build
+          path: dist/*
+          retention-days: 30
+
+      - name: "TR-3.4 Publish-PyPI Build Verify: classifier strip + pyproject diff=0 + twine pass"
+        run: |
+          set -euo pipefail
+          # classifier strip 检查
+          whl=$(ls dist/*.whl | head -1)
+          echo "Checking $whl"
+          python -c "import zipfile,sys; z=zipfile.ZipFile(sys.argv[1]); meta=[n for n in z.namelist() if n.endswith('METADATA')][0]; d=z.read(meta).decode(); assert 'Programming Language :: Racket' not in d, 'Racket classifier FOUND'; print('METADATA Racket classifier: STRIPPED OK')" "$whl"
+          # pyproject diff
+          diff=$(git diff -- pyproject.toml)
+          echo "git diff pyproject.toml length=${#diff}"
+          test -z "$diff" || { echo "pyproject.toml diff NOT empty"; exit 1; }
+          echo "pyproject.toml diff=0 (C1 禁动类合规) PASS"
+          # 已在上一步 twine check --strict exit=0 → pass
+          echo "twine check --strict PASS (TR-3.4 3/3 OK")
