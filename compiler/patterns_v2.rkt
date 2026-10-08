@@ -133,7 +133,7 @@
      (let* ((name-sym (syntax->datum #'name*))
             (rst-datum (syntax->datum #'rst*))
             (blocks (v2-plist->blocks 'defpriority rst-datum)))
-       (v2-quote-blocks name-sym blocks))))
+       (v2-quote-blocks name-sym blocks)))))
 
 (define-syntax (defdecomposition-agent stx)
   (syntax-case stx ()
@@ -402,4 +402,4 @@
      (let* ((name-sym (syntax->datum #'name*))
             (rst-datum (syntax->datum #'rst*))
             (blocks (v2-plist->blocks 'defexploration rst-datum)))
-       (v2-quote-blocks name-sym blocks)))))
+       (v2-quote-blocks name-sym blocks))))
