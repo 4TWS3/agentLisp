@@ -156,7 +156,11 @@ jobs:
           export PYTHONPATH=$(pwd):$(pwd)/tests
           which racket && racket --version
           echo "-- Sanity dump-ast defreflect 300 chars --"
-          racket compiler/main.rkt --dump-ast tests/patterns/fixtures/defreflect_code_refiner.al 2>&1 | head -c 300
+          racket compiler/main.rkt --dump-ast tests/patterns/fixtures/defreflect_code_refiner.al > /tmp/sanity_ast.txt 2>&1 || echo "SANITY racket exit=$? (non-fatal)"
+          head -c 300 /tmp/sanity_ast.txt
+          echo
+          echo "-- V2 AST gate: Core AST 合法性（镜像 parser 白名单/枚举，无需 Racket）--"
+          python3 scripts/check_patterns_v2_ast.py
           echo
           echo "-- Now full pytest patterns suite (V1 5 + V2 10 + NFR01/02 15+15=30 parametrize, 约 10+30+15+15=70 patterns pytest cases) --"
           python3 -m pytest tests/patterns/test_pattern_checker.py tests/patterns/test_pattern_checker_v2.py -v 2>&1 | tee /tmp/pytest_patterns.log
@@ -173,6 +177,34 @@ jobs:
           raco test test_patterns_v2_mvp.rkt 2>&1 | tee /tmp/rackunit_v2_patterns.log
           echo "===== RackUnit V2 patterns summary tail 10 ====="
           tail -10 /tmp/rackunit_v2_patterns.log
+
+      # 报告型闸门（continue-on-error）：本步骤暴露的是 **C1 冻结文件内的既存缺陷**，与 CR-41 模式层无关：
+      #   ① compiler/agentlisp_compiler.rkt 括号不平衡（par=-2：L119 / L692 各多一个 ")"）→ 文件无法被 Racket 读取
+      #   ② compiler/checker.rkt:102 (struct srcloc* … #:transparent #:prefab) → 8.12 报 multiple inspector specs（即 GAP-1）
+      #   ③ compiler/parser.rkt:54 (al-agent name purpose tools workflows hooks) 5 参 vs 6 字段 → CLI 编译路径对任何 .al 都 arity mismatch
+      # 修 ①②③ 需改 C1 禁动类（AC-6 diff≠0）→ 待 Owner 批准，故本步骤只报告不阻塞。
+      - name: V2 end-to-end compile probe (报告型：C1-blocked，非阻塞)
+        continue-on-error: true
+        shell: bash -euxo pipefail {0}
+        run: |
+          ok=0; fail=0
+          for f in tests/patterns/fixtures_v2/*.al; do
+            if racket compiler/main.rkt -i "$f" -o /tmp/v2out.py > /tmp/v2compile.log 2>&1; then
+              ok=$((ok+1))
+            else
+              fail=$((fail+1)); echo "COMPILE FAIL: $f"; tail -15 /tmp/v2compile.log
+            fi
+          done
+          echo "V2-COMPILE ok=$ok fail=$fail (C1-blocked，非阻塞)"
+          echo "== 正规通路探测 compile-agent-lisp（旁路 legacy parser.rkt）=="
+          racket compiler/tools/check_v2_compile.rkt 2>&1 | tail -12 || true
+          echo "-- V1 已知缺陷登记（CR-42 阻断项，本 Job 不阻塞）--"
+          v1ok=0; v1fail=0
+          for f in tests/patterns/fixtures/defreflect_code_refiner.al tests/patterns/fixtures/defrouter_ops_gateway.al tests/patterns/fixtures/defchain_doc_pipeline.al tests/patterns/fixtures/defparallel_multi_search.al tests/patterns/fixtures/defplanner_deep_researcher.al; do
+            if racket compiler/main.rkt -i "$f" -o /tmp/v1out.py > /tmp/v1compile.log 2>&1; then v1ok=$((v1ok+1)); else v1fail=$((v1fail+1)); echo "V1-COMPILE FAIL: $f"; tail -5 /tmp/v1compile.log; fi
+          done
+          echo "V1-COMPILE ok=$v1ok fail=$v1fail (CR-42 已知：V1 宏产物含非白名单 harness 键)"
+          echo "C1-BLOCKED: agentlisp_compiler par=-2 / checker.rkt srcloc* / parser.rkt al-agent arity 5v6（待 Owner 批准修复）"
 
       - name: Upload verification log
         if: always()
