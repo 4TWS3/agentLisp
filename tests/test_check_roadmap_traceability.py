@@ -68,7 +68,9 @@ def test_check_roadmap_traceability_id_drift_exit_one_and_prefix_count_one():
 
 def test_check_roadmap_traceability_baseline_mismatch_exit_one_and_prefix_count_one():
     content = SRS_MD.read_text(encoding="utf-8")
-    drifted = content.replace("pytest 128 passed", "pytest 119 passed", 1)
+    drifted = content.replace("pytest 128 passed", "pytest 119 passed", 1).replace(
+        "CR39_BASELINE_PASSED_COUNT: 128", "CR39_BASELINE_PASSED_COUNT: 119"
+    )
     assert drifted != content
     with tempfile.NamedTemporaryFile("w", suffix=".md", delete=False, encoding="utf-8") as tmp:
         tmp.write(drifted)
