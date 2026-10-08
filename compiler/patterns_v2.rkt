@@ -3,7 +3,9 @@
 (require (for-syntax racket/base
                      racket/syntax
                      racket/string
-                     racket/match))
+                     racket/match)
+         (for-meta 2 racket/base
+                   racket/syntax))
 
 (provide defpriority-agent
          defdecomposition-agent
