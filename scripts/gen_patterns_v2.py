@@ -27,6 +27,7 @@ Why this shape (constraints discovered from the real compiler):
 
 Regenerate:  python3 scripts/gen_patterns_v2.py
 """
+
 from __future__ import annotations
 
 import pathlib
@@ -48,79 +49,181 @@ FORBID = ["rm -rf"]
 TOOLS = [Sym("bash")]
 
 PATTERNS = [
-    dict(key="priority01", macro="defpriority-agent",
-         role="你是一个优先级队列调度 Agent（Priority）。待办任务进入优先队列后按优先级出队，同优先级按加权策略评分决出先后。",
-         markers=["priority-level 决定出队次序，数值越大越先执行",
-                  "同优先级按 policies 加权评分排序",
-                  "队列清空之前不得提前结束"],
-         temperature=0.2, reviewer=None, retries=2, breaker=5, on_failure="abort",
-         human_approval=[], workers=None),
-    dict(key="decomp02", macro="defdecomposition-agent",
-         role="你是一个递归任务分解 Agent（Decomposition）。把目标拆成两层子任务，每层交给独立 scoped-worker 执行后汇总。",
-         markers=["递归分解为 2 层子任务（decomp-level-1 / decomp-level-2）",
-                  "每层由独立 scoped-worker 子 Agent 执行",
-                  "子任务结果必须合并回主轨迹后才算完成"],
-         temperature=0.2, reviewer=None, retries=2, breaker=5, on_failure="abort",
-         human_approval=[],
-         workers=[dict(name="decomp-level-1", prompt="第一层分解 Worker：把目标拆成 2-4 个子任务。"),
-                  dict(name="decomp-level-2", prompt="第二层分解 Worker：把子任务拆成可执行步骤。")]),
-    dict(key="fsm03", macro="deffsm-agent",
-         role="你是一个有限状态机编排 Agent（FSM）。只允许按给定转移表迁移状态，每次迁移前必须先读当前状态。",
-         markers=["当前状态由 fsm-current-state 原子变量跟踪",
-                  "状态可达性 ≥2 静态断言（每个终态至少一条入边）",
-                  "非法转移必须立即终止并回报"],
-         temperature=0.0, reviewer=None, retries=1, breaker=10, on_failure="abort",
-         human_approval=[], workers=None),
-    dict(key="eval04", macro="defevaluator-agent",
-         role="你是一个候选方案评估器（Evaluator）。对每个候选方案独立打分并给出排序，评分标准必须显式可复核。",
-         markers=["Correct 段含 accuracy≥0.8 与 safety≥1.0 双阈值检查",
-                  "评估标准注入 Verify 段并由 reviewer-agent 复核",
-                  "未达阈值的候选必须标记 rejected 而非静默丢弃"],
-         temperature=0.0, reviewer="评分标准复核器", retries=2, breaker=5,
-         on_failure="fallback-model", human_approval=[], workers=None),
-    dict(key="topic05", macro="deftopic-model-agent",
-         role="你是一个主题建模 Agent（Topic Model）。把输入语料聚类成主题，并把每个主题的标签集合交给下游。",
-         markers=["主题聚类由 scoped-worker(topic-processor) 执行",
-                  "topics 子树分类器输出标签集合",
-                  "低置信度主题必须保留待人工复核"],
-         temperature=0.0, reviewer=None, retries=2, breaker=5, on_failure="abort",
-         human_approval=[],
-         workers=[dict(name="topic-processor", prompt="主题聚类 Worker：对语料做主题聚类并输出标签集合。")]),
-    dict(key="decom06", macro="defdecomposer-agent",
-         role="你是一个结构化提取 Agent（Decomposer）。只输出符合给定 schema 的字段，类型不符的字段一律拒绝。",
-         markers=["Constrain 段注入 2 条 decomposer-schema-field-type-check（iso-date / double）",
-                  "字段类型不符必须拒绝输出并回报字段名",
-                  "Schema 校验先于任何写操作"],
-         temperature=0.0, reviewer=None, retries=2, breaker=5, on_failure="abort",
-         human_approval=[], workers=None),
-    dict(key="guard07", macro="defguardrails-safety-agent",
-         role="你是一个安全护栏 Agent（Guardrails & Safety）。任何工具调用前先过护栏三段校验，违规即阻断。",
-         markers=["Harness 三段 guardrails 钩子（constrain / verify / correct）",
-                  "on-violation 触发 Verify→Correct 回路",
-                  "复用 NFR-SEC 基线，不得绕过护栏直接执行"],
-         temperature=0.0, reviewer="护栏合规复核器", retries=2, breaker=5,
-         on_failure="abort", human_approval=["all"], workers=None),
-    dict(key="hitl08", macro="defhitl-agent",
-         role="你是一个人在回路 Agent（HITL）。关键动作必须等待人类批准信号，未获批不得继续。",
-         markers=["Constrain 段 human-approval-required-before 生效",
-                  "Verify 段 waiting-for-human-signal 状态可观测",
-                  "人类拒绝后进入终止分支而非重试"],
-         temperature=0.0, reviewer=None, retries=1, breaker=10, on_failure="ask-human",
-         human_approval=["all"], workers=None),
-    dict(key="exc09", macro="defexception-agent",
-         role="你是一个异常恢复 Agent（Exception Handling & Recovery）。失败按三层重试阶梯恢复，超出预算转入死信队列。",
-         markers=["Correct 段 3 层 on-failure retry（retry=3, backoff=1.5x）",
-                  "Harness Constrain+Verify+Correct 三层不少",
-                  "熔断后进入死信队列并通知人工"],
-         temperature=0.0, reviewer=None, retries=3, breaker=5,
-         on_failure="fallback-model", human_approval=[], workers=None),
-    dict(key="explore10", macro="defexploration-agent",
-         role="你是一个探索式试错 Agent（Exploration & Discovery）。在预算内探索候选路径，收敛即停止并回报最优解。",
-         markers=["Verify 段 budget + convergence 两条检查",
-                  "Correct 段 expand-more-candidates 扩展候选",
-                  "探索预算耗尽或收敛阈值触发即停止"],
-         temperature=0.3, reviewer=None, retries=2, breaker=5, on_failure="ask-human",
-         human_approval=[], workers=None),
+    dict(
+        key="priority01",
+        macro="defpriority-agent",
+        role="你是一个优先级队列调度 Agent（Priority）。待办任务进入优先队列后按优先级出队，同优先级按加权策略评分决出先后。",
+        markers=[
+            "priority-level 决定出队次序，数值越大越先执行",
+            "同优先级按 policies 加权评分排序",
+            "队列清空之前不得提前结束",
+        ],
+        temperature=0.2,
+        reviewer=None,
+        retries=2,
+        breaker=5,
+        on_failure="abort",
+        human_approval=[],
+        workers=None,
+    ),
+    dict(
+        key="decomp02",
+        macro="defdecomposition-agent",
+        role="你是一个递归任务分解 Agent（Decomposition）。把目标拆成两层子任务，每层交给独立 scoped-worker 执行后汇总。",
+        markers=[
+            "递归分解为 2 层子任务（decomp-level-1 / decomp-level-2）",
+            "每层由独立 scoped-worker 子 Agent 执行",
+            "子任务结果必须合并回主轨迹后才算完成",
+        ],
+        temperature=0.2,
+        reviewer=None,
+        retries=2,
+        breaker=5,
+        on_failure="abort",
+        human_approval=[],
+        workers=[
+            dict(name="decomp-level-1", prompt="第一层分解 Worker：把目标拆成 2-4 个子任务。"),
+            dict(name="decomp-level-2", prompt="第二层分解 Worker：把子任务拆成可执行步骤。"),
+        ],
+    ),
+    dict(
+        key="fsm03",
+        macro="deffsm-agent",
+        role="你是一个有限状态机编排 Agent（FSM）。只允许按给定转移表迁移状态，每次迁移前必须先读当前状态。",
+        markers=[
+            "当前状态由 fsm-current-state 原子变量跟踪",
+            "状态可达性 ≥2 静态断言（每个终态至少一条入边）",
+            "非法转移必须立即终止并回报",
+        ],
+        temperature=0.0,
+        reviewer=None,
+        retries=1,
+        breaker=10,
+        on_failure="abort",
+        human_approval=[],
+        workers=None,
+    ),
+    dict(
+        key="eval04",
+        macro="defevaluator-agent",
+        role="你是一个候选方案评估器（Evaluator）。对每个候选方案独立打分并给出排序，评分标准必须显式可复核。",
+        markers=[
+            "Correct 段含 accuracy≥0.8 与 safety≥1.0 双阈值检查",
+            "评估标准注入 Verify 段并由 reviewer-agent 复核",
+            "未达阈值的候选必须标记 rejected 而非静默丢弃",
+        ],
+        temperature=0.0,
+        reviewer="评分标准复核器",
+        retries=2,
+        breaker=5,
+        on_failure="fallback-model",
+        human_approval=[],
+        workers=None,
+    ),
+    dict(
+        key="topic05",
+        macro="deftopic-model-agent",
+        role="你是一个主题建模 Agent（Topic Model）。把输入语料聚类成主题，并把每个主题的标签集合交给下游。",
+        markers=[
+            "主题聚类由 scoped-worker(topic-processor) 执行",
+            "topics 子树分类器输出标签集合",
+            "低置信度主题必须保留待人工复核",
+        ],
+        temperature=0.0,
+        reviewer=None,
+        retries=2,
+        breaker=5,
+        on_failure="abort",
+        human_approval=[],
+        workers=[
+            dict(name="topic-processor", prompt="主题聚类 Worker：对语料做主题聚类并输出标签集合。")
+        ],
+    ),
+    dict(
+        key="decom06",
+        macro="defdecomposer-agent",
+        role="你是一个结构化提取 Agent（Decomposer）。只输出符合给定 schema 的字段，类型不符的字段一律拒绝。",
+        markers=[
+            "Constrain 段注入 2 条 decomposer-schema-field-type-check（iso-date / double）",
+            "字段类型不符必须拒绝输出并回报字段名",
+            "Schema 校验先于任何写操作",
+        ],
+        temperature=0.0,
+        reviewer=None,
+        retries=2,
+        breaker=5,
+        on_failure="abort",
+        human_approval=[],
+        workers=None,
+    ),
+    dict(
+        key="guard07",
+        macro="defguardrails-safety-agent",
+        role="你是一个安全护栏 Agent（Guardrails & Safety）。任何工具调用前先过护栏三段校验，违规即阻断。",
+        markers=[
+            "Harness 三段 guardrails 钩子（constrain / verify / correct）",
+            "on-violation 触发 Verify→Correct 回路",
+            "复用 NFR-SEC 基线，不得绕过护栏直接执行",
+        ],
+        temperature=0.0,
+        reviewer="护栏合规复核器",
+        retries=2,
+        breaker=5,
+        on_failure="abort",
+        human_approval=["all"],
+        workers=None,
+    ),
+    dict(
+        key="hitl08",
+        macro="defhitl-agent",
+        role="你是一个人在回路 Agent（HITL）。关键动作必须等待人类批准信号，未获批不得继续。",
+        markers=[
+            "Constrain 段 human-approval-required-before 生效",
+            "Verify 段 waiting-for-human-signal 状态可观测",
+            "人类拒绝后进入终止分支而非重试",
+        ],
+        temperature=0.0,
+        reviewer=None,
+        retries=1,
+        breaker=10,
+        on_failure="ask-human",
+        human_approval=["all"],
+        workers=None,
+    ),
+    dict(
+        key="exc09",
+        macro="defexception-agent",
+        role="你是一个异常恢复 Agent（Exception Handling & Recovery）。失败按三层重试阶梯恢复，超出预算转入死信队列。",
+        markers=[
+            "Correct 段 3 层 on-failure retry（retry=3, backoff=1.5x）",
+            "Harness Constrain+Verify+Correct 三层不少",
+            "熔断后进入死信队列并通知人工",
+        ],
+        temperature=0.0,
+        reviewer=None,
+        retries=3,
+        breaker=5,
+        on_failure="fallback-model",
+        human_approval=[],
+        workers=None,
+    ),
+    dict(
+        key="explore10",
+        macro="defexploration-agent",
+        role="你是一个探索式试错 Agent（Exploration & Discovery）。在预算内探索候选路径，收敛即停止并回报最优解。",
+        markers=[
+            "Verify 段 budget + convergence 两条检查",
+            "Correct 段 expand-more-candidates 扩展候选",
+            "探索预算耗尽或收敛阈值触发即停止",
+        ],
+        temperature=0.3,
+        reviewer=None,
+        retries=2,
+        breaker=5,
+        on_failure="ask-human",
+        human_approval=[],
+        workers=None,
+    ),
 ]
 
 
@@ -154,41 +257,126 @@ def prompt_of(p: dict) -> str:
 
 
 def template_of(p: dict) -> list:
-    verify = [":verify", ":json-schema", True, ":linter-check", False,
-              ":test-runner", p["reviewer"] and "pytest" or ""]
+    verify = [
+        ":verify",
+        ":json-schema",
+        True,
+        ":linter-check",
+        False,
+        ":test-runner",
+        (p["reviewer"] and "pytest") or "",
+    ]
     if p["reviewer"]:
         verify += [":reviewer-agent", p["reviewer"]]
     blocks = [
-        [":model", ":provider", PROVIDER, ":name", MODEL,
-         ":temperature", p["temperature"], ":system-prompt", prompt_of(p)],
-        [":tools", [Sym("import-builtin")] + TOOLS],
-        [":context",
-         ":memory-policy", [Sym(":markdown-fs"), "./memory/{name}.md",
-                            ":layers", list(LAYERS),   # bare symbols: to-str must see "L0-Abstract"
-                            ":auto-append", False],
-         ":skills", [],
-         ":status-bar", list(STATUS_BAR)],
-        [":harness",
-         [":constrain", ":require-human-approval", list(p["human_approval"]),
-          ":forbidden-commands", list(FORBID)],
-         verify,
-         [":correct", ":max-retries", p["retries"], ":circuit-breaker", p["breaker"],
-          ":on-failure", p["on_failure"]]],
+        [
+            ":model",
+            ":provider",
+            PROVIDER,
+            ":name",
+            MODEL,
+            ":temperature",
+            p["temperature"],
+            ":system-prompt",
+            prompt_of(p),
+        ],
+        [":tools", [Sym("import-builtin"), *TOOLS]],
+        [
+            ":context",
+            ":memory-policy",
+            [
+                Sym(":markdown-fs"),
+                "./memory/{name}.md",
+                ":layers",
+                list(LAYERS),  # bare symbols: to-str must see "L0-Abstract"
+                ":auto-append",
+                False,
+            ],
+            ":skills",
+            [],
+            ":status-bar",
+            list(STATUS_BAR),
+        ],
+        [
+            ":harness",
+            [
+                ":constrain",
+                ":require-human-approval",
+                list(p["human_approval"]),
+                ":forbidden-commands",
+                list(FORBID),
+            ],
+            verify,
+            [
+                ":correct",
+                ":max-retries",
+                p["retries"],
+                ":circuit-breaker",
+                p["breaker"],
+                ":on-failure",
+                p["on_failure"],
+            ],
+        ],
     ]
     if p["workers"]:
         ws = []
         for w in p["workers"]:
-            ws.append([Sym("scoped-worker"), Sym(w["name"]),
-                       [":model", ":provider", PROVIDER, ":name", MODEL,
-                        ":temperature", 0.2, ":system-prompt", w["prompt"]],
-                       [":tools", [Sym("import-builtin")] + TOOLS],
-                       [":harness",
-                        [":constrain", ":require-human-approval", [], ":forbidden-commands", list(FORBID)],
-                        [":verify", ":json-schema", True, ":linter-check", False, ":test-runner", ""],
-                        [":correct", ":max-retries", 2, ":circuit-breaker", 3, ":on-failure", "abort"]]])
-        blocks.append([":multiagent", ":topology", Sym("orchestration"),   # bare symbol enum
-                       ":workers", ws])
-    return [Sym("define-agent"), Sym("%name%")] + blocks
+            ws.append(
+                [
+                    Sym("scoped-worker"),
+                    Sym(w["name"]),
+                    [
+                        ":model",
+                        ":provider",
+                        PROVIDER,
+                        ":name",
+                        MODEL,
+                        ":temperature",
+                        0.2,
+                        ":system-prompt",
+                        w["prompt"],
+                    ],
+                    [":tools", [Sym("import-builtin"), *TOOLS]],
+                    [
+                        ":harness",
+                        [
+                            ":constrain",
+                            ":require-human-approval",
+                            [],
+                            ":forbidden-commands",
+                            list(FORBID),
+                        ],
+                        [
+                            ":verify",
+                            ":json-schema",
+                            True,
+                            ":linter-check",
+                            False,
+                            ":test-runner",
+                            "",
+                        ],
+                        [
+                            ":correct",
+                            ":max-retries",
+                            2,
+                            ":circuit-breaker",
+                            3,
+                            ":on-failure",
+                            "abort",
+                        ],
+                    ],
+                ]
+            )
+        blocks.append(
+            [
+                ":multiagent",
+                ":topology",
+                Sym("orchestration"),  # bare symbol enum
+                ":workers",
+                ws,
+            ]
+        )
+    return [Sym("define-agent"), Sym("%name%"), *blocks]
 
 
 def strip_colon(k: str) -> str:
@@ -284,34 +472,46 @@ def emit_racket() -> str:
     provides = "(provide " + "\n         ".join(p["macro"] for p in PATTERNS) + ")\n"
     entries = []
     for p in PATTERNS:
-        entries.append("     (cons '%s\n           '%s)" % (p["macro"], rk(template_of(p))))
+        macro = p["macro"]
+        entries.append(f"     (cons '{macro}\n           '{rk(template_of(p))})")
     templates = "\n".join(entries)
     macros = []
     for p in PATTERNS:
         m, hc = p["macro"], p["key"] + "_hc"
-        lookup = "(cdr (assq '%s v2-templates))" % m
+        lookup = f"(cdr (assq '{m} v2-templates))"
         # CRITICAL（CI 实证）：只能用「单层」模板。写成
         #   (quasisyntax/loc stx  +  反引号模板(quote #,(f ...))
         # 是双层 quasisyntax —— 内层 #,(...) 被内层模板屏蔽，退化为运行期求值，
         # 展开报 "f: undefined" 并回退原式（原 patterns_v2.rkt 的 GENERIC 分支自始即有此 bug）。
         # V1 patterns.rkt 的可运行写法就是让反引号模板直接充当 clause body。
         BT = chr(96)
-        body = ("       #" + BT + "(quote #,(v2-instantiate %s\n"
-                "                              (syntax->datum (syntax name*))\n"
-                "                              (syntax->datum (syntax rst*))))" % lookup)
-        macros.append("""
-(define-syntax (%s stx)
+        body = (
+            f"       #{BT}(quote #,(v2-instantiate {lookup}\n"
+            "                              (syntax->datum (syntax name*))\n"
+            "                              (syntax->datum (syntax rst*))))"
+        )
+        macros.append(f"""
+(define-syntax ({m} stx)
   (syntax-case stx ()
     ;; HC FIRST -- fixture 写死名分支（first-match 语义，CR-41 AC-3 锚）
     ((_ name* . rst*)
-     (free-identifier=? (syntax %s) (syntax name*))
-%s)
+     (free-identifier=? (syntax {hc}) (syntax name*))
+{body})
     ;; GENERIC SECOND -- 任意名 + 任意 plist；与 HC 共用同一模板，仅 name/参数不同
     ((_ name* . rst*)
-%s)))
-""" % (m, hc, body, body))
-    return (HEADER + "\n" + provides + "\n" + HELPERS +
-            "\n  (define v2-templates\n    (list\n" + templates + ")))\n" + "".join(macros))
+{body})))
+""")
+    return (
+        HEADER
+        + "\n"
+        + provides
+        + "\n"
+        + HELPERS
+        + "\n  (define v2-templates\n    (list\n"
+        + templates
+        + ")))\n"
+        + "".join(macros)
+    )
 
 
 def sexp(x) -> str:
@@ -327,14 +527,16 @@ def read_al(text: str) -> list:
         elif c == ";":
             while i < len(text) and text[i] != "\n":
                 i += 1
-        elif c in "()[]":   # 方括号与圆括号在 Racket 中语义等价（项目红线：产物一律圆括号）
+        elif c in "()[]":  # 方括号与圆括号在 Racket 中语义等价（项目红线：产物一律圆括号）
             toks.append("(" if c == "[" else ")" if c == "]" else c)
             i += 1
         elif c == '"':
             j, buf = i + 1, ""
             while text[j] != '"':
                 if text[j] == "\\":
-                    buf += {"n": "\n", "t": "\t", '"': '"', "\\": "\\"}.get(text[j + 1], text[j + 1])
+                    buf += {"n": "\n", "t": "\t", '"': '"', "\\": "\\"}.get(
+                        text[j + 1], text[j + 1]
+                    )
                     j += 2
                 else:
                     buf += text[j]
@@ -372,8 +574,11 @@ def read_al(text: str) -> list:
 def emit_fixture(p: dict, scene: str, al: pathlib.Path) -> str:
     form = read_al(al.read_text(encoding="utf-8"))
     datum = instantiate(template_of(p), form[1], form[2:])
-    return (";; CR-41 %s / %s_%s -- expansion contract (generated by scripts/gen_patterns_v2.py)\n"
-            % (p["macro"], p["key"], scene) + sexp(datum) + "\n")
+    header = (
+        f";; CR-41 {p['macro']} / {p['key']}_{scene} -- expansion contract"
+        " (generated by scripts/gen_patterns_v2.py)\n"
+    )
+    return header + sexp(datum) + "\n"
 
 
 def main() -> None:
@@ -381,15 +586,16 @@ def main() -> None:
     n = 0
     for p in PATTERNS:
         for scene in ("hc", "generic", "reverse"):
-            al = FIX / ("%s_%s_%s.al" % (p["key"], scene, scene.upper()))
-            exp = FIX / ("%s_%s_%s.expected.rkt" % (p["key"], scene, scene.upper()))
+            stem = f"{p['key']}_{scene}_{scene.upper()}"
+            al = FIX / f"{stem}.al"
+            exp = FIX / f"{stem}.expected.rkt"
             if not al.exists():
                 print("MISSING input:", al.name)
                 continue
             exp.write_text(emit_fixture(p, scene.upper(), al), encoding="utf-8")
             n += 1
-    print("patterns_v2.rkt: %d macros" % len(PATTERNS))
-    print("expected fixtures regenerated: %d" % n)
+    print(f"patterns_v2.rkt: {len(PATTERNS)} macros")
+    print(f"expected fixtures regenerated: {n}")
 
 
 if __name__ == "__main__":

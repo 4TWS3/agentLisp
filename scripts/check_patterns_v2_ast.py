@@ -24,13 +24,22 @@ Checks per fixture (10 patterns x HC/GENERIC/REVERSE = 30):
 
 Exit 0 = all good; exit 1 = violations (printed).
 """
+
 from __future__ import annotations
 
 import pathlib
 import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
-from gen_patterns_v2 import FIX, PATTERNS, Sym, instantiate, read_al, sexp, template_of  # noqa: E402
+from gen_patterns_v2 import (
+    FIX,
+    PATTERNS,
+    Sym,
+    instantiate,
+    read_al,
+    sexp,
+    template_of,
+)
 
 PROVIDER_ENUM = ["anthropic", "openai", "qwen", "mock"]
 TOPOLOGY_ENUM = ["peer", "orchestration", "decentralised", "judge-driven"]
@@ -119,7 +128,9 @@ def check_context(block, where, errs):
             errs.append(f"{where}: :memory-policy 必须以 :markdown-fs 开头，得到 {mp!r}")
         else:
             if len(mp) != 6 or str(mp[2]) != ":layers" or str(mp[4]) != ":auto-append":
-                errs.append(f"{where}: :memory-policy 必须恰好 (:markdown-fs PATH :layers (..) :auto-append BOOL)")
+                errs.append(
+                    f"{where}: :memory-policy 必须恰好 (:markdown-fs PATH :layers (..) :auto-append BOOL)"
+                )
             else:
                 if not isinstance(mp[1], str):
                     errs.append(f"{where}: markdown-fs path 必须是字符串")
@@ -127,9 +138,12 @@ def check_context(block, where, errs):
                 if not isinstance(layers, list) or not layers:
                     errs.append(f"{where}: :layers 必须是非空列表")
                 else:
-                    for l in layers:
-                        if not isinstance(l, Sym) or str(l) not in LAYER_ENUM:
-                            errs.append(f"{where}: layer {l!r} 非法（to-str 不拆 quote，必须裸符号且属于 {LAYER_ENUM}）")
+                    for layer in layers:
+                        if not isinstance(layer, Sym) or str(layer) not in LAYER_ENUM:
+                            errs.append(
+                                f"{where}: layer {layer!r} 非法"
+                                f"（to-str 不拆 quote，必须裸符号且属于 {LAYER_ENUM}）"
+                            )
                 if not isinstance(mp[5], bool):
                     errs.append(f"{where}: :auto-append 必须是 #t/#f")
     if sb is not None:

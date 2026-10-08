@@ -13,7 +13,7 @@ SRS_MD = REPO_ROOT / "docs" / "spec" / "agentlisp_srs.md"
 with tempfile.NamedTemporaryFile("w", suffix=".xml", delete=False, encoding="utf-8") as FAKE_JUNIT:
     FAKE_JUNIT.write(
         '<?xml version="1.0"?>'
-        '<testsuites><testsuite tests="128" failures="0" errors="0" skipped="3">'
+        '<testsuites><testsuite tests="158" failures="0" errors="0" skipped="3">'
         '<testcase classname="m" name="x"/></testsuite></testsuites>'
     )
     FAKE_JUNIT_NAME = FAKE_JUNIT.name
@@ -56,7 +56,7 @@ def test_check_roadmap_traceability_id_drift_exit_one_and_prefix_count_one():
         tmp.write(drifted)
         tmp_srs = pathlib.Path(tmp.name)
     try:
-        cp = _run_cli(tmp_srs, extra=["--strict-baseline", "128"])
+        cp = _run_cli(tmp_srs, extra=["--strict-baseline", "158"])
         assert cp.returncode == 1, f"stderr: {cp.stderr}"
         id_count = len(re.findall(r"^ROADMAP-ID-MISMATCH:", cp.stderr, re.M))
         base_count = len(re.findall(r"^ROADMAP-BASELINE-MISMATCH:", cp.stderr, re.M))
@@ -68,15 +68,17 @@ def test_check_roadmap_traceability_id_drift_exit_one_and_prefix_count_one():
 
 def test_check_roadmap_traceability_baseline_mismatch_exit_one_and_prefix_count_one():
     content = SRS_MD.read_text(encoding="utf-8")
-    drifted = content.replace("pytest 128 passed", "pytest 119 passed", 1).replace(
-        "CR39_BASELINE_PASSED_COUNT: 128", "CR39_BASELINE_PASSED_COUNT: 119"
-    )
+    # CR-41 起 declared 基线来自 CR41_BASELINE_PASSED_COUNT。脚本只判 actual < declared，
+    # 因此「下调声明值」天然安全、抓不出来；必须用「上调声明的基线」来验证脚本真的会拦。
+    drifted = content.replace(
+        "CR41_BASELINE_PASSED_COUNT: 158", "CR41_BASELINE_PASSED_COUNT: 999", 1
+    ).replace("| **AC-2** | 158 | 158 |", "| **AC-2** | 999 | 999 |", 1)
     assert drifted != content
     with tempfile.NamedTemporaryFile("w", suffix=".md", delete=False, encoding="utf-8") as tmp:
         tmp.write(drifted)
         tmp_srs = pathlib.Path(tmp.name)
     try:
-        cp = _run_cli(tmp_srs, extra=["--strict-baseline", "128"])
+        cp = _run_cli(tmp_srs)
         assert cp.returncode == 1, f"stderr: {cp.stderr}"
         id_count = len(re.findall(r"^ROADMAP-ID-MISMATCH:", cp.stderr, re.M))
         base_count = len(re.findall(r"^ROADMAP-BASELINE-MISMATCH:", cp.stderr, re.M))

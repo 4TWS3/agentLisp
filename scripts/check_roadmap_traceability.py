@@ -182,7 +182,11 @@ def _parse_pytest_fallback_subprocess() -> int | None:
 
 def check_baseline(srs: str, args: argparse.Namespace, stderr_list: list[str]) -> None:
     app_b = srs.split("## 附录 B", 1)[1].split("## 附录 C", 1)[0]
-    v1 = _extract_int(r"CR41_BASELINE_PASSED_COUNT[:=]\s*(\d+)", srs) or _extract_int(r"CR39_BASELINE_PASSED_COUNT[:=]\s*(\d+)", srs) or _extract_int(r"pytest (\d+) passed", srs)
+    v1 = (
+        _extract_int(r"CR41_BASELINE_PASSED_COUNT[:=]\s*(\d+)", srs)
+        or _extract_int(r"CR39_BASELINE_PASSED_COUNT[:=]\s*(\d+)", srs)
+        or _extract_int(r"pytest (\d+) passed", srs)
+    )
     v2: int | None = None
     v3: int | None = None
     for line in app_b.splitlines():
@@ -264,9 +268,7 @@ def check_32rows_scn_eq_pas(srs: str, stderr_list: list[str]) -> None:
         scn_sum += scn
         pas_sum += pas
     row_diff = abs(rows - 32)
-    allow_scn_neq_pas = (
-        os.environ.get("AGENTLISP_ROADMAP_ALLOW_SCN_NEQ_PAS", "") == "1"
-    )
+    allow_scn_neq_pas = os.environ.get("AGENTLISP_ROADMAP_ALLOW_SCN_NEQ_PAS", "") == "1"
     if scn_sum != pas_sum and not allow_scn_neq_pas:
         stderr_list.append(
             "ROADMAP-SCENARIO-SUM-MISMATCH: "

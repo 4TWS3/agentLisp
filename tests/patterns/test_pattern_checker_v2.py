@@ -37,11 +37,13 @@ SCENES = ("HC", "GENERIC", "REVERSE")
 
 CASE_IDS = [f"{m}_{s}" for m in V2_MACROS for s in SCENES]
 
+
 def _fixture_path(cid: str, ext: str) -> pathlib.Path:
     code, scene = cid.rsplit("_", 1)
     stem = f"{code}_{scene.lower()}_{scene}"
     suffix = ".al" if ext == "al" else ".expected.rkt"
     return FIXTURES_V2_DIR / f"{stem}{suffix}"
+
 
 AL_FILES = {cid: _fixture_path(cid, "al") for cid in CASE_IDS}
 EXPECTED_FILES = {cid: _fixture_path(cid, "expected") for cid in CASE_IDS}
@@ -112,13 +114,20 @@ def test_v2_macro_expand_returns_valid_define_agent(case_id: str):
 
 
 V1_V2_MACROS = [
-    ("defreflect-agent", "v1"), ("defrouter-agent", "v1"),
-    ("defchain-agent", "v1"), ("defparallel-agent", "v1"),
-    ("defplanner-agent", "v1"), ("defpriority-agent", "v2"),
-    ("defdecomposition-agent", "v2"), ("deffsm-agent", "v2"),
-    ("defevaluator-agent", "v2"), ("deftopic-model-agent", "v2"),
-    ("defdecomposer-agent", "v2"), ("defguardrails-safety-agent", "v2"),
-    ("defhitl-agent", "v2"), ("defexception-agent", "v2"),
+    ("defreflect-agent", "v1"),
+    ("defrouter-agent", "v1"),
+    ("defchain-agent", "v1"),
+    ("defparallel-agent", "v1"),
+    ("defplanner-agent", "v1"),
+    ("defpriority-agent", "v2"),
+    ("defdecomposition-agent", "v2"),
+    ("deffsm-agent", "v2"),
+    ("defevaluator-agent", "v2"),
+    ("deftopic-model-agent", "v2"),
+    ("defdecomposer-agent", "v2"),
+    ("defguardrails-safety-agent", "v2"),
+    ("defhitl-agent", "v2"),
+    ("defexception-agent", "v2"),
     ("defexploration-agent", "v2"),
 ]
 FIVE_BUCKETS = [":model", ":tools", ":context", ":harness", ":multiagent"]
@@ -129,9 +138,13 @@ THREE_MANDATORY = [":model", ":tools", ":context"]
 # 属 CR-41 早期实现缺陷，已从产物与断言中一并移除。
 EIGHT_CELL_KEYS = ["d1-1", "d1-2", "d3-1", "d3-2", "d4-1", "d4-2", "d5-1", "d5-2"]
 EIGHT_CELL_LABELS = [
-    "d1-1升序5bucket", "d1-2三必块", "d3-1harness c/v/c trichotomy",
-    "d3-2无运行时eval污染", "d4-1agent_name是symbol",
-    "d4-2block count∈[3,5]", "d5-1顶层define-agent",
+    "d1-1升序5bucket",
+    "d1-2三必块",
+    "d3-1harness c/v/c trichotomy",
+    "d3-2无运行时eval污染",
+    "d4-1agent_name是symbol",
+    "d4-2block count∈[3,5]",
+    "d5-1顶层define-agent",
     "d5-2每block带kw tag",
 ]
 
@@ -178,7 +191,7 @@ def _tokenize_sexp(src: str):
                     j += 2
                     continue
                 j += 1
-            tokens.append(src[i:j + 1])
+            tokens.append(src[i : j + 1])
             i = j + 1
             continue
         j = i
@@ -230,7 +243,9 @@ def _get_kw_blocks(define_agent_parsed):
 
 
 @pytest.mark.skipif(not HAS_RACKET, reason="No racket runtime; skip V2 patterns cases")
-@pytest.mark.parametrize("macro,ver", V1_V2_MACROS, ids=[f"{v}-{m.split('-')[0]}" for m, v in V1_V2_MACROS])
+@pytest.mark.parametrize(
+    "macro,ver", V1_V2_MACROS, ids=[f"{v}-{m.split('-')[0]}" for m, v in V1_V2_MACROS]
+)
 def test_nfr01_macro_expand_head200_prefix_byte_identical(macro: str, ver: str):
     """NFR-PATTERN-01: 15宏 × (HC head + GENERIC head shape 200bytes全等) = 30 assertions
     对应 patterns_checker_v2.rkt check-nfr01-ast-equivalence；HC fixture 文件在 fixtures/fixtures_v2 目录下。
@@ -240,8 +255,10 @@ def test_nfr01_macro_expand_head200_prefix_byte_identical(macro: str, ver: str):
     if ver == "v1":
         fx_dir = Path("tests/patterns/fixtures")
         prefix_map = {
-            "defreflect": "defreflect_code_refiner", "defrouter": "defrouter_ops_gateway",
-            "defchain": "defchain_doc_pipeline", "defparallel": "defparallel_multi_search",
+            "defreflect": "defreflect_code_refiner",
+            "defrouter": "defrouter_ops_gateway",
+            "defchain": "defchain_doc_pipeline",
+            "defparallel": "defparallel_multi_search",
             "defplanner": "defplanner_deep_researcher",
         }
         hc_id = prefix_map[macro.replace("-agent", "")]
@@ -250,11 +267,16 @@ def test_nfr01_macro_expand_head200_prefix_byte_identical(macro: str, ver: str):
     else:
         fx_dir = Path("tests/patterns/fixtures_v2")
         prefix_map_v2 = {
-            "defpriority": "priority01", "defdecomposition": "decomp02",
-            "deffsm": "fsm03", "defevaluator": "eval04",
-            "deftopic-model": "topic05", "defdecomposer": "decom06",
-            "defguardrails-safety": "guard07", "defhitl": "hitl08",
-            "defexception": "exc09", "defexploration": "explore10",
+            "defpriority": "priority01",
+            "defdecomposition": "decomp02",
+            "deffsm": "fsm03",
+            "defevaluator": "eval04",
+            "deftopic-model": "topic05",
+            "defdecomposer": "decom06",
+            "defguardrails-safety": "guard07",
+            "defhitl": "hitl08",
+            "defexception": "exc09",
+            "defexploration": "explore10",
         }
         hc_id = prefix_map_v2[suffix_id]
         al = fx_dir / f"{hc_id}_hc_HC.al"
@@ -287,7 +309,9 @@ def test_nfr01_macro_expand_head200_prefix_byte_identical(macro: str, ver: str):
 
 
 @pytest.mark.skipif(not HAS_RACKET, reason="No racket runtime; skip NFR02 static matrix")
-@pytest.mark.parametrize("macro,ver", V1_V2_MACROS, ids=[f"{v}-{m.split('-')[0]}" for m, v in V1_V2_MACROS])
+@pytest.mark.parametrize(
+    "macro,ver", V1_V2_MACROS, ids=[f"{v}-{m.split('-')[0]}" for m, v in V1_V2_MACROS]
+)
 def test_nfr02_static_safety_8d_matrix_120checkpoint_all_true(macro: str, ver: str):
     """NFR-PATTERN-02: 8 维静态安全矩阵 × 15 宏 = 120 checkpoint 全 #t。
     8 维全部是 Core AST 语法可表达的静态不变量（可编译产物才有意义）：
@@ -304,8 +328,10 @@ def test_nfr02_static_safety_8d_matrix_120checkpoint_all_true(macro: str, ver: s
     if ver == "v1":
         fx_dir = Path("tests/patterns/fixtures")
         prefix_map = {
-            "defreflect": "defreflect_code_refiner", "defrouter": "defrouter_ops_gateway",
-            "defchain": "defchain_doc_pipeline", "defparallel": "defparallel_multi_search",
+            "defreflect": "defreflect_code_refiner",
+            "defrouter": "defrouter_ops_gateway",
+            "defchain": "defchain_doc_pipeline",
+            "defparallel": "defparallel_multi_search",
             "defplanner": "defplanner_deep_researcher",
         }
         hc_id = prefix_map[suffix_id]
@@ -313,11 +339,16 @@ def test_nfr02_static_safety_8d_matrix_120checkpoint_all_true(macro: str, ver: s
     else:
         fx_dir = Path("tests/patterns/fixtures_v2")
         prefix_map_v2 = {
-            "defpriority": "priority01", "defdecomposition": "decomp02",
-            "deffsm": "fsm03", "defevaluator": "eval04",
-            "deftopic-model": "topic05", "defdecomposer": "decom06",
-            "defguardrails-safety": "guard07", "defhitl": "hitl08",
-            "defexception": "exc09", "defexploration": "explore10",
+            "defpriority": "priority01",
+            "defdecomposition": "decomp02",
+            "deffsm": "fsm03",
+            "defevaluator": "eval04",
+            "deftopic-model": "topic05",
+            "defdecomposer": "decom06",
+            "defguardrails-safety": "guard07",
+            "defhitl": "hitl08",
+            "defexception": "exc09",
+            "defexploration": "explore10",
         }
         hc_id = prefix_map_v2[suffix_id]
         al = fx_dir / f"{hc_id}_hc_HC.al"
@@ -386,10 +417,12 @@ def test_nfr02_static_safety_8d_matrix_120checkpoint_all_true(macro: str, ver: s
                 h_subtags.append(sub)
         cells["d3-1"] = all(t in h_subtags for t in [":constrain", ":verify", ":correct"])
 
-    cells["d3-2"] = not any(bad in flat_text for bad in [" eval ", " apply ", " eval-syntax ", "syntax-local-value"])
+    cells["d3-2"] = not any(
+        bad in flat_text for bad in [" eval ", " apply ", " eval-syntax ", "syntax-local-value"]
+    )
 
     for cell_key in EIGHT_CELL_KEYS:
-        label_map = dict(zip(EIGHT_CELL_KEYS, EIGHT_CELL_LABELS))
+        label_map = dict(zip(EIGHT_CELL_KEYS, EIGHT_CELL_LABELS, strict=True))
         assert cells.get(cell_key, False) is True, (
             f"NFR02 {ver} {macro} cell={cell_key}({label_map[cell_key]}) FAIL\n"
             f"block_tags={block_tags}, agent_name={agent_name!r}"
