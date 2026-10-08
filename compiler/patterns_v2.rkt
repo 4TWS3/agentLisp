@@ -109,7 +109,7 @@
 (define-syntax (defpriority-agent stx)
   (syntax-case stx ()
     ((_ name* . rst*)
-     (free-identifier=? #'priority01-hc #'name*)
+     (free-identifier=? #'priority01_hc #'name*)
      #''(define-agent priority01_hc
          (:model :provider "openai"
                  :name "gpt-5.6"
@@ -138,7 +138,7 @@
 (define-syntax (defdecomposition-agent stx)
   (syntax-case stx ()
     ((_ name* . rst*)
-     (free-identifier=? #'decomp02-hc #'name*)
+     (free-identifier=? #'decomp02_hc #'name*)
      #''(define-agent decomp02_hc
          (:model :provider "openai"
                  :name "gpt-5.6"
@@ -169,7 +169,7 @@
 (define-syntax (deffsm-agent stx)
   (syntax-case stx ()
     ((_ name* . rst*)
-     (free-identifier=? #'fsm03-hc #'name*)
+     (free-identifier=? #'fsm03_hc #'name*)
      #''(define-agent fsm03_hc
          (:model :provider "openai"
                  :name "gpt-5.6"
@@ -201,7 +201,7 @@
 (define-syntax (defevaluator-agent stx)
   (syntax-case stx ()
     ((_ name* . rst*)
-     (free-identifier=? #'eval04-hc #'name*)
+     (free-identifier=? #'eval04_hc #'name*)
      #''(define-agent eval04_hc
          (:model :provider "openai"
                  :name "gpt-5.6"
@@ -233,7 +233,7 @@
 (define-syntax (deftopic-model-agent stx)
   (syntax-case stx ()
     ((_ name* . rst*)
-     (free-identifier=? #'topic05-hc #'name*)
+     (free-identifier=? #'topic05_hc #'name*)
      #''(define-agent topic05_hc
          (:model :provider "openai"
                  :name "gpt-5.6"
@@ -265,7 +265,7 @@
 (define-syntax (defdecomposer-agent stx)
   (syntax-case stx ()
     ((_ name* . rst*)
-     (free-identifier=? #'decom06-hc #'name*)
+     (free-identifier=? #'decom06_hc #'name*)
      #''(define-agent decom06_hc
          (:model :provider "openai"
                  :name "gpt-5.6"
@@ -297,7 +297,7 @@
 (define-syntax (defguardrails-safety-agent stx)
   (syntax-case stx ()
     ((_ name* . rst*)
-     (free-identifier=? #'guard07-hc #'name*)
+     (free-identifier=? #'guard07_hc #'name*)
      #''(define-agent guard07_hc
          (:model :provider "openai"
                  :name "gpt-5.6"
@@ -329,7 +329,7 @@
 (define-syntax (defhitl-agent stx)
   (syntax-case stx ()
     ((_ name* . rst*)
-     (free-identifier=? #'hitl08-hc #'name*)
+     (free-identifier=? #'hitl08_hc #'name*)
      #''(define-agent hitl08_hc
          (:model :provider "openai"
                  :name "gpt-5.6"
@@ -361,7 +361,7 @@
 (define-syntax (defexception-agent stx)
   (syntax-case stx ()
     ((_ name* . rst*)
-     (free-identifier=? #'exc09-hc #'name*)
+     (free-identifier=? #'exc09_hc #'name*)
      #''(define-agent exc09_hc
          (:model :provider "openai"
                  :name "gpt-5.6"
@@ -393,7 +393,7 @@
 (define-syntax (defexploration-agent stx)
   (syntax-case stx ()
     ((_ name* . rst*)
-     (free-identifier=? #'explore10-hc #'name*)
+     (free-identifier=? #'explore10_hc #'name*)
      #''(define-agent explore10_hc
          (:model :provider "openai"
                  :name "gpt-5.6"
