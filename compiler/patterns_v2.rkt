@@ -157,12 +157,14 @@
            (:pattern-config
              (subtasks ((ingest "数据接入") (clean "清洗") (analyze "分析")))
              (orchestrator (fan-out 4))
-             (rollup (merge-by-timestamp)))))))
+             (rollup (merge-by-timestamp))))))
+
     ((_ name* . rst*)
      (let* ((name-sym (syntax->datum #'name*))
             (rst-datum (syntax->datum #'rst*))
             (blocks (v2-plist->blocks 'defdecomposition rst-datum)))
-       (v2-quote-blocks name-sym blocks))))
+       (v2-quote-blocks name-sym blocks)))))
+
 
 (define-syntax (deffsm-agent stx)
   (syntax-case stx ()
@@ -187,12 +189,14 @@
              (states (idle running done error))
              (initial idle)
              (final (done error))
-             (transitions ((idle start => running) (running ok => done) (running bad => error))))))))
+             (transitions ((idle start => running) (running ok => done) (running bad => error)))))))
+
     ((_ name* . rst*)
      (let* ((name-sym (syntax->datum #'name*))
             (rst-datum (syntax->datum #'rst*))
             (blocks (v2-plist->blocks 'deffsm rst-datum)))
-       (v2-quote-blocks name-sym blocks))))
+       (v2-quote-blocks name-sym blocks)))))
+
 
 (define-syntax (defevaluator-agent stx)
   (syntax-case stx ()
@@ -217,12 +221,14 @@
              (rubric ((accuracy 0.5) (speed 0.3) (cost 0.2)))
              (weights (0.5 0.3 0.2))
              (ground-truth "./eval/gt.json")
-             (threshold 0.85))))))
+             (threshold 0.85)))))
+
     ((_ name* . rst*)
      (let* ((name-sym (syntax->datum #'name*))
             (rst-datum (syntax->datum #'rst*))
             (blocks (v2-plist->blocks 'defevaluator rst-datum)))
-       (v2-quote-blocks name-sym blocks))))
+       (v2-quote-blocks name-sym blocks)))))
+
 
 (define-syntax (deftopic-model-agent stx)
   (syntax-case stx ()
@@ -247,12 +253,14 @@
              (topics (tech finance health sports))
              (taxonomy (hierarchical 3 levels))
              (threshold 0.6)
-             (clustering (kmeans 8)))))))
+             (clustering (kmeans 8))))))
+
     ((_ name* . rst*)
      (let* ((name-sym (syntax->datum #'name*))
             (rst-datum (syntax->datum #'rst*))
             (blocks (v2-plist->blocks 'deftopic-model rst-datum)))
-       (v2-quote-blocks name-sym blocks))))
+       (v2-quote-blocks name-sym blocks)))))
+
 
 (define-syntax (defdecomposer-agent stx)
   (syntax-case stx ()
@@ -277,12 +285,14 @@
              (granularity per-paragraph)
              (techniques (mdp-splitting llm-judged heuristic))
              (subagent-pool (worker-a worker-b worker-c))
-             (merge weighted-vote))))))
+             (merge weighted-vote)))))
+
     ((_ name* . rst*)
      (let* ((name-sym (syntax->datum #'name*))
             (rst-datum (syntax->datum #'rst*))
             (blocks (v2-plist->blocks 'defdecomposer rst-datum)))
-       (v2-quote-blocks name-sym blocks))))
+       (v2-quote-blocks name-sym blocks)))))
+
 
 (define-syntax (defguardrails-safety-agent stx)
   (syntax-case stx ()
@@ -307,12 +317,14 @@
              (input-policy (pii-filter prompt-injection-detect))
              (output-policy (toxicity-classifier hallucination-rate))
              (audit (full-trace retention 90d))
-             (escalation (human-on-threshold 0.85)))))))
+             (escalation (human-on-threshold 0.85))))))
+
     ((_ name* . rst*)
      (let* ((name-sym (syntax->datum #'name*))
             (rst-datum (syntax->datum #'rst*))
             (blocks (v2-plist->blocks 'defguardrails-safety rst-datum)))
-       (v2-quote-blocks name-sym blocks))))
+       (v2-quote-blocks name-sym blocks)))))
+
 
 (define-syntax (defhitl-agent stx)
   (syntax-case stx ()
@@ -337,12 +349,14 @@
              (approval-policy (cost>100USD risk>=high pii))
              (escalation (slack "#ops-oncall" SLA 5min))
              (timeout 30min)
-             (audit-log (immutable-s3 bucket)))))))
+             (audit-log (immutable-s3 bucket))))))
+
     ((_ name* . rst*)
      (let* ((name-sym (syntax->datum #'name*))
             (rst-datum (syntax->datum #'rst*))
             (blocks (v2-plist->blocks 'defhitl rst-datum)))
-       (v2-quote-blocks name-sym blocks))))
+       (v2-quote-blocks name-sym blocks)))))
+
 
 (define-syntax (defexception-agent stx)
   (syntax-case stx ()
@@ -367,12 +381,14 @@
              (fallback (degrade-to-cache retry-best-effort))
              (retry-policy (exponential-backoff base 2s max 10))
              (dead-letter (s3 bucket + dlq-notify))
-             (monitoring (datadog alarm-threshold 5/5min)))))))
+             (monitoring (datadog alarm-threshold 5/5min))))))
+
     ((_ name* . rst*)
      (let* ((name-sym (syntax->datum #'name*))
             (rst-datum (syntax->datum #'rst*))
             (blocks (v2-plist->blocks 'defexception rst-datum)))
-       (v2-quote-blocks name-sym blocks))))
+       (v2-quote-blocks name-sym blocks)))))
+
 
 (define-syntax (defexploration-agent stx)
   (syntax-case stx ()
@@ -397,9 +413,11 @@
              (search-space (hyperparam-range lr (1e-5 1e-2) batch (32 512)))
              (budget (max-trials 200 max-time 2h wall))
              (pruning (median-stop 5%-ile after 5 trials))
-             (rollout (ucb-exploration c=2.0)))))))
+             (rollout (ucb-exploration c=2.0))))))
+
     ((_ name* . rst*)
      (let* ((name-sym (syntax->datum #'name*))
             (rst-datum (syntax->datum #'rst*))
             (blocks (v2-plist->blocks 'defexploration rst-datum)))
-       (v2-quote-blocks name-sym blocks))))
+       (v2-quote-blocks name-sym blocks)))))
+
