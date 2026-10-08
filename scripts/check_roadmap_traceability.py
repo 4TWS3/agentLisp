@@ -179,7 +179,7 @@ def _parse_pytest_fallback_subprocess() -> int | None:
 
 def check_baseline(srs: str, args: argparse.Namespace, stderr_list: list[str]) -> None:
     app_b = srs.split("## 附录 B", 1)[1].split("## 附录 C", 1)[0]
-    v1 = _extract_int(r"pytest (\d+) passed", srs)
+    v1 = _extract_int(r"CR39_BASELINE_PASSED_COUNT[:=]\s*(\d+)", srs) or _extract_int(r"pytest (\d+) passed", srs)
     v2: int | None = None
     v3: int | None = None
     for line in app_b.splitlines():
@@ -271,9 +271,9 @@ def check_32rows_scn_eq_pas(srs: str, stderr_list: list[str]) -> None:
             f"expect_PasSum==ScnSum (fail_on_diff=true；若需临时跳过此核查可导出 AGENTLISP_ROADMAP_ALLOW_SCN_NEQ_PAS=1)"
         )
         return
-    if row_diff > 1:
+    if row_diff > 6:
         print(
-            f"[warn O2] rows={rows} not 32 (diff={row_diff}, allowed ±1); "
+            f"[warn O2] rows={rows} not 32 (diff={row_diff}, allowed ±6; 允差含 CR-40 O13 新增 5 条 PATTERN-ID 行，下一轮 GA 基线升级后重置允差 ±1); "
             f"ScnSum={scn_sum} PasSum={pas_sum}; only warn, not fail",
             file=sys.stderr,
         )

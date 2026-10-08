@@ -347,5 +347,5 @@ jobs:
           packages-dir: dist
           verify-metadata: true
           print-hash: true
-          skip-existing: true
+          skip-existing: false
           verbose: true
