@@ -19,6 +19,7 @@ COMPILER_DIR = PROJECT_ROOT / "compiler"
 FIXTURES_V2_DIR = PROJECT_ROOT / "tests" / "patterns" / "fixtures_v2"
 RACKET_BIN = "racket"
 HAS_RACKET = shutil.which(RACKET_BIN) is not None
+Path = pathlib.Path
 
 V2_MACROS = (
     "priority01",
@@ -34,10 +35,16 @@ V2_MACROS = (
 )
 SCENES = ("HC", "GENERIC", "REVERSE")
 
-# 30 = 10 宏 × 3 场景
 CASE_IDS = [f"{m}_{s}" for m in V2_MACROS for s in SCENES]
-AL_FILES = {cid: FIXTURES_V2_DIR / f"{cid}.al" for cid in CASE_IDS}
-EXPECTED_FILES = {cid: FIXTURES_V2_DIR / f"{cid}.expected.rkt" for cid in CASE_IDS}
+
+def _fixture_path(cid: str, ext: str) -> pathlib.Path:
+    code, scene = cid.rsplit("_", 1)
+    stem = f"{code}_{scene.lower()}_{scene}"
+    suffix = ".al" if ext == "al" else ".expected.rkt"
+    return FIXTURES_V2_DIR / f"{stem}{suffix}"
+
+AL_FILES = {cid: _fixture_path(cid, "al") for cid in CASE_IDS}
+EXPECTED_FILES = {cid: _fixture_path(cid, "expected") for cid in CASE_IDS}
 
 # 与 V1 口径一致：无 Racket 环境则全部 skipif 等待 CI Ubuntu 提供红证据
 pytestmark = pytest.mark.skipif(
