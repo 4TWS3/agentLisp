@@ -82,31 +82,33 @@
     (eval '(require racket/base racket/port racket/file racket/path racket/runtime-path racket/syntax racket/string racket/match racket/pretty) ns)
     (eval `(require (file ,(path->string PATTERNS-PATH))) ns)
     (eval `(require (file ,(path->string PATTERNS-V2-PATH))) ns)
-    (for/list ((form (in-list all-forms)))
-      (with-handlers ([exn:fail? (lambda (e)
-                                    (fprintf (current-error-port) "; expand-single ~s FAIL: ~a~n" (and (pair? form) (car form)) (exn-message e))
-                                    form)])
-        (define expanded (eval form ns))
-        (cond
-          [(and (pair? expanded) (eq? (car expanded) 'defagent))
-           (cons 'define-agent (cdr expanded))]
-          [(and (pair? expanded)
-                (memq (car expanded)
-                      '(defreflect-agent defrouter-agent defchain-agent defparallel-agent defplanner-agent
-                        defpriority-agent defdecomposition-agent deffsm-agent defevaluator-agent
-                        deftopic-model-agent defdecomposer-agent defguardrails-safety-agent
-                        defhitl-agent defexception-agent defexploration-agent)))
-           (cons 'define-agent (cdr expanded))]
-          [else expanded])))
+    (define all-expanded
+      (for/list ((form (in-list all-forms)))
+        (with-handlers ([exn:fail? (lambda (e)
+                                      (fprintf (current-error-port) "; expand-single ~s FAIL: ~a~n" (and (pair? form) (car form)) (exn-message e))
+                                      form)])
+          (define expanded (eval form ns))
+          (cond
+            [(and (pair? expanded) (eq? (car expanded) 'defagent))
+             (cons 'define-agent (cdr expanded))]
+            [(and (pair? expanded)
+                  (memq (car expanded)
+                        '(defreflect-agent defrouter-agent defchain-agent defparallel-agent defplanner-agent
+                          defpriority-agent defdecomposition-agent deffsm-agent defevaluator-agent
+                          deftopic-model-agent defdecomposer-agent defguardrails-safety-agent
+                          defhitl-agent defexception-agent defexploration-agent)))
+             (cons 'define-agent (cdr expanded))]
+            [else expanded]))))
     (with-handlers ([exn:fail? (lambda (e)
                                   (fprintf (current-error-port) "; patterns_checker_v2 LOAD/SKIP: ~a (non-fatal, expand results unchanged)~n" (exn-message e))
                                   all-expanded)])
       (define ns2 (make-base-namespace))
       (eval '(require racket/base racket/match racket/list racket/string) ns2)
       (eval `(require (file ,(path->string PATTERNS-CHECKER-V2-PATH))) ns2)
-      (define checker-run (eval '(lambda (get-hc-exp get-hc-hw get-gen-exp)
-                                   (run-patterns-checker-v2 get-hc-exp get-hc-hw get-gen-exp)) ns2))
-      (all-expanded))))
+      (void
+       (eval '(lambda (get-hc-exp get-hc-hw get-gen-exp)
+                (run-patterns-checker-v2 get-hc-exp get-hc-hw get-gen-exp)) ns2))
+      all-expanded)))
 
 (define (check-ast/legacy a expanded-source input-path)
   (with-handlers ((exn:agentlisp:check?
