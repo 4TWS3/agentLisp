@@ -5,6 +5,14 @@ on:
     tags:
       - "v*"
   workflow_dispatch:
+    inputs:
+      target:
+        description: "发布目标：testpypi = 试点（只发 TestPyPI；不建 GitHub Release、不打 Docker）/ pypi = 正式"
+        type: choice
+        options:
+          - testpypi
+          - pypi
+        default: testpypi
 
 permissions:
   contents: write
@@ -167,6 +175,8 @@ jobs:
 
   create-release:
     name: Publish GitHub Release
+    # 试点 dispatch 不得创建 GitHub Release（只有 tag push 才是正式发布）
+    if: github.event_name == 'push'
     needs: [build-windows, build-linux]
     runs-on: ubuntu-latest
     steps:
@@ -204,6 +214,8 @@ jobs:
 
   docker-publish:
     name: Publish Docker Image
+    # 试点 dispatch 不得推送镜像
+    if: github.event_name == 'push'
     needs: [build-windows, build-linux]
     runs-on: ubuntu-latest
     steps:
@@ -253,6 +265,8 @@ jobs:
 
   publish-pypi:
     name: Publish to PyPI (Trusted Publisher OIDC)
+    # 正式端只允许 tag push 触发；试点走下面的 publish-testpypi
+    if: github.event_name == 'push'
     needs: [build-windows, build-linux, create-release]
     runs-on: ubuntu-latest
     environment:
@@ -349,3 +363,65 @@ jobs:
           print-hash: true
           skip-existing: false
           verbose: true
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # TestPyPI 试点通路（RC5-3）：仅 workflow_dispatch + target=testpypi 时运行。
+  # 为什么必须留在本文件：PyPI Trusted Publishing 的 OIDC claim 绑定 workflow 文件名
+  #   （Pend Pub 登记的是 release.yml）；抽成 reusable workflow 会让 job_workflow_ref
+  #   指向被调用文件 → claim 403。
+  # 为什么独立成 job 而非复用 publish-pypi：其 needs 链上的 create-release 在 dispatch 下
+  #   被 skip，而被 skip 的 need 会连带 skip 依赖方，语义脆弱；发布类操作安全优先，
+  #   独立 job 的边界最可预测。
+  # ─────────────────────────────────────────────────────────────────────────────
+  publish-testpypi:
+    name: Publish to TestPyPI (trial · Trusted Publisher OIDC)
+    if: github.event_name == 'workflow_dispatch' && inputs.target == 'testpypi'
+    needs: [build-windows, build-linux]
+    runs-on: ubuntu-latest
+    environment:
+      name: testpypi
+      url: https://test.pypi.org/p/agentlisp
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ env.PYTHON_VERSION }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: false
+
+      - name: Build wheel + sdist (same hatch workarounds as the release path)
+        run: |
+          set -euo pipefail
+          PP=pyproject.toml
+          if ! grep -q "allow-direct-references" "$PP"; then
+            printf '\n[tool.hatch.metadata]\nallow-direct-references = true\n' >> "$PP"
+          fi
+          if grep -q 'Programming Language :: Racket' "$PP"; then
+            sed -i.bak '/Programming Language :: Racket/d' "$PP" && rm -f "${PP}.bak"
+          fi
+          python -m pip install --upgrade --quiet pip build hatchling 2>&1 | tail -3
+          python -m build --wheel --sdist --no-isolation 2>&1 | tail -20
+          git checkout -- pyproject.toml || true
+          ls -la dist/
+
+      - name: Verify metadata (twine check --strict)
+        run: |
+          set -euo pipefail
+          python -m pip install --upgrade --quiet twine 2>&1 | tail -3
+          python -m twine check --strict dist/*
+
+      - name: Trusted Publisher OIDC → TestPyPI (repository-url 严格无尾斜杠)
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: dist
+          repository-url: https://test.pypi.org/legacy/
+          verify-metadata: true
+          print-hash: true
+          verbose: true
+
