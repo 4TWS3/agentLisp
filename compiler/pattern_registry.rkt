@@ -1,0 +1,142 @@
+#lang racket/base
+
+(require racket/string)
+
+;; =============================================================================
+;; CR-42 模式注册表（Pattern Registry）
+;;
+;; 一个模式 = 一条数据。加模式只改本文件，不改 parser / checker / emitter 的分支。
+;; Core AST 只新增唯一构造 (:pattern (:kind K) (:config …))；K 取值来自本表。
+;; =============================================================================
+
+(provide pattern-kinds
+         registry-lookup
+         registry-validate-config
+         registry-emit
+         validate-pattern-block)
+
+(struct registry-entry (kind required schema emit doc)
+  #:transparent)
+
+(define *registry* (make-hash))
+
+(define (define-pattern! e)
+  (hash-set! *registry* (registry-entry-kind e) e))
+
+(define (pattern-kinds)
+  (sort (hash-keys *registry*) symbol<?))
+
+(define (registry-lookup kind)
+  (hash-ref *registry* kind #f))
+
+;; 常用 schema 谓词（racket/base 无 positive-integer?）
+(define (positive-integer? v) (and (integer? v) (> v 0)))
+
+;; ---------- Python 字面量小工具 ----------
+;; 用字符码构造反斜杠与双引号，避免源码里出现转义序列。
+(define BS (string (integer->char 92)))
+(define DQ (string (integer->char 34)))
+(define NL (integer->char 10))
+(define TAB (integer->char 9))
+
+(define (py-str s)
+  (define out (open-output-string))
+  (write-string DQ out)
+  (for ([c (in-string s)])
+    (cond
+      [(char=? c (integer->char 34)) (write-string (string-append BS DQ) out)]
+      [(char=? c (integer->char 92)) (write-string (string-append BS BS) out)]
+      [(char=? c NL) (write-string (string-append BS "n") out)]
+      [(char=? c TAB) (write-string (string-append BS "t") out)]
+      [else (write-char c out)]))
+  (write-string DQ out)
+  (get-output-string out))
+
+(define (py-value v)
+  (cond
+    [(string? v) (py-str v)]
+    [(boolean? v) (if v "True" "False")]
+    [(integer? v) (number->string v)]
+    [(real? v) (number->string (exact->inexact v))]
+    [(and (list? v) (andmap string? v)) (string-append "[" (string-join (map py-str v) ", ") "]")]
+    [(symbol? v) (py-str (symbol->string v))]
+    [else (py-str (format "~a" v))]))
+
+;; ---------- 校验：返回错误字符串列表；空 = 合法 ----------
+
+(define (registry-validate-config kind cfg)
+  (define e (registry-lookup kind))
+  (cond
+    [(not e) (list (format "未知模式 kind=~a；已注册：~a" kind (pattern-kinds)))]
+    [(not (hash? cfg)) (list (format ":config 必须是 (:key value …) 形式，得到 ~a" cfg))]
+    [else
+     (append
+      (for/list ([k (in-list (registry-entry-required e))]
+                 #:unless (hash-has-key? cfg k))
+        (format "缺少必需 config 键 :~a" k))
+      (for/list ([(k pred) (in-hash (registry-entry-schema e))]
+                 #:when (hash-has-key? cfg k)
+                 #:unless (pred (hash-ref cfg k)))
+        (format "config 键 :~a 类型不符（得到 ~a）" k (hash-ref cfg k))))]))
+
+;; 校验来自 AST 的 (:pattern …) 块；返回 (values kind cfg errors)
+(define (validate-pattern-block blk)
+  (define (fail msg) (values #f #f (list msg)))
+  (cond
+    [(and (pair? blk) (eq? (car blk) ':pattern))
+     (define body (cdr blk))
+     (define (get key default)
+       (let loop ([xs body])
+         (cond [(null? xs) default]
+               [(and (eq? (car xs) key) (pair? (cdr xs))) (cadr xs)]
+               [else (loop (cddr xs))])))
+     ;; AST 里的 :config 写作 (:key value …) plist，这里转成 hash 再校验
+     (define (plist->hash xs)
+       (let loop ([l xs] [h (hash)])
+         (cond [(null? l) h]
+               [(pair? (cdr l)) (loop (cddr l) (hash-set h (car l) (cadr l)))]
+               [else h])))
+     ;; 键归一化：AST 里写 :criteria，注册表里用 criteria（去掉前导冒号）
+     (define (norm-key k)
+       (define s (format "~a" k))
+       (string->symbol (if (and (> (string-length s) 0) (char=? (string-ref s 0) #\:))
+                           (substring s 1)
+                           s)))
+     (define kind-raw (get ':kind #f))
+     (define cfg-raw
+       (let* ([c (get ':config '())]
+              [h (if (hash? c) c (plist->hash c))])
+         (for/hash ([(k v) (in-hash h)]) (values (norm-key k) v))))
+     (cond
+       [(not kind-raw) (fail "(:pattern …) 缺少 :kind")]
+       [else
+        (define kind (if (symbol? kind-raw) kind-raw (string->symbol (format "~a" kind-raw))))
+        (define cfg (if (hash? cfg-raw)
+                        (for/hash ([(k v) (in-hash cfg-raw)])
+                          (values (if (symbol? k) k (string->symbol (format "~a" k))) v))
+                        cfg-raw))
+        (values kind cfg (registry-validate-config kind cfg))])]
+    [else (fail (format "不是合法的模式块：~a" blk))]))
+
+;; ---------- 生成（emitter 调用） ----------
+(define (registry-emit kind cfg)
+  (define e (registry-lookup kind))
+  (if e
+      ((registry-entry-emit e) cfg)
+      (format "{'pattern': 'unknown', 'kind': ~a}" (py-str (format "~a" kind)))))
+
+;; =============================================================================
+;; 已注册模式
+;; =============================================================================
+
+;; 构造顺序：kind required schema emit doc（位置参数）
+(define-pattern!
+ (registry-entry
+  'priority
+  '(criteria)
+  (hash 'criteria string? 'levels positive-integer?)
+  (lambda (cfg)
+    (format "{'pattern': 'priority', 'criteria': ~a, 'levels': ~a}"
+            (py-value (hash-ref cfg 'criteria))
+            (py-value (hash-ref cfg 'levels 3))))
+  "优先级排序：按 :criteria 排序候选动作；:levels 指定层数（默认 3）"))

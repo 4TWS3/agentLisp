@@ -12,7 +12,9 @@
          racket/match
          json
          ;; 关注点分离：parser/checker/emitter 三段式，checker 独立模块，枚举常量 Single Source of Truth
-         "checker.rkt")
+         "checker.rkt"
+         ;; CR-42：模式注册表（数据驱动；加模式只改注册表，不改本文件分支）
+         "pattern_registry.rkt")
 
 (provide compile-agent-lisp
          ;; 也开放给 CI / checker.rkt 复用：
@@ -109,14 +111,22 @@
     ;; 同时接受 defagent（spec 旧写法）与 define-agent（宏展开/夹具的规范产物）
     [(list (or 'defagent 'define-agent) name blocks ...)
      ;; partition-blocks 返回 6 个值（含 order），此处 6 个都要接住
-     (let-values ([(model ctx tools harness multi _order) (partition-blocks blocks name)])
+     (let-values ([(model ctx tools harness multi _order patterns) (partition-blocks blocks name)])
        (unless model   (raise-parse `(defagent ,name) "缺少必需的 :model 块"))
        (unless ctx     (raise-parse `(defagent ,name) "缺少必需的 :context 块"))
        (unless tools   (raise-parse `(defagent ,name) "缺少必需的 :tools 块"))
        (unless harness (raise-parse `(defagent ,name) "缺少必需的 :harness 块"))
        ;; 重新获得 order：partition-blocks 之前已经算过，但这里再算一次以便落盘（保持简单，不重构多返回）
-       (let-values ([(_1 _2 _3 _4 _5 order) (partition-blocks blocks name)])
+       (define parsed-patterns
+         ;; CR-42：查注册表校验 kind 与 config；非法即编译期报错（可静态断言）
+         (for/list ([blk (in-list patterns)])
+           (define-values (kind cfg errs) (validate-pattern-block blk))
+           (when (pair? errs)
+             (raise-parse ':pattern (string-join errs "；")))
+           (hash 'kind kind 'config cfg)))
+       (let-values ([(_1 _2 _3 _4 _5 order _pats) (partition-blocks blocks name)])
          (hash 'name name
+               'patterns parsed-patterns
                'model   (parse-model model)
                'context (parse-context ctx)
                'tools   (parse-tools tools)
@@ -127,24 +137,28 @@
     [_ (raise-parse 'parse-defagent (format "顶层必须是 (defagent NAME BLOCK…)，得到：~s" form))]))
 
 (define (partition-blocks blocks agent-name)
-  (let loop ([bs blocks] [model #f] [ctx #f] [tools #f] [harness #f] [multi #f] [order '()])
+  ;; CR-42：:pattern 块可多次出现（模式可组合）；第 7 个返回值 = 模式块列表
+  (let loop ([bs blocks] [model #f] [ctx #f] [tools #f] [harness #f] [multi #f] [pats '()] [order '()])
     (if (null? bs)
-        (values model ctx tools harness multi (reverse order))
+        (values model ctx tools harness multi (reverse order) (reverse pats))
         (let ([b (car bs)] [rest (cdr bs)])
           (define tag (and (pair? b) (car b)))
           (cond
             [(eq? tag ':model)   (when model (raise-parse `(defagent ,agent-name) ":model 块重复"))
-                                 (loop rest b ctx tools harness multi (cons ':model order))]
+                                 (loop rest b ctx tools harness multi pats (cons ':model order))]
             [(eq? tag ':context) (when ctx (raise-parse `(defagent ,agent-name) ":context 块重复"))
-                                 (loop rest model b tools harness multi (cons ':context order))]
+                                 (loop rest model b tools harness multi pats (cons ':context order))]
             [(eq? tag ':tools)   (when tools (raise-parse `(defagent ,agent-name) ":tools 块重复"))
-                                 (loop rest model ctx b harness multi (cons ':tools order))]
+                                 (loop rest model ctx b harness multi pats (cons ':tools order))]
             [(eq? tag ':harness) (when harness (raise-parse `(defagent ,agent-name) ":harness 块重复"))
-                                 (loop rest model ctx tools b multi (cons ':harness order))]
+                                 (loop rest model ctx tools b multi pats (cons ':harness order))]
             [(eq? tag ':multiagent) (when multi (raise-parse `(defagent ,agent-name) ":multiagent 块重复"))
-                                     (loop rest model ctx tools harness b (cons ':multiagent order))]
+                                     (loop rest model ctx tools harness b pats (cons ':multiagent order))]
+            [(eq? tag ':pattern)
+             ;; CR-42：模式块交给注册表校验（kind/config），可多次出现
+             (loop rest model ctx tools harness multi (cons b pats) (cons ':pattern order))]
             [else (raise-parse `(defagent ,agent-name)
-                                (format "未知块 ~s；应为 :model/:context/:tools/:harness (可选 :multiagent)" tag))])))))
+                                (format "未知块 ~s；应为 :model/:context/:tools/:harness（可选 :multiagent/:pattern）" tag))])))))
 
 ;;; ---------- parse-model (修复 MAJOR-3 temperature 范围 + PROVIDER-ENUM 值域) ----------
 (define (parse-model form)
@@ -712,3 +726,4 @@ EOS
                  (:correct :max-retries 3 :circuit-breaker 5 :on-failure ask-human))))
 
   (displayln (compile-agent-lisp sample-agent-lisp)))
+;; BASH-WRITE-PROBE
