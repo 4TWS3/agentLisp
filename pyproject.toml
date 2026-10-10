@@ -1,6 +1,6 @@
 [project]
 name = "agentlisp"
-version = "2.0.0a1"
+version = "2.0.0rc5"
 description = "AgentLisp v2 - Racket-based Agent DSL compiler + Python ReAct Harness runtime + Cloud-native host glue"
 readme = "README.md"
 requires-python = ">=3.12"

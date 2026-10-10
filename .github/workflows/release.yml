@@ -336,9 +336,13 @@ jobs:
           ls -la release-assets/
           echo "--- dist/ ---"
           ls -la dist/
-          PKG_VERSION="${GITHUB_REF_NAME#v}"
-          EXPECTED_WHL="agentlisp-${PKG_VERSION}-py3-none-any.whl"
-          EXPECTED_SDIST="agentlisp-${PKG_VERSION}.tar.gz"
+          # 版本以 pyproject.toml 为唯一真相源（PEP 440 归一化：2.0.0rc5）；
+          # 不能从 tag 名推导 —— tag 是 v2.0.0-rc5，而 wheel 名是 agentlisp-2.0.0rc5-…（连字符差异）
+          PKG_NAME="$(python3 -c "import tomllib,pathlib;print(tomllib.loads(pathlib.Path('pyproject.toml').read_text())['project']['name'])")"
+          PKG_VERSION="$(python3 -c "import tomllib,pathlib;print(tomllib.loads(pathlib.Path('pyproject.toml').read_text())['project']['version'])")"
+          echo "PKG_NAME=${PKG_NAME} PKG_VERSION=${PKG_VERSION} (from pyproject.toml)"
+          EXPECTED_WHL="${PKG_NAME}-${PKG_VERSION}-py3-none-any.whl"
+          EXPECTED_SDIST="${PKG_NAME}-${PKG_VERSION}.tar.gz"
           for f in "$EXPECTED_WHL" "$EXPECTED_SDIST"; do
             d="dist/$f";   a="release-assets/$f"
             test -f "$d" || { echo "FAIL: dist missing $f"; exit 1; }
