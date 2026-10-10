@@ -384,8 +384,11 @@ jobs:
   # ─────────────────────────────────────────────────────────────────────────────
   publish-testpypi:
     name: Publish to TestPyPI (trial · Trusted Publisher OIDC)
-    # rc 标签自动走 TestPyPI 试点；也可用 dispatch + target=testpypi 手动触发
-    if: (github.event_name == 'workflow_dispatch' && inputs.target == 'testpypi') || (github.event_name == 'push' && contains(github.ref_name, '-rc'))
+    # rc 标签自动走 TestPyPI 试点；也可用 dispatch + target=testpypi 手动触发。
+    # 注意：只能用 github.event.inputs.target，不能用 inputs.target —— inputs 上下文仅在
+    # workflow_dispatch/workflow_call 存在，push 事件下引用它会让 job 在求值阶段直接失败
+    # （实测：0 steps / 2 秒失败，且无日志）。
+    if: (github.event_name == 'workflow_dispatch' && github.event.inputs.target == 'testpypi') || (github.event_name == 'push' && contains(github.ref_name, '-rc'))
     needs: [build-windows, build-linux]
     runs-on: ubuntu-latest
     environment:
