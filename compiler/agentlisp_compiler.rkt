@@ -101,8 +101,10 @@
 ;; defagent name Model Context Tools Harness [MultiAgent]
 (define (parse-defagent form)
   (match form
-    [`(defagent ,name ,blocks ...)
-     (let-values ([(model ctx tools harness multi) (partition-blocks blocks name)])
+    ;; 同时接受 defagent（spec 旧写法）与 define-agent（宏展开/夹具的规范产物）
+    [(list (or 'defagent 'define-agent) name blocks ...)
+     ;; partition-blocks 返回 6 个值（含 order），此处 6 个都要接住
+     (let-values ([(model ctx tools harness multi _order) (partition-blocks blocks name)])
        (unless model   (raise-parse `(defagent ,name) "缺少必需的 :model 块"))
        (unless ctx     (raise-parse `(defagent ,name) "缺少必需的 :context 块"))
        (unless tools   (raise-parse `(defagent ,name) "缺少必需的 :tools 块"))
@@ -487,8 +489,7 @@ EOS
           defs-dump
           builtins
           mcp
-          defs-dump
-          agent-name))
+          defs-dump))
 
 (define (emit-harness-dict h)
   (define c (hash-ref h 'constrain))

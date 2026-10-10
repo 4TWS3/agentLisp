@@ -48,7 +48,7 @@
          ;; Parse 异常也支持同样的 JSON shape（parser 使用 raise-parse-with-srcloc）
          exn:agentlisp:parse?
          exn:agentlisp:parse-code
-         exn:agentlisp:parse-srcloc
+         exn:agentlisp:parse-al-srcloc
          exn:agentlisp:parse-agent-name
          exn:agentlisp:parse-hints
          raise-parse-with-srcloc
@@ -100,9 +100,11 @@
     'current-checker-source-name))
 
 ;; Racket 8.12: #:transparent 与 #:prefab 互斥（"multiple #:inspector/#:transparent/#:prefab
-;; specifications"），二者同时出现会让本模块加载即失败。prefab 结构体本身已支持 equal?/struct->vector，
-;; 字段访问器不受影响，因此保留 #:prefab、去掉 #:transparent。
-(struct srcloc* (source line column position span) #:prefab)
+;; specifications"），同时出现会让本模块加载即失败。
+;; 选择保留 #:transparent、去掉 #:prefab：prefab 结构体要求字段可 prefab 序列化，
+;; 而 srcloc* 的字段来自任意 form（含 syntax/哈希等），实测会让 parse-defagent 直接
+;; "invalid memory reference" 崩溃。透明结构体已满足 equal?/struct->vector 需求。
+(struct srcloc* (source line column position span) #:transparent)
 
 (define (srcloc*-from-form form [maybe-src (current-checker-source-name)] [pos-hint #f])
   (with-handlers ([exn:fail? (lambda (_) (srcloc* (or maybe-src "unknown") #f #f #f #f))])
@@ -182,10 +184,14 @@
                               hints)))
 
 ;; Parse 异常（也统一 shape，这样 --json-errors 时 parser 错也能红波浪定位）
-(struct exn:agentlisp:parse exn:fail:read
-  (code srcloc agent-name hints)
+(struct exn:agentlisp:parse exn:fail
+  ;; 父类型用 exn:fail（不用 exn:fail:read）：Racket 8.12 下「exn:fail:read 的子结构体 + 自有字段」
+  ;; 一旦 raise 就 invalid memory reference（已用最小复现确认，与 #:transparent / guard / extra-ctor 无关）。
+  ;; 自有字段命名 al-srcloc，避开与父类字段同名的歧义。
+  (code al-srcloc agent-name hints)
   #:transparent
   #:extra-constructor-name make-exn:agentlisp:parse
+  ;; 父 exn:fail 有 2 字段 + 自有 4 = 6 → guard 收 7 个参数（6 字段 + name）、构造器收 6 个实参。
   #:guard (lambda (msg cm code src an hints name)
             (define msg* (if (string? msg) msg (format "~a" msg)))
             (unless (symbol? code)
@@ -274,7 +280,7 @@
           'srs_id         (code->srs-id (exn:agentlisp:parse-code e))
           'message        (exn-message e)
           'agent_name     (or (exn:agentlisp:parse-agent-name e) 'null)
-          'srcloc         (srcloc*->jsexpr (exn:agentlisp:parse-srcloc e))
+          'srcloc         (srcloc*->jsexpr (exn:agentlisp:parse-al-srcloc e))
           'hints          (exn:agentlisp:parse-hints e)))
 
 (define (exn->jsexpr e)
