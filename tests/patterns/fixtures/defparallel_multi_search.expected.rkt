@@ -15,7 +15,7 @@
     (:constrain :require-human-approval () :forbidden-commands ("rm -rf"))
     (:verify :json-schema #t
              :linter-check #f
-             :test-runner ""
+             :test-runner "")
     (:correct :max-retries 2 :circuit-breaker 3 :on-failure 'abort))
   (:multiagent :topology 'orchestration
                :workers ((scoped-worker search-a

@@ -27,5 +27,5 @@ PROMPT
                 :forbidden-commands ("rm -rf"))
     (:verify :json-schema #t
              :linter-check #f
-             :test-runner ""
+             :test-runner "")
     (:correct :max-retries 2 :circuit-breaker 5 :on-failure 'abort)))

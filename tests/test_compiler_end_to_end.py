@@ -26,13 +26,19 @@ HAS_RACKET = shutil.which(RACKET_BIN) is not None
 V1_FIXTURES = ROOT / "tests" / "patterns" / "fixtures"
 V2_FIXTURES = ROOT / "tests" / "patterns" / "fixtures_v2"
 
-POSITIVE = [
-    (V1_FIXTURES / "defreflect_code_refiner.al", "v1-defreflect"),
-    (V1_FIXTURES / "defrouter_ops_gateway.al", "v1-defrouter"),
-    (V1_FIXTURES / "defchain_doc_pipeline.al", "v1-defchain"),
-    (V1_FIXTURES / "defparallel_multi_search.al", "v1-defparallel"),
-    (V1_FIXTURES / "defplanner_deep_researcher.al", "v1-defplanner"),
-] + [(p, f"v2-{p.name}") for p in sorted(V2_FIXTURES.glob("*_hc_HC.al"))]
+POSITIVE = (
+    [
+        (V1_FIXTURES / "defreflect_code_refiner.al", "v1-defreflect"),
+        (V1_FIXTURES / "defrouter_ops_gateway.al", "v1-defrouter"),
+        (V1_FIXTURES / "defchain_doc_pipeline.al", "v1-defchain"),
+        (V1_FIXTURES / "defparallel_multi_search.al", "v1-defparallel"),
+        (V1_FIXTURES / "defplanner_deep_researcher.al", "v1-defplanner"),
+    ]
+    + [(p, f"v2-{p.name}") for p in sorted(V2_FIXTURES.glob("*_hc_HC.al"))]
+    + [
+        (ROOT / "examples" / "repair_agent.al", "examples-repair_agent"),
+    ]
+)
 
 NEGATIVE = sorted(V1_FIXTURES.glob("fr_pattern_02_*_auto_raise.al"))
 
