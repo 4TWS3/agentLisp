@@ -175,8 +175,8 @@ jobs:
 
   create-release:
     name: Publish GitHub Release
-    # 试点 dispatch 不得创建 GitHub Release（只有 tag push 才是正式发布）
-    if: github.event_name == 'push'
+    # 只有"非 rc 的 tag push"才创建 GitHub Release（rc 属试点，不建 Release）
+    if: github.event_name == 'push' && !contains(github.ref_name, '-rc')
     needs: [build-windows, build-linux]
     runs-on: ubuntu-latest
     steps:
@@ -214,8 +214,8 @@ jobs:
 
   docker-publish:
     name: Publish Docker Image
-    # 试点 dispatch 不得推送镜像
-    if: github.event_name == 'push'
+    # 只有"非 rc 的 tag push"才推送镜像
+    if: github.event_name == 'push' && !contains(github.ref_name, '-rc')
     needs: [build-windows, build-linux]
     runs-on: ubuntu-latest
     steps:
@@ -265,9 +265,14 @@ jobs:
 
   publish-pypi:
     name: Publish to PyPI (Trusted Publisher OIDC)
-    # 正式端只允许 tag push 触发；试点走下面的 publish-testpypi
-    if: github.event_name == 'push'
-    needs: [build-windows, build-linux, create-release]
+    # rc 标签：等 TestPyPI 试点成功后，再由 environment=pypi 的 required reviewer 批准发布；
+    # 正式标签：publish-testpypi 会 skipped，此时本条等价于"构建成功即发"。
+    if: >-
+      always() && github.event_name == 'push'
+      && needs.build-windows.result == 'success'
+      && needs.build-linux.result == 'success'
+      && (needs.publish-testpypi.result == 'success' || needs.publish-testpypi.result == 'skipped')
+    needs: [build-windows, build-linux, publish-testpypi]
     runs-on: ubuntu-latest
     environment:
       name: pypi
@@ -379,7 +384,8 @@ jobs:
   # ─────────────────────────────────────────────────────────────────────────────
   publish-testpypi:
     name: Publish to TestPyPI (trial · Trusted Publisher OIDC)
-    if: github.event_name == 'workflow_dispatch' && inputs.target == 'testpypi'
+    # rc 标签自动走 TestPyPI 试点；也可用 dispatch + target=testpypi 手动触发
+    if: (github.event_name == 'workflow_dispatch' && inputs.target == 'testpypi') || (github.event_name == 'push' && contains(github.ref_name, '-rc'))
     needs: [build-windows, build-linux]
     runs-on: ubuntu-latest
     environment:
