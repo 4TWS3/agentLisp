@@ -247,10 +247,15 @@
   (match form
     [`(:tools . ,clauses)
      (let loop ([cs clauses] [builtins '()] [mcps '()] [define-tools '()])
-       (if (null? cs)
-           (when (and (null? builtins) (null? mcps) (null? define-tools))
-             (raise-parse ':tools "至少要有一种工具源（import-builtin / import-mcp / define-tool）"))
-           (match (car cs)
+       (cond
+         [(null? cs)
+          ;; 基例必须返回结果 hash：旧实现把 hash 写在 if 之后，递归返回值被丢弃，
+          ;; 于是永远用初始空累加器构造结果 —— 工具字段恒为空（现代路径此前未被跑到，故未暴露）。
+          (when (and (null? builtins) (null? mcps) (null? define-tools))
+            (raise-parse ':tools "至少要有一种工具源（import-builtin / import-mcp / define-tool）"))
+          (hash 'builtins builtins 'mcp_servers mcps 'define_tools define-tools)]
+         [else
+          (match (car cs)
              [`(import-builtin . ,names)
               (loop (cdr cs) (append builtins names) mcps define-tools)]
              [`(import-mcp ,url)
@@ -263,9 +268,7 @@
                                         'inputs (map (lambda (kv) (list (to-str (car kv)) (to-str (cadr kv))))
                                                      inputs)
                                         'outputs outputs))))]
-             [_ (raise-parse ':tools (format "未知 tools 子句：~s" (car cs)))]))
-        ;; 注意：本行必须留在 let loop 体内（此前多一个 ) 提前关闭 let，导致 builtins unbound）
-        (hash 'builtins builtins 'mcp_servers mcps 'define_tools define-tools))]
+             [_ (raise-parse ':tools (format "未知 tools 子句：~s" (car cs)))])]))]
     [_ (raise-parse ':tools (format "必需是 (:tools …)，得到 ~s" form))]))
 
 ;;; ---------- parse-harness (修复 MAJOR-4/MAJOR-2；枚举值域) ----------

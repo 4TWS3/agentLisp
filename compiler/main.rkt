@@ -360,6 +360,9 @@
                      (length (al-ast-top-level-tools ast))
                      (length (al-ast-top-level-harnesses ast)))))
 
+;; P-1f：收集现代管线（parse-defagent → check-agent）解析出的 agent，供发射段生成忠实产物
+(define checked-agents '())
+
 (define check-results
   (with-handlers
     (((lambda (e) #t)
@@ -416,6 +419,8 @@
                        (if (and (pair? (cdr form)) (pair? (cddr form)))
                            (to-str (cadr form))
                            "anon")))
+                  ;; P-1f：收集现代管线的解析结果（set! 必须在 let 体内，不能插进绑定列表）
+                  (set! checked-agents (cons parsed checked-agents))
                   (loop (cdr xs)
                       (cons (hasheq 'ok? #t
                                     'title (format "check-agent: ~a" aname)
@@ -451,7 +456,16 @@
   (define module-name (if output-path
                           (path->string (path-replace-extension (file-name-from-path output-path) #""))
                           "generated_agent"))
-  (define code (emit-python ast module-name))
+  ;; P-1f：优先用现代管线产物（agent->py 读的是 parse-defagent 的 hash，内容忠实）；
+  ;; 旧 emitter 路径（parser.rkt 的 legacy AST）只在无现代产出时兜底。
+  (define modern (reverse checked-agents))
+  (define code
+    (if (pair? modern)
+        (string-join
+         (for/list ([p (in-list modern)])
+           ((safe-dyn COMPILER-PATH 'agent->py (lambda (x) "# agent->py not available\n")) p))
+         "\n")
+        (emit-python ast module-name)))
   (if output-path
       (begin
         (make-parent-directory* output-path)
