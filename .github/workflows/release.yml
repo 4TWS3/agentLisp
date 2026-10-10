@@ -306,6 +306,11 @@ jobs:
           if grep -q 'Programming Language :: Racket' "$PP"; then
             sed -i.bak '/Programming Language :: Racket/d' "$PP" && rm -f "${PP}.bak"
           fi
+          # Workaround 3: PyPI 拒绝含直接引用（PEP 508 的 pkg @ file://... 形式）的发布元数据
+          #   （实测 400 Can't have direct dependency: agentlisp-runtime@ file://...）。
+          #   仓库 [project.optional-dependencies].legacy 是本地开发用直接引用，发布产物不应携带；
+          #   构建前剥离含 file:// 的行，构建后由 git checkout 还原（仓库 pyproject.toml 永远不改）。
+          python3 -c "import pathlib;pp=pathlib.Path('pyproject.toml');s=pp.read_text();o=[l for l in s.splitlines(True) if 'file://' not in l];pp.write_text(''.join(o));print('stripped file:// dep lines:',len(s.splitlines())-len(o))"
           echo "--- strip Racket classifier + append allow-direct-references WORKAROUND applied (NOT committed) ---"
           tail -n 5 "$PP"
           # PEP517 build 工具（不使用 uv sync，避免 editable mode prepare_metadata_for_build_editable 触发直接引用 ValueError）
@@ -418,6 +423,11 @@ jobs:
           if grep -q 'Programming Language :: Racket' "$PP"; then
             sed -i.bak '/Programming Language :: Racket/d' "$PP" && rm -f "${PP}.bak"
           fi
+          # Workaround 3: PyPI 拒绝含直接引用（PEP 508 的 pkg @ file://... 形式）的发布元数据
+          #   （实测 400 Can't have direct dependency: agentlisp-runtime@ file://...）。
+          #   仓库 [project.optional-dependencies].legacy 是本地开发用直接引用，发布产物不应携带；
+          #   构建前剥离含 file:// 的行，构建后由 git checkout 还原（仓库 pyproject.toml 永远不改）。
+          python3 -c "import pathlib;pp=pathlib.Path('pyproject.toml');s=pp.read_text();o=[l for l in s.splitlines(True) if 'file://' not in l];pp.write_text(''.join(o));print('stripped file:// dep lines:',len(s.splitlines())-len(o))"
           python -m pip install --upgrade --quiet pip build hatchling 2>&1 | tail -3
           python -m build --wheel --sdist --no-isolation 2>&1 | tail -20
           git checkout -- pyproject.toml || true
