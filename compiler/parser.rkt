@@ -51,7 +51,7 @@
   (let kv-loop ([xs rest] [purpose ""] [tools '()] [workflows '()] [hooks '()] [current-kw #f])
     (cond
       [(null? xs)
-       (al-agent (ensure-string/sym name) purpose tools workflows hooks)]
+       (al-agent (ensure-string/sym name) purpose tools '() workflows hooks)]
       [(keyword? (car xs))
        (kv-loop (cddr xs) purpose tools workflows hooks (car xs))]
       [else

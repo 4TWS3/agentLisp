@@ -99,7 +99,10 @@
         [else (to-str v)]))
     'current-checker-source-name))
 
-(struct srcloc* (source line column position span) #:transparent #:prefab)
+;; Racket 8.12: #:transparent 与 #:prefab 互斥（"multiple #:inspector/#:transparent/#:prefab
+;; specifications"），二者同时出现会让本模块加载即失败。prefab 结构体本身已支持 equal?/struct->vector，
+;; 字段访问器不受影响，因此保留 #:prefab、去掉 #:transparent。
+(struct srcloc* (source line column position span) #:prefab)
 
 (define (srcloc*-from-form form [maybe-src (current-checker-source-name)] [pos-hint #f])
   (with-handlers ([exn:fail? (lambda (_) (srcloc* (or maybe-src "unknown") #f #f #f #f))])

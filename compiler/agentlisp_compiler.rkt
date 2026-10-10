@@ -116,7 +116,7 @@
                'harness (parse-harness harness)
                'multi   (and multi (parse-multi multi))
                'order   order
-               'raw form))))]
+               'raw form)))]
     [_ (raise-parse 'parse-defagent (format "顶层必须是 (defagent NAME BLOCK…)，得到：~s" form))]))
 
 (define (partition-blocks blocks agent-name)
@@ -194,7 +194,7 @@
          (raise-parse ':memory-policy (format "layer 枚举=~a，得到 ~a" MEMORY-LAYER-ENUM l))))
      (hash 'path path 'layers (map to-str layers)
            'auto_append_episodic (->racket-bool append?)  ; Python key：下划线
-           'auto_append_spec_key :auto-append)]            ; 原始 spec key 留痕
+           'auto_append_spec_key ':auto-append)]           ; 原始 spec key 留痕（关键字必须引用，否则 unbound identifier）
     [_ (raise-parse ':memory-policy
                     (format "必需是 (:markdown-fs PATH :layers (…) :auto-append #t/#f)，得到 ~s" mp))]))
 
@@ -237,8 +237,9 @@
                                         'inputs (map (lambda (kv) (list (to-str (car kv)) (to-str (cadr kv))))
                                                      inputs)
                                         'outputs outputs))))]
-             [_ (raise-parse ':tools (format "未知 tools 子句：~s" (car cs)))])))
-     (hash 'builtins builtins 'mcp_servers mcps 'define_tools define-tools)]
+             [_ (raise-parse ':tools (format "未知 tools 子句：~s" (car cs)))]))
+        ;; 注意：本行必须留在 let loop 体内（此前多一个 ) 提前关闭 let，导致 builtins unbound）
+        (hash 'builtins builtins 'mcp_servers mcps 'define_tools define-tools))]
     [_ (raise-parse ':tools (format "必需是 (:tools …)，得到 ~s" form))]))
 
 ;;; ---------- parse-harness (修复 MAJOR-4/MAJOR-2；枚举值域) ----------
@@ -689,6 +690,6 @@ EOS
        (:harness (:constrain :require-human-approval (git-push)
                              :forbidden-commands ("rm -rf" "git reset --hard"))
                  (:verify :json-schema #t :linter-check #t :test-runner "pytest tests/")
-                 (:correct :max-retries 3 :circuit-breaker 5 :on-failure ask-human)))))
+                 (:correct :max-retries 3 :circuit-breaker 5 :on-failure ask-human))))
 
   (displayln (compile-agent-lisp sample-agent-lisp)))
