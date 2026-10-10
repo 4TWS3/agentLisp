@@ -238,6 +238,7 @@ Step 1 — 提取文档摘要 :in () :out summary
 Step 2 — 基于摘要生成代码 :in (summary) :out code
   Prompt: "基于摘要生成代码"
 每一步完成后，把 :out 变量注入到后续 :in 步骤的上下文中；最终 Answer 必须包含 JSON {"summary": … "code": …}。
+顺序断言：Step1 的 summary 必须出现在 Step2 的代码请求之前（trajectory 时间顺序）。
 PROMPT
                        ))
        #`(quote (defagent doc-pipeline
@@ -256,8 +257,7 @@ PROMPT
                          :forbidden-commands ("rm -rf"))
              (:verify :json-schema #t
                       :linter-check #f
-                      :test-runner ""
-                      :step-order-assertion ("Step1 summary MUST appear in trajectory before Step2 code request"))
+                      :test-runner "")
              (:correct :max-retries 2 :circuit-breaker 5 :on-failure 'abort))))))
     ((_ name* . rst*)
      (let* ((name-sym (syntax->datum #'name*))
@@ -274,7 +274,7 @@ PROMPT
          (:model :provider "anthropic"
                  :name "claude-3-7-sonnet"
                  :temperature 0.0
-                 :system-prompt "你是一个并行分支协调器（Parallelization Coordinator）。所有 :branches 下的 Worker 将被同时拉起，不得串行；全部结束后将各 Worker 结果交给 :reducer aggregator-agent 归并。")
+                 :system-prompt "你是一个并行分支协调器（Parallelization Coordinator）。所有 :branches 下的 Worker 将被同时拉起，不得串行；全部结束后将各 Worker 结果交给 :reducer aggregator-agent 归并。并行断言：search-a 与 search-b 的轮次允许在 trajectory 时间线上交错。")
          (:tools (import-builtin bash read-pdf))
          (:context :memory-policy (:markdown-fs "./memory/multi-search.md"
                                    :layers ('L0-Abstract)
@@ -285,8 +285,7 @@ PROMPT
            (:constrain :require-human-approval () :forbidden-commands ("rm -rf"))
            (:verify :json-schema #t
                     :linter-check #f
-                    :test-runner ""
-                    :parallelism-assertion ("search-a and search-b turns may be interleaved in trajectory timeline"))
+                    :test-runner "")
            (:correct :max-retries 2 :circuit-breaker 3 :on-failure 'abort))
          (:multiagent :topology 'orchestration
                       :workers ((scoped-worker search-a
@@ -325,6 +324,7 @@ Planner Prompt："将研究目标分解为 3-5 个步骤"
   Step P1 — 在 trajectory 首部输出计划 JSON {"plan": ("步骤1", "步骤2", "步骤3", …)}，步骤数必须 ∈ (3, 5)
   Step P2…Pn — 按计划逐步执行，仅可使用 executor-tools: web-search / read-pdf
   Step FIN — 输出计划完成度报告 {"plan_total": N, "plan_done": M, "unfinished": (…)}
+计划断言：计划步骤数必须 ∈ (3, 5)；FIN 阶段的 unfinished 列表必须为空。
 PROMPT
                        ))
        #`(quote (defagent deep-researcher
@@ -343,8 +343,7 @@ PROMPT
                          :forbidden-commands ("rm -rf"))
              (:verify :json-schema #t
                       :linter-check #f
-                      :test-runner ""
-                      :plan-completion-assertion ("P1 plan length in 3..5" "FIN unfinished list is empty"))
+                      :test-runner "")
              (:correct :max-retries 3 :circuit-breaker 5 :on-failure 'ask-human))))))
     ((_ name* . rst*)
      (let* ((name-sym (syntax->datum #'name*))

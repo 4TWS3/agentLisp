@@ -1,5 +1,7 @@
 ;; defplanner-agent deep-researcher → Core AST 展开期望
-;; SBE 依据：Pattern Spec §3.1 L108-L120 "在 :model 注入 CoT 计划生成 Prompt，并在 :harness verify 挂载计划完成度断言"
+;; SBE 依据：Pattern Spec §3.1 L108-L120 "在 :model 注入 CoT 计划生成 Prompt"
+;; 合法化修订（P0-4）：原 :harness :verify 下的 :plan-completion-assertion 不在白名单内，
+;; 断言语义已并入 system-prompt，仅使用白名单键。
 (defagent deep-researcher
   (:model :provider "anthropic"
           :name "claude-3-7-sonnet"
@@ -11,6 +13,7 @@ Planner Prompt："将研究目标分解为 3-5 个步骤"
   Step P1 — 在 trajectory 首部输出计划 JSON {"plan": ("步骤1", "步骤2", "步骤3", …)}，步骤数必须 ∈ (3, 5)
   Step P2…Pn — 按计划逐步执行，仅可使用 executor-tools: web-search / read-pdf
   Step FIN — 输出计划完成度报告 {"plan_total": N, "plan_done": M, "unfinished": (…)}
+计划断言：计划步骤数必须 ∈ (3, 5)；FIN 阶段的 unfinished 列表必须为空。
 PROMPT
           )
   (:tools (import-builtin web-search read-pdf))
@@ -25,6 +28,4 @@ PROMPT
     (:verify :json-schema #t
              :linter-check #f
              :test-runner ""
-             ;; 计划完成度断言：P1 步骤数 ∈ (3,5)；FIN plan_done == plan_total 才算 PASS
-             :plan-completion-assertion ("P1 plan length in 3..5" "FIN unfinished list is empty"))
     (:correct :max-retries 3 :circuit-breaker 5 :on-failure 'ask-human)))

@@ -4,7 +4,7 @@
   (:model :provider "anthropic"
           :name "claude-3-7-sonnet"
           :temperature 0.0
-          :system-prompt "你是一个并行分支协调器（Parallelization Coordinator）。所有 :branches 下的 Worker 将被同时拉起，不得串行；全部结束后将各 Worker 结果交给 :reducer aggregator-agent 归并。")
+          :system-prompt "你是一个并行分支协调器（Parallelization Coordinator）。所有 :branches 下的 Worker 将被同时拉起，不得串行；全部结束后将各 Worker 结果交给 :reducer aggregator-agent 归并。并行断言：search-a 与 search-b 的轮次允许在 trajectory 时间线上交错。")
   (:tools (import-builtin bash read-pdf))
   (:context :memory-policy (:markdown-fs "./memory/multi-search.md"
                             :layers ('L0-Abstract)
@@ -16,8 +16,6 @@
     (:verify :json-schema #t
              :linter-check #f
              :test-runner ""
-             ;; 并发断言：分支 Worker 轨迹在时间轴上允许交错（非串行）
-             :parallelism-assertion ("search-a and search-b turns may be interleaved in trajectory timeline"))
     (:correct :max-retries 2 :circuit-breaker 3 :on-failure 'abort))
   (:multiagent :topology 'orchestration
                :workers ((scoped-worker search-a
