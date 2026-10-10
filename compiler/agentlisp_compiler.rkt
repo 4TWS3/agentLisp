@@ -90,6 +90,11 @@
 
 ;; 辅助（保留在主文件，emitter 仍要用）
 (define (->racket-bool v) (and v (not (eq? v #f))))
+
+;; 宏展开（syntax->datum）可能把枚举值带成 (quote X)；统一脱壳，
+;; 让裸符号与引用两种写法都能通过枚举校验（SRS 规范写法是裸符号）。
+(define (unwrap-quote x)
+  (if (and (pair? x) (eq? (car x) 'quote) (pair? (cdr x))) (cadr x) x))
 (define (py-bool v) (if (->racket-bool v) "True" "False"))
 (define (symbol<?/string a b) (string<? (to-str a) (to-str b)))
 
@@ -191,32 +196,37 @@
                     "emit 到 Python 运行时键名：context_config.auto_append_episodic（下划线，禁止连字符）"))]
     [`(:markdown-fs ,path :layers ,layers :auto-append ,append?)
      (unless (string? path) (raise-parse ':memory-policy "markdown-fs path 必须是字符串"))
-     (for ([l (in-list layers)])
+     (define layer-syms (map unwrap-quote layers))
+     (for ([l (in-list layer-syms)])
        (unless (enum-member? l MEMORY-LAYER-ENUM)
          (raise-parse ':memory-policy (format "layer 枚举=~a，得到 ~a" MEMORY-LAYER-ENUM l))))
-     (hash 'path path 'layers (map to-str layers)
+     (hash 'path path 'layers (map to-str layer-syms)
            'auto_append_episodic (->racket-bool append?)  ; Python key：下划线
            'auto_append_spec_key ':auto-append)]           ; 原始 spec key 留痕（关键字必须引用，否则 unbound identifier）
     [_ (raise-parse ':memory-policy
                     (format "必需是 (:markdown-fs PATH :layers (…) :auto-append #t/#f)，得到 ~s" mp))]))
 
+;; :status-bar 的取值允许两种写法：
+;;   ① (:status-bar :step-count #t …)   自带标签
+;;   ② (:step-count #t …)               裸 KV 列表（夹具/宏展开产物用这种）
 (define (parse-status-bar sb)
-  (if (not sb)
-      (hash 'step_count #t 'current_branch #f 'test_status #f
-            'time_tracker #f 'todo_list #f 'custom (hash))
-      (match sb
-        [`(:status-bar . ,kvs)
-         (let ([kw (keyword-kvs kvs '(:step-count :current-branch :test-status
-                                               :time-tracker :todo-list))])
-           (hash 'step_count    (->racket-bool (hash-ref kw ':step-count #t))
-                 'current_branch(->racket-bool (hash-ref kw ':current-branch #f))
-                 'test_status   (->racket-bool (hash-ref kw ':test-status #f))
-                 'time_tracker  (->racket-bool (hash-ref kw ':time-tracker #f))
-                 'todo_list     (->racket-bool (hash-ref kw ':todo-list #f))
-                 'custom (for/hash ([(k v) (in-hash (hash-remove-keys kw '(:step-count :current-branch
-                                                                              :test-status :time-tracker :todo-list)))])
-                           (values (to-str k) v))))]
-        [_ (raise-parse ':status-bar (format "必需是 (:status-bar …)，得到 ~s" sb))])))
+  (define (build kvs)
+    (let ([kw (keyword-kvs kvs '(:step-count :current-branch :test-status
+                                          :time-tracker :todo-list))])
+      (hash 'step_count    (->racket-bool (hash-ref kw ':step-count #t))
+            'current_branch(->racket-bool (hash-ref kw ':current-branch #f))
+            'test_status   (->racket-bool (hash-ref kw ':test-status #f))
+            'time_tracker  (->racket-bool (hash-ref kw ':time-tracker #f))
+            'todo_list     (->racket-bool (hash-ref kw ':todo-list #f))
+            'custom (for/hash ([(k v) (in-hash (hash-remove-keys kw '(:step-count :current-branch
+                                                                         :test-status :time-tracker :todo-list)))])
+                      (values (to-str k) v)))))
+  (cond
+    [(not sb) (hash 'step_count #t 'current_branch #f 'test_status #f
+                    'time_tracker #f 'todo_list #f 'custom (hash))]
+    [(and (pair? sb) (eq? (car sb) ':status-bar)) (build (cdr sb))]
+    [(list? sb) (build sb)]
+    [else (raise-parse ':status-bar (format "必需是 (:status-bar …) 或 (:step-count …)，得到 ~s" sb))]))
 
 ;;; ---------- parse-tools (修复 MAJOR-5：支持 4 种组合：仅 builtin / 仅 mcp / 仅 define-tool / 任意组合) ----------
 (define (parse-tools form)
@@ -289,7 +299,7 @@
      (let ([kw (keyword-kvs kvs '(:max-retries :circuit-breaker :on-failure))])
        (define retries (hash-ref kw ':max-retries 3))
        (define breaker (hash-ref kw ':circuit-breaker 5))
-       (define on-fail (hash-ref kw ':on-failure 'ask-human))
+       (define on-fail (unwrap-quote (hash-ref kw ':on-failure 'ask-human)))
        (unless (and (integer? retries) (> retries 0) (<= retries 10))
          (raise-parse ':correct ":max-retries 必须 1..10 的整数"))
        (unless (and (integer? breaker) (> breaker 0))
@@ -305,9 +315,10 @@
 (define (parse-multi m)
   (match m
     [`(:multiagent :topology ,topology :workers ,workers)
-     (unless (enum-member? topology TOPOLOGY-ENUM)
+     (define topology* (unwrap-quote topology))
+     (unless (enum-member? topology* TOPOLOGY-ENUM)
        (raise-parse ':multiagent (format ":topology 枚举=~a，得到 ~a" TOPOLOGY-ENUM topology)))
-     (hash 'topology (to-str topology)
+     (hash 'topology (to-str topology*)
            'workers (for/list ([w workers]) (parse-scoped-worker w)))]
     [_ (raise-parse ':multiagent
                     (format "必需是 (:multiagent :topology … :workers ((scoped-worker …) …))，得到 ~s" m))]))
@@ -333,11 +344,18 @@
     [_ (raise-parse 'scoped-worker (format "scoped-worker 子句不合法：~s" w))]))
 
 ;;; ---------- keyword KV 辅助：把 (:k1 v1 :k2 v2 …) 解析成 hash ----------
+;; AgentLisp DSL 里的 :key 是**符号**（symbol），不是 Racket keyword（#:key）——
+;; 原实现用 (keyword? …) 判断，恒为 #f，导致任何合法 KV 块都报"KV 不合法"。
+(define (dsl-key? x)
+  (and (symbol? x)
+       (let ([s (symbol->string x)])
+         (and (> (string-length s) 0) (char=? (string-ref s 0) #\:)))))
+
 (define (keyword-kvs kvs allowed)
   (let loop ([xs kvs] [out (hash)])
     (cond
       [(null? xs) out]
-      [(or (null? (cdr xs)) (not (keyword? (car xs))))
+      [(or (null? (cdr xs)) (not (dsl-key? (car xs))))
        (raise-parse 'keyword-kvs (format "KV 不合法（期望 :KEY VAL …），残余：~s" xs))]
       [else
        (define k (car xs))
