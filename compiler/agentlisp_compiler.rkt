@@ -404,6 +404,7 @@
    (emit-model-dict model)
    (emit-context-dict ctx)
    (emit-tools-config tools)
+   (emit-patterns-dict parsed)
    (emit-harness-dict harness)
    (emit-multi-class-vars multi)
    (emit-init-footer cls-name)
@@ -411,6 +412,19 @@
    (emit-constrain-method harness)
    (emit-run-react-loop-stub)
    (emit-harness-registry cls-name name)))
+
+;; CR-42：模式落到语言层。产物里出现 PATTERNS 列表（由注册表生成），
+;; 不再只把模式语义写在 system-prompt 文本里 —— 这样模式可被静态断言与运行时读取。
+(define (emit-patterns-dict parsed)
+  (define pats (hash-ref parsed 'patterns '()))
+  (string-append
+   ;; 注意：本段落在 __init__ 内（8 空格缩进），与 model/context/tools 同级
+   "        # CR-42 patterns (generated from compiler/pattern_registry.rkt)\n"
+   (format "        self.PATTERNS: List[Dict[str, Any]] = [~a]\n\n"
+           (string-join (for/list ([p (in-list pats)])
+                          (registry-emit (hash-ref p 'kind)
+                                         (hash-ref p 'config (hash))))
+                        ", "))))
 
 (define (emit-header cls-name agent-name)
   (string-append

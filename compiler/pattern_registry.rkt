@@ -12,6 +12,7 @@
 (provide pattern-kinds
          registry-lookup
          registry-validate-config
+         registry-unknown-keys
          registry-emit
          validate-pattern-block)
 
@@ -78,6 +79,17 @@
                  #:when (hash-has-key? cfg k)
                  #:unless (pred (hash-ref cfg k)))
         (format "config 键 :~a 类型不符（得到 ~a）" k (hash-ref cfg k))))]))
+
+;; 语义校验：config 里出现了 schema 与 required 之外的键（抓拼写错误）
+(define (registry-unknown-keys kind cfg)
+  (define e (registry-lookup kind))
+  (cond
+    [(not e) (list kind)]
+    [else
+     (for/list ([k (in-hash-keys cfg)]
+                #:unless (or (memq k (registry-entry-required e))
+                             (hash-has-key? (registry-entry-schema e) k)))
+       k)]))
 
 ;; 校验来自 AST 的 (:pattern …) 块；返回 (values kind cfg errors)
 (define (validate-pattern-block blk)

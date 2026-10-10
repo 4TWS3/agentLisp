@@ -60,7 +60,9 @@
 (require racket/string
          racket/list
          racket/match
-         json)
+         json
+         ;; CR-42：模式注册表（checker 只做语义校验，语法/类型由 parser 侧注册表校验）
+         "pattern_registry.rkt")
 
 ;; ---------------------------------------------------------------------
 ;; 通用辅助（与 agentlisp_compiler.rkt 同名函数保持完全一致的实现，
@@ -339,7 +341,20 @@
       (check-unguarded-tool-execution parsed)   ; SRS §4 Invariant #2
       (check-context-leakage      parsed)   ; SRS §4 Invariant #3
       (check-shapes               parsed)   ; 枚举值域形状（AC-1 parser boundary 断言）
+      (check-patterns             parsed)   ; CR-42：模式 config 语义校验（未知键即报错）
       parsed)))
+
+;; CR-42：模式块的语义校验。语法与类型在 parse 阶段已由注册表校验，这里抓「未知 config 键」这类语义错误。
+(define (check-patterns parsed)
+  (define pats (hash-ref parsed 'patterns '()))
+  (for ([p (in-list pats)])
+    (define kind (hash-ref p 'kind #f))
+    (define cfg (hash-ref p 'config (hash)))
+    (define unknown (registry-unknown-keys kind cfg))
+    (when (pair? unknown)
+      (raise-check 'ERR_PATTERN_CONFIG
+                   (format "模式 ~a 的 :config 出现未知键 ~a；允许的键见 compiler/pattern_registry.rkt"
+                           kind unknown)))))
 
 ;; =====================================================================
 ;; Invariant #1：ERR_KV_ALIGNMENT_VIOLATION
