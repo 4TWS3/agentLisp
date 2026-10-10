@@ -42,6 +42,8 @@
 - **NFR-CR41-04**：10 新宏每个 `(read form) → bracket diff sq=0 par=0`（Racket 8.12 reader 深嵌套方括号已永久弃用，V2 继续全局 `[→(` `]→)` 100% 圆括号）。
 - **NFR-CR41-05**：三验 exit=0：check_roadmap_traceability / check_handoff_compliance / pytest --strict（本机无 Racket 机器输出 `158 passed, 3 skipped`；有 Racket CI `188 passed, 3 skipped`，与 CR-41 基线行钉死）。
 - **NFR-CR41-06**：交付 handoff CR-41 版 ≥140KB，必须包含 §0 启动入口、§8 三射表（SRS 48-ID 全覆盖）、§9 回退树（覆盖 10 新宏 + Build×4/Docker/Release 6 Job）。
+  - **状态（2026-10-11）**：内容判据 **达成** —— §0 ✓、§8 ✓、§9 ✓（本轮补 RC-5 发布结果与 6 节点回退树）；**体积判据未达成**：实测 61,238 B < 140 KB。
+  - **建议修订**：删除字节数判据，改为「§0/§8/§9 三节齐备 + 每节含可复核锚点」的内容清单判据。理由：字节数可用冗余文字注水，与文档可用性无因果关系；本 handoff 保留精简形态。
 - **NFR-CR41-07**：所有新增宏的 PList→Blocks 升序严格 `:model(0)<:tools(1)<:context(2)<:harness(3)<:multiagent(4)`，确保 KV 静态前缀强对齐与 V1 5 宏口径完全一致。
 
 ## Constraints

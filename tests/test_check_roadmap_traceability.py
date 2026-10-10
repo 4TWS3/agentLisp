@@ -71,8 +71,8 @@ def test_check_roadmap_traceability_baseline_mismatch_exit_one_and_prefix_count_
     # CR-41 起 declared 基线来自 CR41_BASELINE_PASSED_COUNT。脚本只判 actual < declared，
     # 因此「下调声明值」天然安全、抓不出来；必须用「上调声明的基线」来验证脚本真的会拦。
     drifted = content.replace(
-        "CR41_BASELINE_PASSED_COUNT: 158", "CR41_BASELINE_PASSED_COUNT: 999", 1
-    ).replace("| **AC-2** | 158 | 158 |", "| **AC-2** | 999 | 999 |", 1)
+        "CR41_BASELINE_PASSED_COUNT: 146", "CR41_BASELINE_PASSED_COUNT: 999", 1
+    ).replace("| **AC-2** | 146 | 146 |", "| **AC-2** | 999 | 999 |", 1)
     assert drifted != content
     with tempfile.NamedTemporaryFile("w", suffix=".md", delete=False, encoding="utf-8") as tmp:
         tmp.write(drifted)

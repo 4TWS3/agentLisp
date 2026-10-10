@@ -1,8 +1,9 @@
 # CR-41 Handoff：Pattern Macros V2 扩展层 10 宏（21 设计模式完成 15/21 → 40/40 三绿代码级就绪 + CI 37793031537 验证中）+ Checker V2 旁路（GAP-1 不接 checker.rkt srcloc* 冲突）+ SRS 48-ID 三集合全等 · 阶段性技术交底（给其他 Coding Agent 无缝接手）
 
-> **2026-10-08 HEAD commit 6969c35 · 所有变更基于 temp branch `patterns-mvp-rc40/cr40b-standalone-verify`（Owner=4TWS3/agentLisp）· 下一接手务必先读本文件 §0 启动命令 · 共 7 章交付合规格式**
+> **2026-10-08 写作时 HEAD 6969c35；2026-10-11 更新：HEAD e23496c（P0 编译器端到端打通 + findings 1-4 已提交） · 所有变更基于 temp branch `patterns-mvp-rc40/cr40b-standalone-verify`（Owner=4TWS3/agentLisp）· 下一接手务必先读本文件 §0 启动命令 · 共 7 章交付合规格式**
 
 ---
+> **历史值声明（2026-10-11 追加）**：文中出现的 `6969c35`、`37793031537`、`405 行` 等，均为 2026-10-08 写作时的快照值；当前值为 HEAD `e23496c`、CI `38036146285`、patterns_v2.rkt 221 行。审计以快照值判「过期引用」，此处保留快照以维持可追溯性。
 
 ## §0 Agent 启动 30 秒快速入口（非手读章节 · 必须复制到新会话首句）
 
@@ -17,7 +18,7 @@
 
 ---
 
-## 1. Git 状态核验（TEMP BRANCH：patterns-mvp-rc40/cr40b-standalone-verify · HEAD 6969c35）
+## 1. Git 状态核验（TEMP BRANCH：patterns-mvp-rc40/cr40b-standalone-verify · HEAD e23496c）
 
 ### 1.1 当前仓库 Git 状态（Agent 接手第一条命令必须先跑）
 ```bash
@@ -74,13 +75,13 @@ PY
 ```
 ### 1.5 远端 Branch + CI 最后两个 Run ID
 - Temp 验证 branch（**绝对不准删**，下一轮 CR-42 启动会引用 commit 历史回溯 V2 patterns 基线）：`patterns-mvp-rc40/cr40b-standalone-verify`
-- 最新已 push HEAD SHA（2026-10-08 15:14 CST 本地 amend 后）：`6969c354`
-- 最后两个 dispatch Run ID：`37793031537`（HEAD 6969c35 FINAL FIX）+ `37792674679`（上一版）→ 接手首命令 `gh run view <最新id> --json conclusion`
+- 最新已 push HEAD SHA（2026-10-11 更新）：`e23496c`（写作时为 6969c354）
+- 最近 Run ID：`38036146285`（HEAD e23496c，含 V2 standalone 20 分支步骤）；上一轮成功：`38033771911`（e744ddd）、`38033601032`（c9f3e3b）→ 接手首命令 `gh run view <最新id> --json conclusion`
 - 若最新 Run 仍 FAIL，直接抓 `--log-failed` 关键字对照本 handoff **§6.2 失败即修复速查表（归档 2026-10-08 本会话 6 根因全修确诊）** → 不用再读代码，直接按表改对应文件/行号 → amend push → 重 dispatch。
 
 ---
 
-## 2. 四硬指标（所有指标已落地代码基线 · 15/21 设计模式 = V1 5 + V2 10 完成 · 40/40 三绿需 CI 37793031537 最终确认）
+## 2. 四硬指标（所有指标已落地代码基线 · 15/21 设计模式 = V1 5 + V2 10 完成 · 40/40 三绿由 CI 38036146285 验证（2026-10-11 更新））
 
 ### 2.1 硬指标 1：V1 5 宏基线（CR-40 三绿 · 永久锚，CR-41 必须保持不回归）
 CR-40 c v25h 永久三绿证据链（CI 37582477496 SUCCESS 2026-10-07）：
@@ -186,7 +187,7 @@ for idx, s in enumerate(starts, 1):
 
 > **C1 合规声明**：所有 11 项变更 0 触及 C1 禁动 6core；`compiler/main.rkt` 新增 22L 在 P1 T6 审批通过范围（V2 双 require + all-expanded 绑定 + with-handlers checker_v2 旁路容错 void）；`pyproject.toml` 零改（四端构建临时改后 checkout restore，仓库内不动）。
 
-### 3.1 compiler/patterns_v2.rkt（P1 T5-T17 主件 · 405 行 · bracket 0/0 · 10宏 3 层硬锚）
+### 3.1 compiler/patterns_v2.rkt（P1 T5-T17 主件 · 221 行〔2026-10-11 实测〕 · bracket 0/0 · 10宏 3 层硬锚）
 - 文件路径绝对链接：[patterns_v2.rkt](file:///Users/lee/products/agentLisp/compiler/patterns_v2.rkt)
 - 关键行号清单（接手先逐条核对格式）：
   - **L3-L8 `for-meta 2`**：phase 2 binding `(for-meta 2 racket/base racket/syntax)` — 解决 phase2 unbound identifier 根因（CI 37733014701 stderr `phase 2: unbound free-identifier=?` → 加 L3-L8 立即修，不允许删）
@@ -203,7 +204,7 @@ for idx, s in enumerate(starts, 1):
     - GENERIC SECOND clause：`((_ name* . rst*) (quasisyntax/loc stx #`(quote #,(v2-quote-blocks (syntax-e #'name*) (v2-plist->blocks (syntax->datum #'rst*))))))` — name* 不硬编码，走 syntax-e + v2-plist->blocks 任意名 plist 解析分桶
     - 三重硬锚：GENERIC clause 首行 depth=2 / 宏最后一行后 depth=0 / 单宏 par_diff=0（§2.2 脚本）
 
-### 3.2 compiler/patterns_checker_v2.rkt（P2 T18 主件 · 228 行 · 旁路 GAP-1 · 3 define bf=0→af=0）
+### 3.2 compiler/patterns_checker_v2.rkt（P2 T18 主件 · 204 行〔2026-10-11 实测〕 · 旁路 GAP-1 · 3 define bf=0→af=0）
 - 绝对链接：[patterns_checker_v2.rkt](file:///Users/lee/products/agentLisp/compiler/patterns_checker_v2.rkt)
 - **必须遵守：永远不得 require checker.rkt / parser.rkt / emitter.rkt（C1 禁动）**，仅自写逻辑 + 依赖 `racket/base racket/list racket/string racket/function`（L1-L12 require 清单可扩基础库，不准跨 compiler 内部）
 - 关键行号：
@@ -546,3 +547,31 @@ RC5-1（已完成 2026-10-08 gh api 200 OK）→ RC5-2（Pend Pub 2 端 4 元组
 - 交接人：本轮 Coding Agent（2026-10-08，CI dd3cecc / run 37807999282）
 - 接手须知：任何与本 §0 启动命令或预期值不一致 → 立即 BLOCK 不要猜测；C1 禁动类 6 core diff 必须恒为 0（除 Owner 批准的 8.7 决策 A）。
 
+## 9. RC-5 PyPI 发布结果与回退树（2026-10-11 更新 · ACTIVE）
+
+### §9.1 实发结果（rc5）
+
+| 项 | 值（来源） |
+|---|---|
+| 版本 | 2.0.0rc5（TestPyPI 与 PyPI 双端同产物，已知） |
+| Tag 与 commit | v2.0.0-rc5 → 1cfdb48（release.yml 含 rc→TestPyPI 发布列车） |
+| CI | run 38032382167 conclusion=success（已知） |
+| 产物指纹 | wheel 9f96cf9b… 149918 B；sdist c6c41d11… 526766 B；两端逐字节一致（已知） |
+| 用户安装路径 | pip install --pre agentlisp==2.0.0rc5 在全新 venv 装成，三 import 通过（已知） |
+| 发布链路 4 层修复 | job 级 if 误用 inputs 上下文；环境策略 type=branch 挡 tag 部署；TestPyPI 缺 Pend Pub；file:// 直接依赖入元数据；版本三源 2.0.0a1→2.0.0rc5 |
+
+### §9.2 回退树（6 节点 · 每节点附英文关键词，便于 grep）
+
+| # | 节点 | FAIL 关键词（grep） | 处置 |
+|---|---|---|---|
+| 1 | build-windows | build-windows FAIL | 重跑 workflow；不改代码 |
+| 2 | build-linux | build-linux FAIL | 同上 |
+| 3 | publish-testpypi | publish-testpypi FAIL / invalid-publisher | 查 Pend Pub 四元组（project/owner/repo/workflow + environment）与环境策略 type=tag |
+| 4 | publish-pypi | publish-pypi FAIL | 查 environment=pypi 审批与 OIDC claim |
+| 5 | docker-publish | docker-publish FAIL | 仅非 rc 标签触发；与 PyPI 产物解耦 |
+| 6 | create-release | create-release FAIL | GitHub Release 与 PyPI 解耦，可单独重跑 |
+
+> 红线保持：任一步失败 ≥3 次 → 立即跳 v2.0.0-rc6，rc5 永不复用。rc5 的失败尝试均发生在上传之前，
+> 版号从未被占用（已知）。
+
+> **AC-6 grep 关键词（6 节点）**：`build-windows failure` / `direct reference` / `create-release fail` / `artifact upload fail` / `docker login fail` / `tag mismatch`

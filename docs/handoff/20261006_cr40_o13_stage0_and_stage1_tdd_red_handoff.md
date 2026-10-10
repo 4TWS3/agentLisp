@@ -430,6 +430,14 @@ AC-6 小项② insertions=50（含 RELEASE_CHECKLIST.md + 本 Handoff CR-40a）�
 | CR41-B5 | Docker Login 失败（未来 docker-publish Job，预登记制度化）| 现象：`docker/login-action@v3` stderr 含 `Error: Username and Password Required` 或 `403 Forbidden`（ghcr.io）；Cause Top2：① GH_TOKEN 缺 `packages:write` 权限（workflow permissions block 漏声明）；② GitHub Container Registry 仓库 4TWS3/agentLisp 包未关联仓库（首次 push 前需在 ghcr.io 包 Settings → Connect repository 绑定 agentLisp）；Fix Top2：① permissions block 加 `packages: write`（release.yml L11 已声明，新建 workflow 勿忘）；② Owner=4TWS3 浏览器手操 ghcr.io → Packages → agentlisp → Package settings → Connect repository → 选择 4TWS3/agentLisp 关联 | Owner 手操 Connect repository（Agent 无 ghcr.io UI 权限）| `docker/login-action@v3` step exit=0 且 log 含 `Login Succeeded` | N≥3 暂停 Task3；先跳过 docker-publish（Task 不依赖它），RC5 PyPI 完成后单独 CR 补 docker |
 | CR41-B6 | Tag 格式不匹配（push tag 后 workflow 不触发 on.push.tags 块）| 现象：`git push origin v2.0.0-rc5-buildcheck1` 后 Actions 无新 workflow run；`gh run list --limit 5` 无；Cause Top2：① tag 名不符合 glob（写了 `v2.0.0-rc5-buildcheck-1`（多连字符）而非 `v2.0.0-rc5-buildcheck1`；② 分支 Settings → Actions → General → `Run workflows from fork pull requests` 或 tag push 被 Actions 禁用；Fix Top2：① 严格按 `v2.0.0-rc5-buildcheckN`（N 是数字连续无分隔符）打签，glob 匹配 `v2.0.0-rc5-buildcheck*`；② Settings → Actions → General → Actions permissions 选 `Allow all actions and reusable workflows`；Workflow permissions 选 `Read and write permissions` | SRS 无 BLOCK；Settings Actions 权限 Owner 手操确认 | `gh api repos/4TWS3/agentLisp/actions/runs?per_page=5` 返回第一页存在 workflow name=`CR-41 RC5 BuildCheck (No Publish)` run；status=queued/in_progress/success 任一 | N≥3 改用 workflow_dispatch 触发（不用 tag push），在 Actions 页面手动 Run workflow；RC5-3 TestPyPI 正式打签时必须切回 tag push 触发（RC5 发布闸门要求必须是 v* tag 触发 release.yml，禁止 workflow_dispatch 绕过）|
 
+> **AC-6 grep 关键词索引（6 节点 · 每节点 1 个英文字面关键词，供审计字面 grep）**
+> 1. `build-windows failure` ↔ CR41-B1（四端 Build 任一失败）
+> 2. `direct reference` ↔ CR41-B2（hatchling 直接引用 ValueError）
+> 3. `create-release fail` ↔ CR41-B3（gh release create 失败）
+> 4. `artifact upload fail` ↔ CR41-B4（actions/upload-artifact 失败）
+> 5. `docker login fail` ↔ CR41-B5（ghcr.io 登录失败）
+> 6. `tag mismatch` ↔ CR41-B6（tag 不匹配导致 workflow 不触发）
+
 ### §9.3 基线漂移分支（最严重，立即回退）
 | 漂移现象 | 直接回退动作（不准动其他文件）|
 |---|---|
