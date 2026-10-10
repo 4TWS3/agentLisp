@@ -17,6 +17,12 @@
 (define-runtime-path PATTERNS-PATH "patterns.rkt")
 (define-runtime-path PATTERNS-V2-PATH "patterns_v2.rkt")
 (define-runtime-path PATTERNS-CHECKER-V2-PATH "patterns_checker_v2.rkt")
+(define-runtime-path CHECKER-PATH "checker.rkt")
+(define-runtime-path EMITTER-PATH "emitter.rkt")
+(define-runtime-path COMPILER-PATH "agentlisp_compiler.rkt")
+(define-runtime-path MAIN-RKT-PATH "main.rkt")
+;; 仓库根：<root>/compiler/main.rkt -> <root>
+(define PROJECT-ROOT (simplify-path (build-path (path-only MAIN-RKT-PATH) "..")))
 
 (define input-path #f)
 (define output-path #f)
@@ -41,38 +47,134 @@
     (dynamic-require mod-path sym)))
 
 (define checker-default-jsexpr-version
-  (safe-dyn "checker.rkt" 'checker-default-jsexpr-version 1))
+  (safe-dyn CHECKER-PATH 'checker-default-jsexpr-version 1))
 (define (exn->jsexpr e)
-  ((safe-dyn "checker.rkt" 'exn->jsexpr (lambda (e) (hasheq 'message (exn-message e)))) e))
+  ((safe-dyn CHECKER-PATH 'exn->jsexpr (lambda (e) (hasheq 'message (exn-message e)))) e))
 (define (exn:agentlisp:check? e)
-  ((safe-dyn "checker.rkt" 'exn:agentlisp:check? (lambda (e) #f)) e))
+  ((safe-dyn CHECKER-PATH 'exn:agentlisp:check? (lambda (e) #f)) e))
 (define (exn:agentlisp:parse? e)
-  ((safe-dyn "checker.rkt" 'exn:agentlisp:parse? (lambda (e) #f)) e))
+  ((safe-dyn CHECKER-PATH 'exn:agentlisp:parse? (lambda (e) #f)) e))
 (define (exn:agentlisp:emit? e)
-  ((safe-dyn "checker.rkt" 'exn:agentlisp:emit? (lambda (e) #f)) e))
+  ((safe-dyn CHECKER-PATH 'exn:agentlisp:emit? (lambda (e) #f)) e))
 (define (exn:agentlisp:check->jsexpr e)
-  ((safe-dyn "checker.rkt" 'exn:agentlisp:check->jsexpr (lambda (e) (hasheq 'message (exn-message e)))) e))
+  ((safe-dyn CHECKER-PATH 'exn:agentlisp:check->jsexpr (lambda (e) (hasheq 'message (exn-message e)))) e))
 (define (exn:agentlisp:check-code e)
-  ((safe-dyn "checker.rkt" 'exn:agentlisp:check-code (lambda (e) 'UNKNOWN_CHECK_ERROR)) e))
+  ((safe-dyn CHECKER-PATH 'exn:agentlisp:check-code (lambda (e) 'UNKNOWN_CHECK_ERROR)) e))
 (define (exn:agentlisp:parse-code e)
-  ((safe-dyn "checker.rkt" 'exn:agentlisp:parse-code (lambda (e) 'UNKNOWN_PARSE_ERROR)) e))
+  ((safe-dyn CHECKER-PATH 'exn:agentlisp:parse-code (lambda (e) 'UNKNOWN_PARSE_ERROR)) e))
 (define (to-str v)
-  ((safe-dyn "checker.rkt" 'to-str (lambda (v) (if (symbol? v) (symbol->string v) (format "~a" v)))) v))
+  ((safe-dyn CHECKER-PATH 'to-str (lambda (v) (if (symbol? v) (symbol->string v) (format "~a" v)))) v))
 (define (with-srcloc-from-form src proc)
-  ((safe-dyn "checker.rkt" 'with-srcloc-from-form (lambda (src proc) (proc))) src proc))
+  ((safe-dyn CHECKER-PATH 'with-srcloc-from-form (lambda (src proc) (proc))) src proc))
 (define (parse-defagent form)
-  ((safe-dyn "agentlisp_compiler.rkt" 'parse-defagent (lambda (form) #f)) form))
+  ((safe-dyn COMPILER-PATH 'parse-defagent (lambda (form) #f)) form))
 (define (check-agent parsed)
-  ((safe-dyn "agentlisp_compiler.rkt" 'check-agent (lambda (parsed) (void))) parsed))
-(define (current-checker-source-name)
-  ((safe-dyn "agentlisp_compiler.rkt" 'current-checker-source-name (lambda () "unknown"))))
+  ((safe-dyn COMPILER-PATH 'check-agent (lambda (parsed) (void))) parsed))
+;; 必须是 parameter（不能是过程）：本文件 L310 的 parameterize 与 checker.rkt 的
+;; with-srcloc-from-form 宏都会 parameterize 它；旧实现是过程，直接 contract violation。
+;; 优先复用 checker.rkt 导出的真 parameter（这样 srcloc 能传到 checker 内部），否则本地兜底。
+(define current-checker-source-name
+  (let ([p (safe-dyn CHECKER-PATH 'current-checker-source-name #f)])
+    (if (parameter? p) p (make-parameter "unknown"))))
 (define (emit-python ast mod-name)
-  ((safe-dyn "emitter.rkt" 'emit-python (lambda (a m) "# generated (emitter not loaded)\n")) ast mod-name))
+  ((safe-dyn EMITTER-PATH 'emit-python (lambda (a m) "# generated (emitter not loaded)\n")) ast mod-name))
 
 (define (emit-json-errors errs)
   (write-json errs (current-output-port))
   (newline)
   (flush-output (current-output-port)))
+
+;; ---------------------------------------------------------------------------
+;; CR-42 F2：patterns_checker_v2.rkt 旁路 checker 的真实接线。
+;; 旧实现（CR-41）只 (void (eval '(lambda ...) ns2)) 构造过程后即丢弃，
+;; 导致 NFR-PATTERN-01/02 从未执行（且 checker 内部 tag 口径错误从未暴露）。
+;; 现在以 fixtures 为数据源真正 apply run-patterns-checker-v2；
+;; 统计行只写 stderr（stdout 供编译产物/--dump-ast 使用，绝不能被污染）。
+;; ---------------------------------------------------------------------------
+(define patterns-fixtures-v1-dir (build-path PROJECT-ROOT "tests" "patterns" "fixtures"))
+(define patterns-fixtures-v2-dir (build-path PROJECT-ROOT "tests" "patterns" "fixtures_v2"))
+
+(define (safe-read-first-datum path)
+  (with-handlers ([(lambda (e) #t)
+                   (lambda (e)
+                     (fprintf (current-error-port)
+                              "; patterns_checker_v2 READ-SKIP: ~a (~a)~n"
+                              path (exn-message e))
+                     #f)])
+    (and path (file-exists? path)
+         (with-input-from-file path
+           (lambda ()
+             (let ((v (read)))
+               (if (eof-object? v) #f v)))))))
+
+(define (eval-form/quiet form ns)
+  (with-handlers ([(lambda (e) #t) (lambda (e) #f)])
+    (eval form ns)))
+
+;; -> (values hc-index gen-index)
+;;   hc-index : hash macro-symbol -> (cons hc-al-path hc-expected-path)
+;;   gen-index: hash macro-symbol -> generic-al-path
+;; V1 HC fixture 无场景后缀（defreflect_code_refiner.al）；V2 HC 为 *_hc_HC.al；
+;; V1 无 generic fixture，用仓库既有的 fr_pattern_02_*_auto_raise.al（GENERIC 分支实测输入）。
+(define (index-pattern-fixtures dir)
+  (for/fold ([hc (hash)] [gen (hash)]) ([name (in-list (directory-list dir))])
+    (define p (build-path dir name))
+    (define s (path->string name))
+    (define expected (path-replace-extension p #".expected.rkt"))
+    (define form (and (regexp-match? #rx"\\.al$" s) (safe-read-first-datum p)))
+    (define m (and (pair? form) (car form)))
+    (cond
+      [(not (and m (symbol? m))) (values hc gen)]
+      [(regexp-match? #rx"^fr_pattern_02_.*_auto_raise\\.al$" s)
+       (values hc (hash-set gen m p))]
+      [(regexp-match? #rx"_generic_GENERIC\\.al$" s)
+       (values hc (hash-set gen m p))]
+      [(and (regexp-match? #rx"_reverse_REVERSE\\.al$" s)) (values hc gen)]
+      [(file-exists? expected)
+       (values (hash-set hc m (cons p expected)) gen)]
+      [else (values hc gen)])))
+
+(define (make-patterns-checker-getters ns)
+  (define-values (v1-hc v1-gen) (index-pattern-fixtures patterns-fixtures-v1-dir))
+  (define-values (v2-hc v2-gen) (index-pattern-fixtures patterns-fixtures-v2-dir))
+  (define hc (for/fold ([acc v1-hc]) ([(k v) v2-hc]) (hash-set acc k v)))
+  (define gen (for/fold ([acc v1-gen]) ([(k v) v2-gen]) (hash-set acc k v)))
+  (define (expand-at p) (and p (eval-form/quiet (safe-read-first-datum p) ns)))
+  (values
+   (lambda (m _hc-id) (define e (hash-ref hc m #f)) (and e (expand-at (car e))))
+   (lambda (m _hc-id) (define e (hash-ref hc m #f)) (and e (safe-read-first-datum (cdr e))))
+   (lambda (m) (expand-at (hash-ref gen m #f)))))
+
+(define (run-patterns-checker-v2/report ns)
+  (with-handlers ([(lambda (e) #t)
+                   (lambda (e)
+                     (fprintf (current-error-port)
+                              "; patterns_checker_v2 SKIP: ~a~n" (exn-message e)))])
+    (define-values (get-hc-exp get-hc-hw get-gen-exp) (make-patterns-checker-getters ns))
+    (define ns2 (make-base-namespace))
+    (eval '(require racket/base racket/match racket/list racket/string) ns2)
+    (eval `(require (file ,(path->string PATTERNS-CHECKER-V2-PATH))) ns2)
+    (define run (eval 'run-patterns-checker-v2 ns2))
+    (define-values (cells pass fail) (run get-hc-exp get-hc-hw get-gen-exp))
+    (fprintf (current-error-port)
+             "; patterns_checker_v2: cells=~a pass=~a fail=~a (NFR01 15HC+15GEN / NFR02 8x15=120)~n"
+             (length cells) pass fail)
+    (define failed (for/list ([c (in-list cells)] #:unless (caddr c)) c))
+    (when (pair? failed)
+      (define by-category
+        (for/fold ([h (hash)]) ([c (in-list failed)])
+          (hash-update h (cadr c) add1 0)))
+      (fprintf (current-error-port)
+               "; patterns_checker_v2 FAILED by-category: ~a~n"
+               (string-join (for/list ([(k v) (in-hash by-category)])
+                              (format "~a=~a" k v))
+                            " "))
+      (fprintf (current-error-port)
+               "; patterns_checker_v2 FAILED cells: ~a~n"
+               (string-join (for/list ([c (in-list failed)])
+                              (format "~a [~a]" (car c) (cadddr c)))
+                            ", ")))
+    (void)))
 
 (define (expand-pattern-macros/via-subprocess all-forms)
   (with-handlers ([exn:fail? (lambda (e)
@@ -82,33 +184,32 @@
     (eval '(require racket/base racket/port racket/file racket/path racket/runtime-path racket/syntax racket/string racket/match racket/pretty) ns)
     (eval `(require (file ,(path->string PATTERNS-PATH))) ns)
     (eval `(require (file ,(path->string PATTERNS-V2-PATH))) ns)
+    (define pattern-macro-names
+      '(defreflect-agent defrouter-agent defchain-agent defparallel-agent defplanner-agent
+        defpriority-agent defdecomposition-agent deffsm-agent defevaluator-agent
+        deftopic-model-agent defdecomposer-agent defguardrails-safety-agent
+        defhitl-agent defexception-agent defexploration-agent))
     (define all-expanded
       (for/list ((form (in-list all-forms)))
-        (with-handlers ([exn:fail? (lambda (e)
-                                      (fprintf (current-error-port) "; expand-single ~s FAIL: ~a~n" (and (pair? form) (car form)) (exn-message e))
-                                      form)])
-          (define expanded (eval form ns))
-          (cond
-            [(and (pair? expanded) (eq? (car expanded) 'defagent))
-             (cons 'define-agent (cdr expanded))]
-            [(and (pair? expanded)
-                  (memq (car expanded)
-                        '(defreflect-agent defrouter-agent defchain-agent defparallel-agent defplanner-agent
-                          defpriority-agent defdecomposition-agent deffsm-agent defevaluator-agent
-                          deftopic-model-agent defdecomposer-agent defguardrails-safety-agent
-                          defhitl-agent defexception-agent defexploration-agent)))
-             (cons 'define-agent (cdr expanded))]
-            [else expanded]))))
-    (with-handlers ([exn:fail? (lambda (e)
-                                  (fprintf (current-error-port) "; patterns_checker_v2 LOAD/SKIP: ~a (non-fatal, expand results unchanged)~n" (exn-message e))
-                                  all-expanded)])
-      (define ns2 (make-base-namespace))
-      (eval '(require racket/base racket/match racket/list racket/string) ns2)
-      (eval `(require (file ,(path->string PATTERNS-CHECKER-V2-PATH))) ns2)
-      (void
-       (eval '(lambda (get-hc-exp get-hc-hw get-gen-exp)
-                (run-patterns-checker-v2 get-hc-exp get-hc-hw get-gen-exp)) ns2))
-      all-expanded)))
+        (cond
+          ;; CR-42：只 eval 模式宏调用。其他顶层子表单（define-tool / define-harness /
+          ;; define-workflow …）不是可求值表达式，eval 只会报 "undefined" 并污染 stderr；
+          ;; 它们必须原样透传给下游 parser/checker。
+          [(and (pair? form) (memq (car form) pattern-macro-names))
+           (with-handlers ([exn:fail? (lambda (e)
+                                        (fprintf (current-error-port) "; expand-single ~s FAIL: ~a~n" (car form) (exn-message e))
+                                        form)])
+             (define expanded (eval form ns))
+             (cond
+               [(and (pair? expanded) (eq? (car expanded) 'defagent))
+                (cons 'define-agent (cdr expanded))]
+               [(and (pair? expanded) (memq (car expanded) pattern-macro-names))
+                (cons 'define-agent (cdr expanded))]
+               [else expanded]))]
+          [else form])))
+    ;; CR-42 F2：真正 apply 旁路 checker（结果只落 stderr）
+    (run-patterns-checker-v2/report ns)
+    all-expanded))
 
 (define (check-ast/legacy a expanded-source input-path)
   (with-handlers ((exn:agentlisp:check?
@@ -164,11 +265,11 @@
     (else #t)))
 
 (with-handlers ([exn:fail? (lambda (e) (void))])
-  (dynamic-require "checker.rkt" #f))
+  (dynamic-require CHECKER-PATH #f))
 (with-handlers ([exn:fail? (lambda (e) (void))])
-  (dynamic-require "emitter.rkt" #f))
+  (dynamic-require EMITTER-PATH #f))
 (with-handlers ([exn:fail? (lambda (e) (void))])
-  (dynamic-require "agentlisp_compiler.rkt" #f))
+  (dynamic-require COMPILER-PATH #f))
 
 (command-line
  #:program "agentlispc"
@@ -248,7 +349,9 @@
            (emit-json-errors (list (exn->jsexpr e)))
            (exit 2))
           (else (raise e))))))
-    (with-srcloc-from-form input-path (parse-s-exp input-path expanded-source))))
+    ;; 必须传 thunk：checker.rkt 的 with-srcloc-from-form 是宏（无法被 dynamic-require 取值），
+    ;; 本文件的动态包装会退化为 (lambda (src proc) (proc))，因此这里必须给过程而不是已求值的 AST。
+    (with-srcloc-from-form input-path (lambda () (parse-s-exp input-path expanded-source)))))
 
 (when verbose?
   (displayln (format "==> AgentLisp v2 compiler: ~a" input-path))
@@ -276,7 +379,11 @@
          (cond
            ((and (pair? form) (eq? (car form) 'define-agent))
             (let inner ()
-              (dynamic-require '(submod "." json-errors-runner) #f)
+              ;; (submod "." json-errors-runner) 只在 main.rkt 被 require 时才有基路径；
+              ;; 以脚本方式运行（racket compiler/main.rkt）时会抛 "no base path"。
+              ;; 该子模块是空实现，这里做容错，避免它把正常的静态检查一起带崩。
+              (with-handlers ([exn:fail? (lambda (e) (void))])
+                (dynamic-require '(submod "." json-errors-runner) #f))
               (with-handlers ((exn:agentlisp:check?
                                (lambda (e)
                                  (loop (cdr xs)

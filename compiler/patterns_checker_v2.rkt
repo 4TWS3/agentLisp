@@ -58,10 +58,14 @@
 
 (define (ok? v) (and v #t))
 
+;; 注意：本 codebase 的 Core AST 里 :model / :harness 等是 **symbol**（Racket 的
+;; #:keyword 才是 keyword；":model" 只是冒号开头的 symbol）。CR-42 F2 修：统一返回
+;; symbol 口径（原实现返回 keyword，导致 bucket->idx 永远 999、三必块永远缺失、
+;; harness c/v/c 永远走 "无 harness" 分支假通过）。
 (define (block-tag b)
   (cond
-    ((and (pair? b) (keyword? (car b))) (car b))
-    ((and (pair? b) (symbol? (car b))) (string->keyword (symbol->string (car b))))
+    ((and (pair? b) (keyword? (car b))) (string->symbol (keyword->string (car b))))
+    ((and (pair? b) (symbol? (car b))) (car b))
     (else #f)))
 
 (define *5-bucket-order* '(:model :tools :context :harness :multiagent))
@@ -86,25 +90,6 @@
   (let ((tags (map block-tag blocks)))
     (and (memq ':model tags) (memq ':tools tags) (memq ':context tags) #t)))
 
-(define (pattern-kind-tag-present? blocks)
-  (let find ((bs blocks))
-    (cond
-      ((null? bs) #f)
-      (else
-       (let ((b (car bs)))
-         (or (and (list? b) (memq ':pattern-kind b))
-             (and (list? b) (ormap (lambda (sub) (and (list? sub) (memq ':pattern-kind sub))) b))
-             (find (cdr bs))))))))
-
-(define (pattern-config-kv-present? blocks)
-  (let find ((bs blocks))
-    (cond
-      ((null? bs) #f)
-      (else
-       (let ((b (car bs)))
-         (or (and (list? b) (memq ':pattern-config b))
-             (and (list? b) (ormap (lambda (sub) (and (list? sub) (memq ':pattern-config sub))) b))
-             (find (cdr bs))))))))
 
 (define (harness-cvc-trichotomy blocks)
   (let ((harness-block (for/or ((b blocks))
@@ -117,7 +102,7 @@
                         ((and (pair? xs) (pair? (car xs)))
                          (let ((sub (car xs)))
                            (cond
-                             ((and (pair? sub) (keyword? (car sub)))
+                             ((and (pair? sub) (symbol? (car sub)))
                               (loop (cdr xs) (cons (car sub) acc)))
                              (else (loop (cdr xs) acc)))))
                         (else (loop (cdr xs) acc))))))
@@ -155,8 +140,23 @@
           ((not (kw-args-sexpr-equal? expanded handwritten 2))
            (set! results (cons (list (symbol->string m) 'NFR01-HC #f "HC 5-bucket AST not byte-equal (sexpr-level)" ) results)))
           (else
-           (set! results (cons (list (symbol->string m) 'NFR01-HC #t "HC expanded === handwritten AST byte-equal") results)))))
-    (reverse results))))
+           (set! results (cons (list (symbol->string m) 'NFR01-HC #t "HC expanded === handwritten AST byte-equal") results))))))
+    (reverse results)))
+
+;; CR-42 F3：NFR02 口径统一为 8 维 × 15 宏 = 120 checkpoint，与 Python 侧
+;; tests/patterns/test_pattern_checker_v2.py 的 EIGHT_CELL_KEYS/EIGHT_CELL_LABELS 严格同集。
+;; 删除原 d2-1（:pattern-kind tag）/ d2-2（:pattern-config kv）两维：这两个键不在
+;; Core AST 白名单（compiler/agentlisp_compiler.rkt keyword-kvs 硬校验），产物含之即无法编译。
+(define *nfr02-cell-specs*
+  ;; (cell-key label value-thunk)；thunk 在拿到 blocks/expanded 后求值。
+  (list (cons "d1-1" "5-bucket升序")
+        (cons "d1-2" "三必块model/tools/context")
+        (cons "d3-1" "harness c/v/c trichotomy")
+        (cons "d3-2" "无运行时eval污染")
+        (cons "d4-1" "agent name是symbol")
+        (cons "d4-2" "block count 3≤n≤5")
+        (cons "d5-1" "顶层形状define-agent")
+        (cons "d5-2" "每block是list带kw tag")))
 
 (define (check-nfr02-static-safety-matrix get-expanded-fn)
   (let ((results '()))
@@ -165,48 +165,25 @@
              (expanded (and hc-id (get-expanded-fn m hc-id)))
              (blocks (and expanded (pair? expanded) (> (length expanded) 2) (cddr expanded))))
         (when (and expanded blocks)
-          (let ((cp1 (check-prefix-sorted-5-bucket blocks))
-                (cp2 (three-mandatory-blocks-present? blocks))
-                (cp3 (pattern-kind-tag-present? blocks))
-                (cp4 (pattern-config-kv-present? blocks))
-                (cp5 (harness-cvc-trichotomy blocks))
-                (cs1 (no-runtime-eval-subst? expanded))
-                (cs2 (and (number? (length blocks))
-                          (>= (length blocks) 3)
-                          (<= (length blocks) 5)
-                          #t))
-                (cs3 (v1-define-agent? expanded))
-                (cs4 (symbol? (cadr expanded)))
-                (cs5 (andmap (lambda (b) (and (list? b) (keyword? (block-tag b)))) blocks)))
-            (for ((idx (in-range 1 6)))
-              (for ((jdx (in-range 1 3)))
-                (let* ((cell-id (format "~a|~ax~a" (symbol->string m) idx jdx))
-                       (label (cond
-                                ((and (= idx 1) (= jdx 1)) "5-bucket升序")
-                                ((and (= idx 1) (= jdx 2)) "三必块model/tools/context")
-                                ((and (= idx 2) (= jdx 1)) "pattern-kind tag存在")
-                                ((and (= idx 2) (= jdx 2)) "pattern-config kv存在")
-                                ((and (= idx 3) (= jdx 1)) "harness c/v/c trichotomy")
-                                ((and (= idx 3) (= jdx 2)) "无运行时eval污染")
-                                ((and (= idx 4) (= jdx 1)) "agent name是symbol")
-                                ((and (= idx 4) (= jdx 2)) "block count 3≤n≤5")
-                                ((and (= idx 5) (= jdx 1)) "顶层形状define-agent")
-                                ((and (= idx 5) (= jdx 2)) "每block是list带kw tag")
-                                (else "unknown")))
-                       (cell-ok (cond
-                                 ((and (= idx 1) (= jdx 1)) cp1)
-                                 ((and (= idx 1) (= jdx 2)) cp2)
-                                 ((and (= idx 2) (= jdx 1)) cp3)
-                                 ((and (= idx 2) (= jdx 2)) cp4)
-                                 ((and (= idx 3) (= jdx 1)) cp5)
-                                 ((and (= idx 3) (= jdx 2)) cs1)
-                                 ((and (= idx 4) (= jdx 1)) cs4)
-                                 ((and (= idx 4) (= jdx 2)) cs2)
-                                 ((and (= idx 5) (= jdx 1)) cs3)
-                                 ((and (= idx 5) (= jdx 2)) cs5)
-                                 (else #f))))
-                  (set! results (cons (list cell-id 'NFR02-MATRIX cell-ok label) results)))))))
-    (reverse results)))))
+          (let ((cell-ok (hash 'd1-1 (check-prefix-sorted-5-bucket blocks)
+                               'd1-2 (three-mandatory-blocks-present? blocks)
+                               'd3-1 (harness-cvc-trichotomy blocks)
+                               'd3-2 (no-runtime-eval-subst? expanded)
+                               'd4-1 (symbol? (cadr expanded))
+                               'd4-2 (and (number? (length blocks))
+                                          (>= (length blocks) 3)
+                                          (<= (length blocks) 5)
+                                          #t)
+                               'd5-1 (v1-define-agent? expanded)
+                               'd5-2 (andmap (lambda (b) (and (list? b) (symbol? (block-tag b)))) blocks))))
+            (for ((spec (in-list *nfr02-cell-specs*)))
+              (set! results
+                    (cons (list (format "~a|~a" (symbol->string m) (car spec))
+                                'NFR02-MATRIX
+                                (hash-ref cell-ok (string->symbol (car spec)))
+                                (cdr spec))
+                          results)))))))
+    (reverse results)))
 
 (define (run-patterns-checker-v2 get-hc-expanded-fn get-hc-handwritten-fn get-gen-expanded-fn)
   (let* ((nfr01-hc (check-nfr01-ast-equivalence get-hc-expanded-fn get-hc-handwritten-fn))

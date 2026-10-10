@@ -147,18 +147,20 @@ for idx, s in enumerate(starts, 1):
         f"宏{idx:2d} L{s:3d}-L{e - 1:3d} par_diff={par:+d}(要0) GEN首depth={gd}(要2) 尾depth={d}(要0) → {'PASS' if par == 0 and gd == 2 and d == 0 else 'FAIL'}"
     )
 ```
-### 2.3 硬指标 3：Checker V2 GAP-1 旁路（不接 checker.rkt，NFR01 30 + NFR02 150 = 180 静态断言已自写）
+### 2.3 硬指标 3：Checker V2 GAP-1 旁路（不接 checker.rkt，NFR01 30 + NFR02 120 = 150 静态断言已自写）
+> CR-42 口径修正：NFR02 原 10 维（含非法键 :pattern-kind / :pattern-config）已统一为 **8 维 × 15 宏 = 120**，
+> 与 Python 侧 `tests/patterns/test_pattern_checker_v2.py` 的 EIGHT_CELL_KEYS 严格同集；Racket checker 已同步。
 **为什么要旁路（GAP-1 正式登记名称 HAN-GAP-01 · handoff §9.2.2 回退树已记载）**：
 - 原因：checker.rkt L102 `(struct srcloc* … #:transparent #:prefab)` — 两个 struct 属性在 Racket 8.12 reader 中语义冲突（加载时 unbound/reader contract violation）
 - 影响：若任何模块顶层 `require compiler/checker.rkt`，整个 Racket runtime 报错 → 所有 patterns 展开失败
 - 决策（2026-10-08 T18 评审通过）：不改动 checker.rkt（C1 禁动类），新建 `patterns_checker_v2.rkt` 独立旁路实现 **5 个辅助函数 + 2 个 NFR 检查器 + run 入口**，提供与 V1 checker 相同语义但不 `require` 任何 C1 core 文件。
 
-**5 辅助函数清单（patterns_checker_v2.rkt L60-L157）**：
+**辅助函数清单（patterns_checker_v2.rkt；CR-42 F3 已删除原第 3/4 项）**：
 1. `check-prefix-sorted-5-bucket blocks` → 确保 5 大类 block 升序（:model<:tools<:context<:harness<:multiagent，V2 与 V1 完全同一套分桶 idx）
 2. `three-mandatory-blocks-present? blocks` → HC 硬编码场景必须三必块（:model + :tools + :context）都有，GENERIC 空场景可省略，REVERSE 场景至少 2 块
-3. `pattern-kind-tag-present? blocks` → V2 multiagent bucket 的 pattern-kind 动态 tag 是否嵌入（区分 priority/fsm/eval 等 pattern 种类唯一标记）
-4. `pattern-config-kv-present? blocks` → pattern-config 块关键字-值 kv 对（:priority-level、:fsm-states 等宏专用配置）是否齐全
-5. `harness-cvc-trichotomy blocks` → harness 块内 c/v/c trichotomy（check:verify:correct = 三维校验）是否满足（CFR-41 NFR 安全基线）
+3. `harness-cvc-trichotomy blocks` → harness 块内 c/v/c trichotomy（check:verify:correct = 三维校验）是否满足（CFR-41 NFR 安全基线）
+4. ~~`pattern-kind-tag-present?` / `pattern-config-kv-present?`~~ → **CR-42 F3 删除**：:pattern-kind / :pattern-config 不在 Core AST 白名单（agentlisp_compiler.rkt keyword-kvs 硬校验），产物含之无法编译，不能作为静态安全判据
+5. CR-42 F2 附带修复：`block-tag` 统一 **symbol** 口径（Racket 里 `:model` 是冒号开头的 symbol，不是 keyword；原实现返回 keyword，导致 bucket->idx 恒 999、三必块恒缺失、harness c/v/c 恒走"无 harness"假通过）
 
 **NFR01 AST 全等（HC 场景：Racket 展开后 vs fixture 手写 expected.rkt）**：
 - 每个宏的 HC 场景，`expanded datum` 与 `handwritten fixture datum` 必须：
@@ -167,16 +169,15 @@ for idx, s in enumerate(starts, 1):
   (c) `cddr blocks` 部分关键字块结构 `kw-args-sexpr-equal? 深度2` 全等（忽略同一 bucket 内顺序，桶间 idx 必须严格升序对齐）
 - 总断言数：15 宏 × HC 1 场景 × 2 条（expanded/handwritten 各校验1条 + 全等 1 条）= **30 条断言**，写在 [check-nfr01-ast-equivalence](file:///Users/lee/products/agentLisp/compiler/patterns_checker_v2.rkt#L140-L159) 函数。
 
-**NFR02 静态安全矩阵（15宏 × 5 idx × 2 jdx = 150 checkpoint，P2 T18 核心交付）**：
-- idx=1: jdx1 5-bucket升序 / jdx2 三必块 model/tools/context
-- idx=2: jdx1 pattern-kind tag 存在 / jdx2 pattern-config kv 存在
-- idx=3: jdx1 harness c/v/c trichotomy / jdx2 无运行时 eval 代换污染
-- idx=4: jdx1 agent name 是 symbol? / jdx2 block count 3≤n≤5
-- idx=5: jdx1 顶层 shape define-agent / jdx2 每 block 是 list 带 kw tag
-- 总 150 cell 断言（对应 Python 侧 test_pattern_checker_v2.py 第 200-380 行 parser + 断言）
+**NFR02 静态安全矩阵（15宏 × 8 cell = 120 checkpoint，P2 T18 核心交付 · CR-42 F3 口径统一）**：
+- d1-1 5-bucket 升序 / d1-2 三必块 model/tools/context
+- d3-1 harness c/v/c trichotomy / d3-2 无运行时 eval 代换污染
+- d4-1 agent name 是 symbol? / d4-2 block count 3≤n≤5
+- d5-1 顶层 shape define-agent / d5-2 每 block 是 list 带 kw tag
+- 总 120 cell 断言（对应 Python 侧 test_pattern_checker_v2.py 的 EIGHT_CELL_KEYS / EIGHT_CELL_LABELS）
 ### 2.4 硬指标 4：SRS 三集合全等 + Scn=Pas 基线对齐
 - SRS 48-ID TRI_EQUAL 断言（scripts/check_roadmap_traceability.py）：三集合 orphan行（§尾裸逗号48个ID）= 附录B首列48行 = 正文 §3 锚点48行 → 必须 **True**
-- ScnSum=PasSum=168（SRS L328-L339 CR-41 upgrade：NFR01 15/15/30 + NFR02 15/15/150 + CR41-PAT01-10 3/3 each = 15+15+30=60? 实际精确 168，见 d2b64a4 commit 升级后对拍值）→ 任何新增用例 Scn+Pas 必须同时 +N，不准单边加
+- ScnSum=PasSum=168（SRS L328-L339 CR-41 upgrade：NFR01 15/15/30 + NFR02 15/15/120 + CR41-PAT01-10 3/3 each = 15+15+30=60? 实际精确 168，见 d2b64a4 commit 升级后对拍值）→ 任何新增用例 Scn+Pas 必须同时 +N，不准单边加
 - 脚本验证（接手首命令）：`python3 scripts/check_roadmap_traceability.py 2>&1 | tail -3` → TRI_EQUAL=True, ScnSum=168, PasSum=168, 最终 ROADMAP OK exit=0（warn O2 行允差允许，不是 fail）
 
 ---
@@ -246,20 +247,19 @@ for idx, s in enumerate(starts, 1):
   - decomp02 × (HC, GENERIC, REVERSE) → decomp02_hc_HC.al / ... 同理
   - fsm03 / eval04 / topic05 / decom06 / guard07 / hitl08 / exc09 / explore10 各 3
 - 命名规则叠用大小写：`{macro}_{scene小写}_{SCENE大写}.{ext}` — scene 小写出现 1 次 + SCENE 大写出现 1 次（因为 CASE_IDS 参数化时是 priority01_HC 格式，rsplit("_",1) 拆 scene=HC 再拼小写+大写双写，保证 fixtures 名两边都命中）。脚本 §1.4 30/30 MISS 总数=0 再跑 pytest。
-### 3.5 tests/patterns/test_pattern_checker_v2.py（387 行 · Python S-exp parser + 30 + 30 + 150 断言）
+### 3.5 tests/patterns/test_pattern_checker_v2.py（Python S-exp parser + 30 + 30 + 120 断言 · CR-42 F3 口径）
 - 绝对链接：[test_pattern_checker_v2.py](file:///Users/lee/products/agentLisp/tests/patterns/test_pattern_checker_v2.py)
 - **HAS_RACKET skipif**：pytestmark = pytest.mark.skipif(not shutil.which("racket"), reason="skip") 无 Racket skip，本机 macOS 无 racket → 70 skipped 总 + 33 passed 计 103 tests（CI 有 racket → 158 passed / 3 skipped / 1 warning）
 - L22 `Path = pathlib.Path` alias（CI 37740503998 `NameError: name 'Path' is not defined` 根因）→ 不准删
 - L40-L47 `_fixture_path(cid, ext)` → rsplit + 双写 stem（§1.4 所述叠用大小写）
 - L80-L104 30 cases 首 200 字节前缀全等：normalize-sexp 统一口径（V1/RackUnit 同一 helper 函数归一化空白/注释后前缀 compare，归一化独立实现不准）
-- L107-L387 NFR01（15×2=30 head200 全等）+ NFR02（15宏×10 checkpoint=150）：Python 纯手写 S-exp tokenizer（正则 r'\(|\)|[^\s()]+'）+ parse 递归两态；NFR02 10 cell 断言矩阵对应 checker_v2 cell-ok cond 10 条 `((and (= idx N)(= jdx M)) cpX/csX)`，idx 顺序 1→5 jdx 1→2 映射严格一致：
+- L107-L387 NFR01（15×2=30 head200 全等）+ NFR02（15宏×8 cell=120 · CR-42 F3 统一）：Python 纯手写 S-exp tokenizer（正则 r'\(|\)|[^\s()]+'）+ parse 递归两态；NFR02 8 cell 断言矩阵与 Racket checker_v2 的 cell-ok hash 键严格同集（EIGHT_CELL_KEYS / EIGHT_CELL_LABELS）：
   ```
-  (idx,jdx) → Python 段对应：
-  (1,1)=bucket升序 / (1,2)=三必块 /
-  (2,1)=pattern-kind / (2,2)=pattern-config kv /
-  (3,1)=cvc trichotomy / (3,2)=eval 污染 /
-  (4,1)=name symbol / (4,2)=block 3-5 /
-  (5,1)=define-agent head / (5,2)=block kw tag list
+  cell → 语义：
+  d1-1=bucket升序 / d1-2=三必块 /
+  d3-1=cvc trichotomy / d3-2=eval 污染 /
+  d4-1=name symbol / d4-2=block 3-5 /
+  d5-1=define-agent head / d5-2=block kw tag list
   ```
 ### 3.6 compiler/tests/test_patterns_v2_mvp.rkt（10 RackUnit case · bracket 0/0）
 - 绝对链接：[test_patterns_v2_mvp.rkt](file:///Users/lee/products/agentLisp/compiler/tests/test_patterns_v2_mvp.rkt)
@@ -269,7 +269,7 @@ for idx, s in enumerate(starts, 1):
 - L320-L329：附录 B 10 行占位（裸 FR/NFR 描述）
 - L333-L334：孤儿标题「38→48 SRS-ID」+ CR41-PAT01..10 裸逗号无 `**`
 - L288：CR-39 基线保留 + CR41 基线 PRE-COMMIT 占位（→ T19 final 钉 `CR41_BASELINE_PASSED_COUNT: 158`，严格 KEY: 数字 单行，冒号空格格式）
-- L328-L339：NFR01 15/15/30 + NFR02 15/15/150 + CR41-PAT01-10 3/3 each → ScnSum=PasSum=168
+- L328-L339：NFR01 15/15/30 + NFR02 15/15/120 + CR41-PAT01-10 3/3 each → ScnSum=PasSum=168
 ### 3.8 scripts/check_roadmap_traceability.py（4 处扩：T2 + T19）
 - L30-L34：ID_RE 正则扩 CR41-PAT01..10
 - L72-L82：孤儿正则尾扩（48-ID 匹配）
@@ -322,7 +322,7 @@ curl -s https://test.pypi.org/pypi/agentlisp/json 2>/dev/null | python3 -c "impo
 6. **V2 10 宏三重硬锚（§2.2）永久不变**：单宏 par_diff=0 / GENERIC 首 depth=2 / 宏尾 depth=0（违反任何 1 条会触发 wildcard syntax error，已 CI 连 FAIL 6 次，永久记录）
 7. **方括号零化**：Racket 8.12 reader 深嵌套方括号 bug → 全项目所有 .rkt / .al / .expected.rkt 方括号统一语义替换 `[→(` 和 `]→)`，不准再写任何 `[` 字符（Python 审计 par=sq=0 是硬门槛）
 8. **HAS_RACKET skipif 双口径**：本机无 racket（pytest 33P70S）与 CI 有 racket（158P3S1W）两条基线永久并列，不准合并；CI 基线与 SRS CR41_BASELINE 必须字节级全等（158 passed / 3 skipped / 1 warning），否则 T19 final 钉锚时立即 BLOCK ROADMAP-BASELINE-MISMATCH
-9. **GENERIC head=define-agent 硬锚**：V2 v2-quote-blocks 第一元素必须 `'define-agent`（V1 对齐），不准是宏本名 defpriority/deffsm/defX（违反会破 SDD 首 200 字节全等 + cs3 v1-define-agent? 150 cell 断言整体 FAIL）
+9. **GENERIC head=define-agent 硬锚**：V2 v2-quote-blocks 第一元素必须 `'define-agent`（V1 对齐），不准是宏本名 defpriority/deffsm/defX（违反会破 SDD 首 200 字节全等 + cs3 v1-define-agent? 120 cell 断言整体 FAIL）
 10. **HC FIRST underscore 硬锚**：10 宏 HC 场景 fixture 名 priority01_hc 等全部 underscore（§3.1 L112/L141 等 10 处），不准 hyphen；checker_v2 macro->hc-fixture-id V2 10 项同样 underscore，两处必须一致
 11. **case → cond 替换永久**：patterns_checker_v2 中不得再写 `(case (cons X Y) …)` 形式（Racket case 不支持 cons pair 字面量匹配），永远双 `(cond ((and (= idx N)(= jdx M)) val))` 形式
 12. **Environment name 全小写强制**：GitHub Environment name 必须字节级 `pypi` 与 `testpypi`（全小写，无任何大写/空格/下划线）；大小写错→workflow steps=[] 空数组 1 秒失败（CI 37622160494 永久归档根因）；创建后必须 `gh api GET /repos/4TWS3/agentLisp/environments/<name>` HTTP 200 OK + name 字段回查完全相等
@@ -412,7 +412,7 @@ review.md 严格模板：
 | AC-4 | bracket 0/0 全局 + 单宏切片 | __ /5 | §1.3 脚本 5/5 + §2.2 三重硬锚脚本 10/10 |
 | AC-5 | NFR01 30 AST 全等 + checker_v2 逻辑 | __ /5 | patterns_checker_v2 L140-L159 + test 30 断言 |
 | AC-6 | C1 合规 6core diff=0（硬≥4/5）| __ /5 | `wc -c` = 0 字节审计证据（必贴 stdout）|
-| AC-7 | NFR02 150 静态安全 checkpoint | __ /5 | 15宏×10 cell 矩阵 150/150 PASS 证据 |
+| AC-7 | NFR02 120 静态安全 checkpoint | __ /5 | 15宏×8 cell 矩阵 120/120 PASS 证据（CR-42 F3 口径统一后）|
 | AC-8 | SRS TRI_EQUAL=48 + Scn=Pas=168 | __ /5 | traceability 脚本 exit=0 |
 | AC-9 | 命名一致（HC underscore / fixture stem）| __ /5 | patterns_v2 L112 等 10 处 + checker L44-L53 映射对拍 + fixtures 30/30 文件存在证据 |
 | AC-10 | 交付完整性（22 Task 全闭环）（硬满分 5/5）| 5 / 5（必填 5/5，否则 FAIL）| tasks.md 22 Task 各自 Status=completed + Completion Evidence 填实（附 CI run_id / SHA / 命令 exit code）|
@@ -532,15 +532,15 @@ RC5-1（已完成 2026-10-08 gh api 200 OK）→ RC5-2（Pend Pub 2 端 4 元组
 **本轮处置**：本地试探性修好 ①（两处 `)`）后立即撞上 ②（GAP-1），证明「只修 ① 也打不通端到端编译」；按 C1 红线已 `git checkout` **回退全部 C1 改动**（diff 恒 0），改为**报告型探测**并把三项登记在此，等待 Owner 批准一并修复（修 ② 会使 AC-6 的 diff≠0，属制度化例外，需显式追认）。
 
 ### 8.6 诚实登记的未闭合缺口（供 CR-42 / 下一轮）
-1. **spec.md AC-1① 未完全覆盖**：其要求 Standalone `failures=0/20`（10 宏 × HC/GENERIC），而 CI workflow 的 standalone 步骤目前只覆盖 **V1 5 宏**；V2 standalone 分支未实现（当前由 AST 闸门 + pytest 70 条 + RackUnit 15 条间接覆盖）。
+1. **spec.md AC-1① 未完全覆盖**：其要求 Standalone `failures=0/20`（10 宏 × HC/GENERIC），而 CI workflow 的 standalone 步骤目前只覆盖 **V1 5 宏**；V2 standalone 分支未实现（当前由 AST 闸门 + pytest 70 条 + RackUnit 15 条间接覆盖）。**CR-42 F1 已补**：`_tmp_o13_patterns_mvp_verify.yml` 新增 V2 standalone 步骤（require patterns_v2.rkt，遍历 `fixtures_v2/*_{hc_HC,generic_GENERIC}.al` = 20 分支，输出 `SUMMARY failures=0/20`）。
 2. **端到端编译闸门为报告型**：因 8.5 的 C1 三项未修，`compile-agent-lisp` 与 CLI 两条路都不可用；闸门 `continue-on-error: true`。
-3. **GAP-1 仍是旁路**：`patterns_checker_v2.rkt` 不 require checker.rkt（设计如此），其 NFR02 矩阵**尚未同步为 8 维**（当前仍保留 10 维代码，属死代码，未接入任何断言路径）。
+3. **GAP-1 仍是旁路**：`patterns_checker_v2.rkt` 不 require checker.rkt（设计如此）。**CR-42 已修**：NFR02 矩阵同步为 8 维/120；`compiler/main.rkt` 真实 apply `run-patterns-checker-v2`（旧实现只构造 lambda 从不调用），统计行落 stderr 不污染 stdout；并修复 checker 内 tag 口径 bug（`:model` 是 symbol 不是 keyword）。
 4. **V1 五宏同样产出非法 harness 键**（`:step-order-assertion` / `:parallelism-assertion`），未在本 CR 触碰（CR-40 冻结物）→ 建议 CR-42 一并做「V1 合法化 + fixture 真契约化」。
 
 ### 8.7 CR-42 启动前置
 - Owner 决策 A：是否批准修 C1 三项（parser.rkt / checker.rkt / agentlisp_compiler.rkt），修后启用**阻塞型**端到端编译闸门；
 - Owner 决策 B：V1 五宏合法化（会改动 CR-40 三绿基线所依赖的 `.expected.rkt`，需同步重建 + 重新钉 39/41 基线证据）；
-- 其余：AC-1① 的 V2 standalone 分支补齐、`patterns_checker_v2.rkt` 10 维→8 维死代码清理。
+- 其余：AC-1① 的 V2 standalone 分支补齐、`patterns_checker_v2.rkt` 10 维→8 维死代码清理。**（CR-42 已完成：V2 standalone 20 分支 + 8 维/120 + checker 真实接线；另新增 SRS↔产物双向语义标记独立断言 `tests/patterns/test_srs_marker_independence.py`）**
 
 ### 8.8 交接人签字
 - 交接人：本轮 Coding Agent（2026-10-08，CI dd3cecc / run 37807999282）

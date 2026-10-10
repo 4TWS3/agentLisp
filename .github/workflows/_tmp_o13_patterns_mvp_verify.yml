@@ -138,6 +138,78 @@ jobs:
           echo "--- expand LOG TAIL ---"
           tail -20 /tmp/expand_stdout.log || true
 
+      # CR-42 F1（AC-1①）：V2 standalone 闸门 —— 10 宏 × (HC, GENERIC) = 20 分支，
+      # 直接 require compiler/patterns_v2.rkt 逐分支展开（不依赖 main.rkt 接线），
+      # 每分支断言 顶层 (define-agent ...) 形状 + 与 .expected.rkt 前 200 字节全等，
+      # 末尾必须打印 SUMMARY failures=0/20 且 exit 0。
+      - name: Verify 10 V2 macros standalone expand against fixtures (10 macros x HC/GENERIC = 20 branches, NO main.rkt wiring)
+        shell: bash -euxo pipefail {0}
+        run: |
+          cat > expand_verify_v2.rkt <<'ENDOFRACKET'
+          #lang racket
+          (require racket/file
+                   racket/list
+                   racket/path
+                   racket/string
+                   racket/port)
+          
+          (require "compiler/patterns_v2.rkt")
+          
+          (define (normalize-sexp str)
+            (with-input-from-string str
+              (thunk
+                (let loop ([tok (read)] [out '()])
+                  (if (eof-object? tok)
+                      (string-trim (string-join (reverse out) " "))
+                      (loop (read) (cons (format "~s" tok) out)))))))
+          
+          (define (load-fixture path) (normalize-sexp (file->string path)))
+          
+          (define (same-head? actual expected nchars)
+            (string=? (substring actual 0 (min nchars (string-length actual)))
+                      (substring expected 0 (min nchars (string-length expected)))))
+          
+          (define *results* (make-hash))
+          (define (register name ok? detail) (hash-set! *results* name (cons ok? detail)))
+          
+          (define (v2-branch-files)
+            (sort
+             (for/list ([f (in-directory "tests/patterns/fixtures_v2")]
+                        #:when (and (file-exists? f)
+                                    (regexp-match? #rx"_(hc_HC|generic_GENERIC)\\.al$" (path->string f))))
+               (path->string f))
+             string<?))
+          
+          (define ns (variable-reference->namespace (#%variable-reference)))
+          
+          (define (check-branch al-file)
+            (define name (path->string (file-name-from-path al-file)))
+            (define expected-file (path-replace-extension al-file #".expected.rkt"))
+            (with-handlers ([exn:fail? (lambda (e) (register name #f (format "exn: ~a" (exn-message e))))])
+              (define form (with-input-from-file al-file read))
+              (define expanded (eval form ns))
+              (define out (normalize-sexp (format "~s" expanded)))
+              (define exp (load-fixture expected-file))
+              (define shape-ok? (and (pair? expanded) (memq (car expanded) '(define-agent defagent))))
+              (define head-ok? (same-head? out exp 200))
+              (register name (and shape-ok? head-ok?)
+                        (format "shape=~a head200=~a head=~s" shape-ok? head-ok?
+                                (substring out 0 (min 120 (string-length out)))))))
+          
+          (for-each check-branch (v2-branch-files))
+          
+          (for ([(k v) (in-hash *results*)])
+            (displayln (format "RESULT name=~a ok=~a detail=~a" k (car v) (cdr v))))
+          (define failures (for/sum ([(k v) (in-hash *results*)] #:when (not (car v))) 1))
+          (printf "SUMMARY failures=~a/20 (V2 10 macros x HC/GENERIC)~n" failures)
+          (flush-output)
+          (exit failures)
+          ENDOFRACKET
+          ls -la expand_verify_v2.rkt
+          racket expand_verify_v2.rkt 2>&1 | tee /tmp/expand_v2_stdout.log
+          echo "--- V2 expand LOG TAIL ---"
+          tail -25 /tmp/expand_v2_stdout.log || true
+
       - name: Setup Python (for pytest patterns cases)
         uses: actions/setup-python@v5
         with:
@@ -163,7 +235,7 @@ jobs:
           python3 scripts/check_patterns_v2_ast.py
           echo
           echo "-- Now full pytest patterns suite (V1 5 + V2 10 + NFR01/02 15+15=30 parametrize, 约 10+30+15+15=70 patterns pytest cases) --"
-          python3 -m pytest tests/patterns/test_pattern_checker.py tests/patterns/test_pattern_checker_v2.py -v 2>&1 | tee /tmp/pytest_patterns.log
+          python3 -m pytest tests/patterns/test_pattern_checker.py tests/patterns/test_pattern_checker_v2.py tests/patterns/test_srs_marker_independence.py -v 2>&1 | tee /tmp/pytest_patterns.log
           echo "===== pytest patterns summary tail 20 ====="
           tail -20 /tmp/pytest_patterns.log
 
