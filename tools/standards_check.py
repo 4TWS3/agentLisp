@@ -271,6 +271,60 @@ def _check_a6_compromises_registered() -> tuple[bool, str]:
     return _result(True, f"{len(rows)} 条台账均含「现象/根因/守」三列")
 
 
+def _check_a7_local_equals_ci() -> tuple[bool, str]:
+    """A7 本地验证命令 == CI 命令：唯一真源 tools/test_paths.txt。
+
+    坑 #18/#24：我用「习惯的命令」验、CI 用另一组路径 → 「本地绿、CI 红」重复 5 次，
+    tests/patterns 因此从未在 CI 跑过（可追溯性矩阵长期 4 条 ORPHAN）。
+    本条判据把「两边一致」从纪律变成机器拦。
+    """
+    paths_file = ROOT / "tools" / "test_paths.txt"
+    verify = ROOT / "tools" / "verify_local.sh"
+    ci = ROOT / ".github" / "workflows" / "ci.yml"
+    for p in (paths_file, verify, ci):
+        if not p.is_file():
+            return _result(False, f"缺文件：{p.relative_to(ROOT)}")
+
+    paths = [ln.strip() for ln in paths_file.read_text(encoding="utf-8").splitlines() if ln.strip()]
+    if not paths:
+        return _result(False, "tools/test_paths.txt 为空（唯一真源不能为空）")
+    missing = [p for p in paths if not (ROOT / p).is_dir()]
+    if missing:
+        return _result(False, f"真源里的路径不存在：{missing}")
+
+    ci_text = ci.read_text(encoding="utf-8")
+    if "cat tools/test_paths.txt" not in ci_text:
+        return _result(False, "CI 的 pytest 未引用唯一真源（硬编码路径会漂移，坑 #24）")
+    if "tools/test_paths.txt" not in verify.read_text(encoding="utf-8"):
+        return _result(False, "tools/verify_local.sh 未引用同一真源")
+
+    # 全量调用不得硬编码路径清单。按**步骤块**判定（不是按行）：多行 run: | 里
+    # 路径与 -k 常在不同行，按行判会把 perf job 的刻意子集误报。
+    blocks: list[list[str]] = [[]]
+    for line in ci_text.splitlines():
+        if re.match(r"^\s+- (name|uses):", line):
+            blocks.append([])
+        blocks[-1].append(line)
+    hard: list[str] = []
+    for block in blocks:
+        joined = "\n".join(block)
+        if "pytest" not in joined or "cat tools/test_paths.txt" in joined:
+            continue
+        if " -k " in joined:
+            continue  # 刻意子集：必须带 -k 过滤，例如 perf job
+        for line in block:
+            stripped = line.strip()
+            if stripped.startswith("#"):
+                continue  # 注释里提到路径不算硬编码
+            if re.search(r"(runtime/tests|python/tests|tests/step_defs|tests/patterns)", line):
+                hard.append(stripped[:70])
+                break
+    if hard:
+        return _result(False, f"CI 里仍有硬编码路径的 pytest 调用：{hard}")
+
+    return _result(True, f"真源 {len(paths)} 条路径，CI 与本地脚本均引用它")
+
+
 # --------------------------------------------------------------------------- 注册表（封闭枚举）
 CHECKS: list[dict] = [
     {
@@ -330,6 +384,12 @@ CHECKS: list[dict] = [
         "fn": _check_a6_compromises_registered,
     },
     {
+        "id": "A7",
+        "role": "架构",
+        "title": "本地验证命令 == CI 命令（唯一真源）",
+        "fn": _check_a7_local_equals_ci,
+    },
+    {
         "id": "E3",
         "role": "工程",
         "title": "静默 except 检查（与 P5 共用）",
@@ -337,7 +397,7 @@ CHECKS: list[dict] = [
     },
 ]
 
-CLOSED_IDS = ("P1", "P2", "P3", "P4", "P5", "P6", "A1", "A2", "A3", "A5", "A6", "E3")
+CLOSED_IDS = ("P1", "P2", "P3", "P4", "P5", "P6", "A1", "A2", "A3", "A5", "A6", "A7", "E3")
 
 
 def _assert_registry_closed() -> None:

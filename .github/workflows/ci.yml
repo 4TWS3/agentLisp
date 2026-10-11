@@ -235,9 +235,10 @@ jobs:
           PYTHONPATH: ${{ github.workspace }}
         run: |
           mkdir -p junit artifacts
-          # tests/patterns 必须在内：FR-PATTERN-01/02 与 NFR-PATTERN-01/02 的用例都在这里，
-          # 漏掉会让可追溯性矩阵把它们判成 ORPHAN（CI 实测 4 条）。
-          uv run pytest runtime/tests python/tests tests/step_defs tests/patterns -v \
+          # 路径必须取自唯一真源 tools/test_paths.txt（判据 A7 守护；本地同一入口 tools/verify_local.sh）。
+          # 硬编码过一次的代价：tests/patterns 被漏掉，FR-PATTERN-01/02 与 NFR-PATTERN-01/02
+          # 的用例从未在 CI 跑过，可追溯性矩阵长期报 4 条 ORPHAN（坑 #24）。
+          uv run pytest $(cat tools/test_paths.txt | tr '\n' ' ') -v \
             --cov=runtime \
             --cov=host \
             --cov=python/agentlisp_runtime \
