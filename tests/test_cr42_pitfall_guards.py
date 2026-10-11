@@ -124,7 +124,9 @@ def test_all_expected_fixtures_read_to_eof() -> None:
         )
         cp = subprocess.run(["racket", "-e", expr], capture_output=True, text=True, timeout=60)
         if cp.returncode != 0:
-            bad.append(f"{p.name}: {cp.stderr.strip().splitlines()[-1][:90] if cp.stderr.strip() else 'rc!=0'}")
+            bad.append(
+                f"{p.name}: {cp.stderr.strip().splitlines()[-1][:90] if cp.stderr.strip() else 'rc!=0'}"
+            )
     assert not bad, "这些夹具无法完整读取（读到 EOF）：\n" + "\n".join(bad)
 
 

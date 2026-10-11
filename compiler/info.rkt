@@ -8,7 +8,7 @@
 (define deps
   '("base"
     "rackunit-lib"
-    "syntax-parse"
+    "syntax/parse"
     "data-lib"
     "parser-tools-lib"))
 

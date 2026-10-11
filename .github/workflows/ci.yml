@@ -155,11 +155,11 @@ jobs:
 
       - name: Ruff lint
         run: |
-          uvx ruff check runtime host python/agentlisp_runtime runtime/tests python/tests tests scripts conftest.py
+          uvx --from ruff==0.16.2 ruff check runtime host python/agentlisp_runtime runtime/tests python/tests tests scripts conftest.py
 
       - name: Ruff format check
         run: |
-          uvx ruff format --check runtime host python/agentlisp_runtime runtime/tests python/tests tests scripts conftest.py
+          uvx --from ruff==0.16.2 ruff format --check runtime host python/agentlisp_runtime runtime/tests python/tests tests scripts conftest.py
 
       - name: MyPy type check
         run: |
