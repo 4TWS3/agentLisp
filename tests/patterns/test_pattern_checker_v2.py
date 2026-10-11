@@ -295,7 +295,9 @@ def test_nfr01_macro_expand_head200_prefix_byte_identical(macro: str, ver: str):
     # 因此 V1 只断言结构不变量；V2 的 fixture 由 scripts/gen_patterns_v2.py 生成且经
     # scripts/check_patterns_v2_ast.py 合法性闸门校验，做 AST 级全等比对。
     if ver == "v1":
-        tags = [b[0] for b in got[2:] if isinstance(b, list) and b and isinstance(b[0], str)]
+        # CR-42 P-3：:pattern 是正交扩展，不参与 5 桶顺序断言（与 checker 的
+        # check-prefix-sorted-5-bucket 保持同一口径）。
+        tags = [b[0] for b in got[2:] if isinstance(b, list) and b and b[0] in FIVE_BUCKETS]
         assert tags == [t for t in FIVE_BUCKETS if t in tags], (
             f"NFR01 v1 {macro}: 5 桶顺序非升序 {tags}"
         )
