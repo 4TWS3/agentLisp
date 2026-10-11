@@ -85,7 +85,8 @@ COPY --from=racket-base /usr/local /usr/local
 ENV VIRTUAL_ENV=/app/.venv \
     PATH="/app/.venv/bin:/usr/local/bin:$PATH" \
     SCHEME_ROOT=/app/scheme \
-    PYTHONPATH=/app/python
+    # /app 必须在 PYTHONPATH 上：CI 的模块冒烟跑 `python -m examples.dist.repair_agent`
+    PYTHONPATH=/app:/app/python
 
 WORKDIR /app
 
@@ -94,6 +95,8 @@ COPY scheme /app/scheme
 COPY python /app/python
 COPY docker/entrypoint.sh /app/docker/entrypoint.sh
 COPY config /app/config
+# examples 必须进镜像：CI 的模块冒烟跑 `python -m examples.dist.repair_agent`
+COPY examples /app/examples
 
 RUN chmod +x /app/docker/entrypoint.sh \
     && ln -sf /app/python/pyproject.toml /app/pyproject.toml
@@ -120,7 +123,9 @@ RUN set -eux; \
     echo "[docker] which agentlisp: $(command -v agentlisp)"; \
     echo "[docker] venv bin: $(ls /app/.venv/bin/ | tr '\n' ' ')"; \
     agentlisp --help > /dev/null; \
-    echo "[docker] CLI smoke ok（PATH 查找 + --help 均通过）"
+    echo "[docker] CLI smoke ok（PATH 查找 + --help 均通过）"; \
+    cd /app && python -c 'import examples.dist.repair_agent as m; print("[docker] module smoke ok:", m.AGENT_NAME)'; \
+    echo "[docker] module smoke ok（examples.dist.repair_agent 可导入）"
 
 RUN cd /app \
     && ls scheme/ \
