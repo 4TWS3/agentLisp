@@ -298,7 +298,9 @@ def _check_a7_local_equals_ci() -> tuple[bool, str]:
     # Windows 检出可能是 CRLF：不去 \r 会让路径尾部多一个字符（CI 实测 file or directory not found）
     # 只看**命令本身**：注释里出现 tr -d 不算（第一版写成全文子串检查，
     # 结果被我自己的注释满足 → 反验时假通过）。
-    cmd_lines = [ln for ln in ci_text.splitlines() if "cat tools/test_paths.txt" in ln and "pytest" in ln]
+    cmd_lines = [
+        ln for ln in ci_text.splitlines() if "cat tools/test_paths.txt" in ln and "pytest" in ln
+    ]
     if not cmd_lines:
         return _result(False, "找不到引用真源的 pytest 命令行")
     if not all("tr -d" in ln for ln in cmd_lines):
