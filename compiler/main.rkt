@@ -34,12 +34,25 @@
   (flush-output (current-error-port))
   (exit code))
 
+;; 展开段会 set!/读这两个标记 → 必须在文件顶部定义。
+;; 教训：had-parse-error? 曾定义在 L430（使用点之后），运行到展开段就报
+;; "cannot reference an identifier before its definition"，异常被外层吞掉 → 静默返回 0。
+(define had-expand-error? #f)
+(define had-parse-error? #f)
+
+;; IF-CLI-1 编码表：「>=4 保留（编译器内部 panic 或未分类异常）」。
+;; 语法/检查/IO 失败都已在下游各自捕获（2/1/3），只有**未分类**异常会走到这里 → 统一 4。
+(error-display-handler
+ (lambda (_msg e)
+   (fprintf (current-error-port)
+            "\ninternal panic (exit 4): ~a\n"
+            (if (exn? e) (exn-message e) e))
+   (flush-output (current-error-port))
+   (exit 4)))
+
 (define check-only? #f)
 (define patterns-report? #f)
 
-;; 宏展开失败也必须让进程失败（标准 P4：不许沉默）。
-;; 旧行为：handler 只打日志并返回原式 → 检查循环认不出该式 → 退出码 0（静默失败）。
-(define had-expand-error? #f)
 (define emit-python? #t)
 (define json-errors? #f)
 (define verbose? #f)
@@ -47,13 +60,24 @@
 (define dump-ast? #f)
 
 (define (file->value-list path)
-  (call-with-input-file path
+  ;; 读取失败（括号不闭合等）属解析失败 → 退出码 2（IF-CLI-1 六码契约）。
+  ;; 旧行为：read 异常在模块顶层未捕获 → Racket 以 1 退出，测试期望 2。
+  (with-handlers ([exn:fail:read?
+                   (lambda (e)
+                     (fprintf (current-error-port) "\nread error: ~a\n" (exn-message e))
+                     (exit/flush 2))]
+                  ;; 文件不存在/不可读 = IO 失败 → 退出码 3（IF-CLI-1 六码契约）
+                  [exn:fail:filesystem?
+                   (lambda (e)
+                     (fprintf (current-error-port) "\nI/O error: ~a\n" (exn-message e))
+                     (exit/flush 3))])
+   (call-with-input-file path
     (lambda (in)
       (let loop ((acc '()))
         (define v (read in))
         (if (eof-object? v)
             (reverse acc)
-            (loop (cons v acc)))))))
+            (loop (cons v acc))))))))
 
 (define (safe-dyn mod-path sym default)
   (with-handlers ([exn:fail? (lambda (e) default)])
@@ -219,6 +243,8 @@
           [(and (pair? form) (memq (car form) pattern-macro-names))
            (with-handlers ([exn:fail? (lambda (e)
                                         (set! had-expand-error? #t)
+                                        ;; 读取类错误（括号不闭合等）计入解析失败 → 退出码 2
+                                        (when (exn:fail:read? e) (set! had-parse-error? #t))
                                         (fprintf (current-error-port) "; expand-single ~s FAIL: ~a~n" (car form) (exn-message e))
                                         form)])
              ;; CR-42 后续：迭代展开到不动点。别名宏（规格 §3 名 → 实现名）一次 eval 后仍是宏调用，
@@ -238,7 +264,8 @@
           [else form])))
     (when had-expand-error?
       (fprintf (current-error-port) "\nmacro expansion FAILED, aborting.\n")
-      (exit/flush 1))
+      ;; 读取类错误（如括号不闭合）属解析失败 → 退出码 2；其余展开失败 → 1
+      (exit/flush (if had-parse-error? 2 1)))
     ;; CR-42 F2：真正 apply 旁路 checker（结果只落 stderr）
     ;; 性能：该报告会编译并比对 15 个模式的整张矩阵（约 +400ms）。
     ;; NFR-PERF-2 要求 parse+check+emit < 200ms，因此改为按需触发：
@@ -318,6 +345,9 @@
  (("--json-errors") "Emit compiler diagnostics as JSON array to stdout (SRS §5.1, 用于 IDE 红波浪)"
   (set! json-errors? #t))
  (("-v" "--verbose") "Verbose: print progress" (set! verbose? #t))
+ (("-V" "--version") "Print SRS + compiler version, then exit 0 (IF-CLI-1)"
+  (printf "agentlispc 2.0.0 (SRS v2.0.0)\n")
+  (exit/flush 0))
  (("--dump-expanded-sexp") "Dump post-pattern-expansion s-expressions, then exit"
   (set! dump-expanded-sexp? #t))
  (("--dump-ast") "Alias for --dump-expanded-sexp"
@@ -401,9 +431,7 @@
 (define checked-agents '())
 
 ;; CLI 退出码契约（IF-CLI-1）：0=成功 / 1=检查失败 / 2=解析失败 / 3=IO 失败。
-;; 现代检查循环把 parse 异常与 check 异常都收进错误列表，若不做区分，
-;; 解析失败会退化成 1（实测 [exit2_parse_fail] expected rc=2 actual=1）。
-(define had-parse-error? #f)
+;; 标记 had-parse-error? 定义在文件顶部（展开段就会读它）。
 
 
 (define check-results

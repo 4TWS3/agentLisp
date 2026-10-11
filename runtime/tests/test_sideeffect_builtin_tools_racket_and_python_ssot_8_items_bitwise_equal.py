@@ -85,7 +85,9 @@ def test_sideeffect_builtin_tools_racket_and_python_ssot_8_items_bitwise_equal(
             check=False,
         )
         if proc.returncode == 0:
-            tokens: list[str] = proc.stdout.strip().split()
+            # 同一口径：Racket 侧 stdout 是 (`a b ... z`) 形态，必须去掉括号
+            tokens: list[str] = [t.strip("(),") for t in proc.stdout.strip().split()]
+            tokens = [t for t in tokens if t]
             if len(tokens) == 8 and all(isinstance(t, str) and t for t in tokens):
                 racket_set = set(tokens)
                 racket_from_source_ok = True
@@ -102,7 +104,10 @@ def test_sideeffect_builtin_tools_racket_and_python_ssot_8_items_bitwise_equal(
         assert matched is not None, (
             "fallback 正则未匹配到 (define SIDEEFFECT-BUILTIN-TOOLS '(*)) 行"
         )
-        racket_tokens: list[str] = matched.group(1).split()
+        # Racket 侧的多行 '('a b\n c d)\n' 捕获：必须去掉括号与逗号，否则集合里会出现 '(bash'、'sudo)'
+        racket_tokens: list[str] = [
+            t.strip("(),") for t in matched.group(1).split() if t.strip("(),")
+        ]
         assert len(racket_tokens) == 8, (
             f"fallback 抽取 token 数 = {len(racket_tokens)} 期望 8；tokens={racket_tokens}"
         )

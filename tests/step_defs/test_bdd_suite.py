@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import os
 import pathlib
 import shutil
@@ -24,7 +25,6 @@ from collections.abc import Callable
 from typing import Any
 
 import pytest
-import logging
 
 try:
     from runtime.checker import SIDEEFFECT_BUILTIN_TOOLS as _SIDEEFFECT_SET

@@ -24,6 +24,8 @@ from typing import Any
 # 仓库根：由 __file__ 派生，避免依赖 cwd（标准 A3）
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
+import logging
+
 import pytest
 
 from runtime.base_harness_v2 import (
@@ -38,7 +40,6 @@ from runtime.errors import FeatureNotInstalledError
 from runtime.status_bar import (
     StatusBar as LegacyStatusBarProtocol,  # type: ignore[attr-defined]  # noqa
 )
-import logging
 
 # ---------------------------------------------------------------------------
 # fixtures / helpers
@@ -526,7 +527,6 @@ def test_correct_on_failure_abort_is_reflected_in_trace_when_circuit_break():
 @pytest.mark.req("FR-CHECK-1")
 def test_compiler_structured_errors_mapped_to_exception_message_shapes():
     """SRS FR-CHECK-1/2/3：compiler/checker 代码中存在三条标准错误码字符串（枚举 Single Source of Truth = checker.rkt，agentlisp_compiler.rkt 重导出）。"""
-    from pathlib import Path
 
     combined_src = (
         (REPO_ROOT / "compiler/agentlisp_compiler.rkt").read_text(encoding="utf-8")
@@ -1241,7 +1241,6 @@ def test_json_errors_shape_via_checker_rkt_source():
       (b) main.rkt 暴露了 CLI 选项 --json-errors；
       (c) provider-weird 这类 checker boundary case 的错误会映射到 srs_id = FR-CHECK-0 / FR-CHECK-1/2/3 之一。
     """
-    from pathlib import Path
 
     checker_src = (REPO_ROOT / "compiler/checker.rkt").read_text(encoding="utf-8")
     main_src = (REPO_ROOT / "compiler/main.rkt").read_text(encoding="utf-8")
@@ -1275,7 +1274,6 @@ def test_json_errors_kv_alignment_has_correct_hints_srs_id():
     已经填了 #:hints '("SRS §4.1.1 ..." "...移动到 :tools 之后") 与 severity=error + srs_id=FR-CHECK-1。
     本机无 racket，用 Python 正则检查 raise-check 调用的该错误分支是否含正确的 SRS-ID 映射。"""
     import re
-    from pathlib import Path
 
     src = (REPO_ROOT / "compiler/checker.rkt").read_text(encoding="utf-8")
     # 找到所有 (raise-check 'ERR_KV_ALIGNMENT_VIOLATION ...)

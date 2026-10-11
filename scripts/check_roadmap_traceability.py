@@ -17,13 +17,13 @@ CI 调用（ci.yml python-tests ubuntu 门禁）：
 from __future__ import annotations
 
 import argparse
+import logging
 import os
 import pathlib
 import re
 import subprocess
 import sys
 import xml.etree.ElementTree as ET
-import logging
 
 REPO_ROOT = pathlib.Path(__file__).resolve().parents[1]
 SRS_DEFAULT = REPO_ROOT / "docs" / "spec" / "agentlisp_srs.md"

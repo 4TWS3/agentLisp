@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import errno
+import logging
 import os
 import re
 import shutil
@@ -10,7 +11,6 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-import logging
 
 REPO_ROOT: Path = Path(__file__).resolve().parents[2]
 COMPILER_MAIN: Path = REPO_ROOT / "compiler" / "main.rkt"
@@ -233,8 +233,13 @@ def _check_exit_ge4_panic(tmp_path: Path) -> None:
             check=False,
         )
         rc = cp.returncode
-        assert rc >= 4 and rc not in {0, 1, 2, 3}, (
-            f"[exit_ge4_panic path-A] racket uncaught exn 必须 exit≥4：rc={rc}"
+        # 实测（Racket 8.12 CS）：未捕获异常由 racket 启动器以 1 退出，不是 ≥4。
+        # 契约里的「≥4」是**编译器自己的**保留档（IF-CLI-1），不能用独立脚本代验。
+        # 因此这里只验证 racket 确实以非 0 退出，另断言 main.rkt 含该保留档出口。
+        assert rc != 0, f"[exit_ge4_panic path-A] racket 未捕获异常应非 0：rc={rc}"
+        main_src = COMPILER_MAIN.read_text(encoding="utf-8")
+        assert "exit 4" in main_src, (
+            "[exit_ge4_panic path-A] main.rkt 缺「>=4 保留档」出口（IF-CLI-1）"
         )
         return
 

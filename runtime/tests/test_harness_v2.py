@@ -14,6 +14,7 @@ V2 Harness 合并版回归测试 (runtime/tests/test_harness_v2.py)
 
 from __future__ import annotations
 
+import logging
 import random
 import shutil
 import statistics
@@ -32,7 +33,6 @@ from runtime.base_harness_v2 import (
     _contains_forbidden_token,
     build_kv_aligned_context,
 )
-import logging
 
 # ============================================================================
 # 1. build_kv_aligned_context 顺序 (Issue #3: Status Bar 必须是 system 角色，不是 user)
@@ -1821,7 +1821,9 @@ def test_emit_context_auto_append_maps_to_underscore_key_in_python_source(tmp_pa
     )
     # 路径 A（CI Ubuntu 有 racket）：真发射产物 grep
     if racket_bin is not None:
-        sample = repo / "examples" / "production-repair-agent.al"
+        # 用现代块语法的夹具：examples/production-repair-agent.al 是旧式输入，
+        # 现代管线不产出 agent → CLI 回退旧发射器 → 产物是 DO NOT EDIT 兜底桩（实测 rc=0 但无该键）
+        sample = repo / "tests" / "patterns" / "fixtures_v2" / "priority01_hc_HC.al"
         out_py = tmp_path / "agent.py"
         cp = subprocess.run(
             [racket_bin, str(repo / "compiler" / "main.rkt"), "-i", str(sample), "-o", str(out_py)],
