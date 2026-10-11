@@ -40,7 +40,7 @@ jobs:
       - name: Link v0.1 DSL package
         working-directory: scheme
         run: |
-          raco pkg install --auto --no-docs --batch --type dir --name agent-dsl .
+          raco pkg install --auto --no-docs --batch --type dir --name agent-dsl "$(pwd)"
           raco pkg show agent-dsl || true
 
       - name: Run v0.1 Scheme tests
@@ -70,7 +70,7 @@ jobs:
       - name: Link compiler package
         working-directory: compiler
         run: |
-          raco pkg install --auto --no-docs --batch --type dir --name agentlisp-compiler .
+          raco pkg install --auto --no-docs --batch --type dir --name agentlisp-compiler "$(pwd)"
 
       - name: Run compiler tests
         run: |
@@ -271,7 +271,7 @@ jobs:
       - name: Link compiler package
         working-directory: compiler
         run: |
-          raco pkg install --auto --no-docs --batch --type dir --name agentlisp-compiler .
+          raco pkg install --auto --no-docs --batch --type dir --name agentlisp-compiler "$(pwd)"
 
       - name: Set up Python ${{ env.PYTHON_VERSION }}
         uses: actions/setup-python@v5
