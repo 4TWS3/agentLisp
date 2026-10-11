@@ -18,15 +18,29 @@
 | 9 | 编译期助手报 unbound identifier | `append-pattern/ct` 放在模块顶层，GENERIC 分支在 phase 1 运行 | 模块加载即报错（`racket` require） + `tests/test_cr42_v1_macros.py` |
 | 10 | `:pattern` 被 `parse-harness` 拒绝 | 插到了 `:harness` 内部，而 harness 只认 c/v/c 三块 | `parse-harness` 严格匹配 + 端到端编译测试 |
 | 11 | 静态模板改坏（括号不平衡） | 批量脚本拼接模板，靠人眼数括号 | `racket` 读入即报 `missing )`；改法改为逐宏 edit + 立即读入校验 |
+| 15 | BDD 2 个用例随机失败（`ModuleNotFoundError`） | 我的新测试执行 `sys.path.insert(0, "scripts")`，而 `scripts/tests/` 存在 → `import tests` 被遮蔽，BDD 动态生成测试导入失败 | `...::test_no_global_sys_path_mutation_in_tests`；正解改用 `importlib.util.spec_from_file_location` |
+| 16 | triage 把关键信息匿名化 | 归一化把 `No module named 'X'` 的模块名替换成 `'X'`，聚合后看不到缺什么 | `tests/test_triage.py` 断言导入类错误保留引号内容 |
 
 ## 二、仅纪律（尚未判据化）
 
 | # | 现象 | 根因 | 为什么暂不判据化 |
 |---|---|---|---|
-| 12 | 工具调用报语法错 | 我用 TS 模板字面量包 Python/bash 时，反引号与 `${}` 被 JS 抢先解析 | 属我自己的工具用法，不进仓库；规避法：改用 `chr(96)` 拼反引号、bash 变量写 `\${k}` |
+| 12 | 工具调用报语法错 | 我用 TS 模板字面量包 Python/bash 时，反引号与 `${}` 被 JS 抢先解析 | **半自动**：payload 一律用 `write` 落成 `.tmp_*` 再执行，不再内联；配套守护 `test_no_scratch_files_are_tracked` |
 | 13 | 覆盖 `write` 已有文件被拒 | 默认策略要求先 `read` 再写 | 工具层策略，无需仓库判据 |
-| 14 | 排查慢：先猜后验 | 连续 3 次改判据都没修好，最后才打印原始失败清单 | 已改为「先取证再改」；行为判据无法自动断言，靠流程纪律 |
+| 14 | 排查慢：先猜后验 | 连续 3 次改判据都没修好，最后才打印原始失败清单 | **半自动**：`scripts/triage.py` 先聚合失败签名 / NFR cell / checker cells；`tests/test_triage.py` 守护解析逻辑 |
 
-## 三、修订记录
+## 三、开工前检查（3 条动作，按顺序）
+
+1. **要跑失败分析时**：先执行 `python3 scripts/triage.py [目标]`。看聚合签名，再决定改什么。
+   - 同一签名命中 >= 2 次，视为同一根因。先修根因，再整体重跑。
+2. **要写多行 payload（Python / Racket / bash）时**：用 `write` 落成 `.tmp_*` 文件再执行。
+   - 不要内联进 TS 模板字面量。反引号与 `${}` 会被外层抢先解析。
+3. **要改静态模板（quasiquote 列表）时**：逐处单次 edit，每改一处立即用 `racket` 读入校验。
+   - 不批量拼接。括号错位靠读入报错定位，比人眼数括号快。
+
+## 四、修订记录
 
 - 2026-10-11：初版。CR-42 期间（P-1…P-5）共记录 14 条，其中 11 条有判据，3 条仅纪律。
+- 2026-10-11：第二轮。坑 #12 / #14 降级为「半自动」：新增 `scripts/triage.py` 与
+  `tests/test_triage.py`；payload 写法固化为「先落盘再执行」，配套守护
+  `test_no_scratch_files_are_tracked`；新增第三节「开工前检查」。仅 #13 仍为纯纪律。

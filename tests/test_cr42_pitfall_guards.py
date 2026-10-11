@@ -21,12 +21,15 @@ pytestmark = pytest.mark.skipif(not HAS_RACKET, reason="racket not on PATH")
 
 
 def _v2_macros() -> list[str]:
-    import sys
+    # 用 importlib 按路径加载，避免改动全局 sys.path
+    import importlib.util
 
-    sys.path.insert(0, str(ROOT / "scripts"))
-    from gen_patterns_v2 import PATTERNS
-
-    return [p["macro"] for p in PATTERNS]
+    spec = importlib.util.spec_from_file_location(
+        "gen_patterns_v2_mod", ROOT / "scripts" / "gen_patterns_v2.py"
+    )
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return [p["macro"] for p in mod.PATTERNS]
 
 
 def test_all_v2_macros_are_whitelisted() -> None:
@@ -83,6 +86,33 @@ def test_every_registered_kind_has_a_producer() -> None:
             produced.add(m.group(1))
     missing = sorted(kinds - produced)
     assert not missing, f"这些 kind 已注册但没有任何夹具产出：{missing}"
+
+
+def test_no_global_sys_path_mutation_in_tests() -> None:
+    """坑 #15：测试里往 sys.path 插 scripts/ 会遮蔽仓库 tests 包。
+
+    scripts/tests/ 存在，一旦 scripts/ 进入 sys.path，import tests 就解析到
+    scripts/tests/__init__.py，BDD 动态生成测试随即随机失败（实测 2 红）。
+    正解：用 importlib.util.spec_from_file_location 按路径加载。
+    """
+    offenders = []
+    needle_a, needle_b = "sys.path." + "insert", "sys.path." + "append"  # 拆开写，避免匹配到本文件
+    for py in (ROOT / "tests").rglob("*.py"):
+        if py.resolve() == Path(__file__).resolve():
+            continue  # 跳过本守护自身
+        text = py.read_text(encoding="utf-8")
+        if needle_a in text or needle_b in text:
+            offenders.append(str(py.relative_to(ROOT)))
+    assert not offenders, f"这些测试文件改了全局 sys.path：{offenders}"
+
+
+def test_no_scratch_files_are_tracked() -> None:
+    """坑 #12 的配套：payload 一律写到 .tmp_* 再执行，但临时文件不得进版本库。"""
+    cp = subprocess.run(
+        ["git", "ls-files", ".tmp_*"], cwd=ROOT, capture_output=True, text=True, timeout=60
+    )
+    tracked = [line for line in cp.stdout.splitlines() if line.strip()]
+    assert not tracked, f"这些临时 payload 被提交了：{tracked}"
 
 
 def test_ast_gate_count_matches_fixture_total() -> None:
