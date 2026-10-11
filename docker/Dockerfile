@@ -97,6 +97,9 @@ COPY docker/entrypoint.sh /app/docker/entrypoint.sh
 COPY config /app/config
 # examples 必须进镜像：CI 的模块冒烟跑 `python -m examples.dist.repair_agent`
 COPY examples /app/examples
+# compiler 必须进镜像：否则镜像只能跑运行时、不能编译 .al —— 审查者据此判定「模式未实现」
+# （分发物与源码树能力不一致 = 误导用户）。Racket 已由 racket-base 阶段提供。
+COPY compiler /app/compiler
 
 RUN chmod +x /app/docker/entrypoint.sh \
     && ln -sf /app/python/pyproject.toml /app/pyproject.toml
@@ -126,6 +129,17 @@ RUN set -eux; \
     echo "[docker] CLI smoke ok（PATH 查找 + --help 均通过）"; \
     cd /app && python -c 'import examples.dist.repair_agent as m; print("[docker] module smoke ok:", m.AGENT_NAME)'; \
     echo "[docker] module smoke ok（examples.dist.repair_agent 可导入）"
+
+# 分发物自证能力：镜像内必须能编译 .al，并把模式语义写进产物。
+# 背景：审查者只看分发物，看到镜像里没有 compiler/ 就判定「模式未实现」——
+# 分发物必须自己证明能力，而不是靠源码树解释。
+RUN set -eux; \
+    printf '(defpriority-agent docker_smoke\n  :criteria "urgency"\n  :levels 3)\n' > /tmp/pattern-smoke.al; \
+    racket compiler/main.rkt --version; \
+    racket compiler/main.rkt -i /tmp/pattern-smoke.al -o /tmp/pattern-smoke.py; \
+    grep -q 'self.PATTERNS' /tmp/pattern-smoke.py; \
+    echo "[docker] compiler smoke ok: $(wc -l < /tmp/pattern-smoke.py) lines, self.PATTERNS present"; \
+    rm -f /tmp/pattern-smoke.al /tmp/pattern-smoke.py
 
 RUN cd /app \
     && ls scheme/ \

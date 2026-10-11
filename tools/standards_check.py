@@ -309,6 +309,29 @@ def _check_a5_closed_enums() -> tuple[bool, str]:
     return _result(True, f"kind 计数 + {len(codes)} 个退出码均有断言")
 
 
+def _check_a9_distribution_self_proof() -> tuple[bool, str]:
+    """A9 分发物必须自证能力：镜像里带编译器，且构建期真编译一次、断言模式语义进产物。
+
+    坑 #31：审查者只查分发物（Docker 镜像 / wheel），看到镜像里没有 compiler/，
+    就判定「21 个设计模式仍未落地」—— 源码树有、分发物没有，而用户看到的是分发物。
+    对策：能力必须由分发物自证，不能靠源码树解释。
+    """
+    dockerfile = ROOT / "docker" / "Dockerfile"
+    if not dockerfile.is_file():
+        return _result(False, "缺 docker/Dockerfile")
+    text = dockerfile.read_text(encoding="utf-8")
+    if not re.search(r"^COPY compiler ", text, re.M):
+        return _result(False, "镜像未拷贝 compiler/：分发物不能编译 .al（用户会判「模式未实现」）")
+    if "racket compiler/main.rkt -i" not in text:
+        return _result(False, "构建期没有真编译一次（缺 racket compiler/main.rkt -i）")
+    if "self.PATTERNS" not in text:
+        return _result(False, "编译自证未断言模式语义进产物（缺 self.PATTERNS）")
+    readme = ROOT / "README.md"
+    if not readme.is_file() or "Docker 镜像的能力边界" not in readme.read_text(encoding="utf-8"):
+        return _result(False, "README 未写明镜像能力边界（运行时 vs 编译器）")
+    return _result(True, "镜像含 compiler/ + 构建期编译自证 + README 写明能力边界")
+
+
 def _check_a6_compromises_registered() -> tuple[bool, str]:
     """A6 每个妥协必须写下代价并告知：台账每条必须有「守」列。"""
     ledger = ROOT / "docs" / "spec" / "agentlisp_lessons_ledger.md"
@@ -501,6 +524,12 @@ CHECKS: list[dict] = [
         "fn": _check_a8_acceptance_path,
     },
     {
+        "id": "A9",
+        "role": "架构",
+        "title": "分发物必须自证能力（坑 #31）",
+        "fn": _check_a9_distribution_self_proof,
+    },
+    {
         "id": "E3",
         "role": "工程",
         "title": "静默 except 检查（与 P5 共用）",
@@ -508,7 +537,23 @@ CHECKS: list[dict] = [
     },
 ]
 
-CLOSED_IDS = ("P1", "P2", "P3", "P4", "P5", "P6", "A1", "A2", "A3", "A5", "A6", "A7", "A8", "E3")
+CLOSED_IDS = (
+    "P1",
+    "P2",
+    "P3",
+    "P4",
+    "P5",
+    "P6",
+    "A1",
+    "A2",
+    "A3",
+    "A5",
+    "A6",
+    "A7",
+    "A8",
+    "A9",
+    "E3",
+)
 
 
 def _assert_registry_closed() -> None:

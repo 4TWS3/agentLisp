@@ -23,6 +23,28 @@
 > agentlisp --version
 > ```
 
+### Docker 镜像的能力边界（写清楚，避免误判）
+
+镜像**同时包含**运行时与编译器，两者都能用：
+
+| 能力 | 镜像内命令 | 产物 |
+|---|---|---|
+| 运行 Agent（Python 运行时） | `agentlisp --help` / `python -m examples.dist.repair_agent` | 运行时行为 |
+| **编译 `.al` → Python** | `racket compiler/main.rkt -i x.al -o x.py` | 含 `self.PATTERNS` / `self.EVOLUTION` 的 Python |
+
+验证命令（镜像构建期已自动跑过一遍，失败即构建失败）：
+
+```bash
+# 镜像内编译一个带模式宏的 agent，并确认模式语义进了产物
+docker run --rm --entrypoint sh ghcr.io/4tws3/agentlisp:v2.0.0-rc2 -c \
+  'printf "(defpriority-agent s\n  :criteria \"urgency\"\n  :levels 3)\n" > /tmp/s.al && \
+   racket compiler/main.rkt -i /tmp/s.al -o /tmp/s.py && grep -n self.PATTERNS /tmp/s.py'
+```
+
+> 分发物与源码树的能力必须一致 —— 只给运行时不给编译器，会让「模式是否落地」变成靠猜。
+> 判据 **A9** 机器校验：Dockerfile 必须包含 `COPY compiler` 与编译自证。
+
+
 基于 **Racket (Scheme)** 的 Agent DSL 编译器前端 + **Python 3.12+ / uv** ReAct Harness 运行引擎 + **云原生胶水层**（FastAPI/SSE、Temporal 长流程、Docker/E2B 沙箱、Redis Checkpoint、Jaeger OTel）。
 
 > 版本：`v2.0.0-rc2 GA` · 兼容保留旧 `scheme/` 与 `python/`（v0.1）目录；`pytest runtime/tests python/tests` 双套同绿；制度化四硬指标：ruff check All passed / ruff format 82 files / pytest 128 passed / IDE 0 diagnostics。
