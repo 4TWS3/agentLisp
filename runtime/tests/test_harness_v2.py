@@ -2028,7 +2028,9 @@ def test_nfr_perf_2_compile_wall_clock_lt_200ms(tmp_path: Path) -> None:
                 cwd=str(repo),
                 timeout=120,
             )
-            assert cp.returncode == 0, f"perf probe [{i}] FAIL rc={cp.returncode} {cp.stderr[-300:]}"
+            assert cp.returncode == 0, (
+                f"perf probe [{i}] FAIL rc={cp.returncode} {cp.stderr[-300:]}"
+            )
             runs.append(float(cp.stdout.strip().splitlines()[-1]))
         geo_mean_ms = math.exp(sum(math.log(max(x, 1e-6)) for x in runs) / len(runs))
         assert geo_mean_ms < 200.0, (
