@@ -19,6 +19,7 @@ from __future__ import annotations
 import math
 import shutil
 import subprocess
+import sys
 import tempfile
 from pathlib import Path
 
@@ -66,8 +67,15 @@ def measure() -> float:
         probe.write_text(body, encoding="utf-8")
         runs = []
         for i in range(ROUNDS):
+            # Windows 默认用 locale 编码（cp1252）解码 → 非 ASCII 会 UnicodeDecodeError
             cp = subprocess.run(
-                [racket, str(probe)], capture_output=True, text=True, cwd=str(ROOT), timeout=180
+                [racket, str(probe)],
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                cwd=str(ROOT),
+                timeout=180,
             )
             if cp.returncode != 0:
                 raise RuntimeError(f"探针第 {i + 1} 轮失败 rc={cp.returncode}: {cp.stderr[-300:]}")
@@ -76,6 +84,12 @@ def measure() -> float:
 
 
 def main() -> int:
+    # Windows 控制台默认 cp1252：直接 print 中文会 UnicodeEncodeError。
+    # 显式把两个流切到 UTF-8（errors=replace 保证不因编码中断测量）。
+    for stream in (sys.stdout, sys.stderr):
+        reconfigure = getattr(stream, "reconfigure", None)
+        if reconfigure is not None:
+            reconfigure(encoding="utf-8", errors="replace")
     try:
         geo = measure()
     except RuntimeError as e:
