@@ -81,12 +81,15 @@ jobs:
         run: |
           # 构造最小化违反 KV 对齐的 Agent（动态块 :context 放在静态块 :model/:tools 之前 → 触发 ERR_KV_ALIGNMENT_VIOLATION）
           cat > /tmp/bad_kv_align.al <<'AGENTLISP'
+          ;; 现代块语法；故意把动态块 :context 放在静态块 :model/:tools 之前 → 触发 KV 对齐违规。
+          ;; 旧夹具用的是 :main/:seq 等已不存在的语法，会被判成 PARSE_GENERIC 而不是 KV 违规。
           (define-agent kv-bad
-            (:context :auto)
-            (:model provider qwen model qwen-max)
-            (:tools
-              (:tool bash :harness ((:forbidden "rm -rf /"))))
-            (:main (:seq (:call bash))))
+            (:context :memory-policy (:markdown-fs "./m.md" :layers (L0-Abstract) :auto-append #t))
+            (:model :provider "qwen" :name "qwen-max" :system-prompt "x")
+            (:tools (import-builtin bash))
+            (:harness (:constrain :require-human-approval () :forbidden-commands ("rm -rf /"))
+                      (:verify :json-schema #t)
+                      (:correct :max-retries 1 :on-failure abort)))
           AGENTLISP
           set +e
           racket compiler/main.rkt --check-only --json-errors -i /tmp/bad_kv_align.al > /tmp/bad_kv_align.json

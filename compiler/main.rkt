@@ -35,6 +35,7 @@
   (exit code))
 
 (define check-only? #f)
+(define patterns-report? #f)
 (define emit-python? #t)
 (define json-errors? #f)
 (define verbose? #f)
@@ -231,7 +232,11 @@
                  [else f])))]
           [else form])))
     ;; CR-42 F2：真正 apply 旁路 checker（结果只落 stderr）
-    (run-patterns-checker-v2/report ns)
+    ;; 性能：该报告会编译并比对 15 个模式的整张矩阵（约 +400ms）。
+    ;; NFR-PERF-2 要求 parse+check+emit < 200ms，因此改为按需触发：
+    ;; 传 --patterns-report 或设 AGENTLISP_PATTERNS_REPORT=1 时才跑。
+    (when (or patterns-report? (getenv "AGENTLISP_PATTERNS_REPORT"))
+      (run-patterns-checker-v2/report ns))
     all-expanded))
 
 (define (check-ast/legacy a expanded-source input-path)
@@ -300,6 +305,7 @@
  (("-i" "--input") path "Input .al source file" (set! input-path path))
  (("-o" "--output") path "Output .py destination file (stdout if omitted)" (set! output-path path))
  (("--check-only") "Run static checks only, do not emit" (set! check-only? #t))
+ (("--patterns-report") "Run the patterns matrix report (slow)" (set! patterns-report? #t))
  (("--no-emit") "Alias for --check-only" (set! check-only? #t))
  (("--json-errors") "Emit compiler diagnostics as JSON array to stdout (SRS §5.1, 用于 IDE 红波浪)"
   (set! json-errors? #t))
