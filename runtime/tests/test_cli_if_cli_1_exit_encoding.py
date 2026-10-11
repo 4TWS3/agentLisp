@@ -145,11 +145,20 @@ def _check_exit_1_check_fail(tmp_path: Path) -> None:
     )
 
     main_src = COMPILER_MAIN.read_text(encoding="utf-8")
-    # 兼容统一出口重构：exit 调用现为 (exit/flush 1)
-    exit1_lines = [ln for ln in main_src.splitlines() if "(exit 1)" in ln or "(exit/flush 1)" in ln]
+    # 兼容两类出口写法：
+    #   1) 常量出口 (exit 1) / (exit/flush 1)；
+    #   2) 按标记分流 (exit/flush (if had-parse-error? 2 1)) —— 解析失败 2、检查失败 1。
+    def _is_exit1(line: str) -> bool:
+        return (
+            "(exit 1)" in line
+            or "(exit/flush 1)" in line
+            or ("(exit/flush" in line and "had-parse-error?" in line)
+        )
+
+    exit1_lines = [ln for ln in main_src.splitlines() if _is_exit1(ln)]
     assert len(exit1_lines) >= 3, (
         f"[exit1_check_fail fallback] main.rkt exit 1 调用点不足："
-        f"实际 {len(exit1_lines)}，正文 L168/L232/L239 应至少 3 处"
+        f"实际 {len(exit1_lines)}，正文应有 >=3 处（含按标记分流写法）"
     )
 
 
