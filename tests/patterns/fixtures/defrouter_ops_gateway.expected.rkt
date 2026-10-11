@@ -27,3 +27,7 @@
                            (:harness (:constrain :require-human-approval () :forbidden-commands ("rm -rf"))
                                      (:verify :json-schema #t :linter-check #f :test-runner "")
                                      (:correct :max-retries 2 :circuit-breaker 3 :on-failure 'abort))))))
+    (:pattern :kind router
+              :config (:markers ("按用户意图分发至正确 Worker"
+                              "路由判定先于任何工具执行")))
+)

@@ -36,3 +36,8 @@
                            (:harness (:constrain :require-human-approval () :forbidden-commands ("rm -rf"))
                                      (:verify :json-schema #t :linter-check #f :test-runner "")
                                      (:correct :max-retries 2 :circuit-breaker 3 :on-failure 'abort))))))
+    (:pattern :kind parallel
+              :config (:markers ("所有分支同时拉起，不得串行"
+                              "分支轮次允许在轨迹时间线交错"
+                              "全部结束后交给 reducer 归并")))
+)

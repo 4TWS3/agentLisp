@@ -29,3 +29,8 @@ PROMPT
              :linter-check #f
              :test-runner "")
     (:correct :max-retries 2 :circuit-breaker 5 :on-failure 'abort)))
+    (:pattern :kind chain
+              :config (:markers ("步骤按给定顺序执行，不得跳过"
+                              "每步 :out 注入后续 :in 上下文"
+                              "最终 Answer 汇总为 JSON")))
+)
