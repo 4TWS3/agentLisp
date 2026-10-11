@@ -212,3 +212,25 @@
 (register-v2-pattern! 'planner  "规划：先出计划再执行，结束时报告完成度"
                       (hash 'plan-size positive-integer?))
 
+
+;; =============================================================================
+;; CR-42 P-3e：剩余 6 个模式（21/21 覆盖）
+;; 说明：这 6 个模式当前没有专属宏，但语言层已可表达 —— 用户可直接写
+;;   (:pattern :kind <K> :config (:markers (...)))
+;; 其中工具使用/MCP/记忆管理/多智能体协作 四个模式由核心语法（:tools/:memory-policy/:multiagent）
+;; 承载，另有 15 个模式由 V1/V2 宏产出。
+;; =============================================================================
+
+(register-v2-pattern! 'rag             "智能体化 RAG：先检索再生成，证据必须回填"
+                      (hash 'retriever string?))
+(register-v2-pattern! 'a2a             "智能体间通信：跨 Agent 消息协议与 Agent Card"
+                      (hash 'protocol string?))
+(register-v2-pattern! 'reasoning       "推理技术：显式推理结构（CoT / 树状探索）"
+                      (hash 'strategy string?))
+(register-v2-pattern! 'learning        "学习与适应：把反馈写回技能层"
+                      (hash 'skill-dir string?))
+(register-v2-pattern! 'resource-aware  "资源感知：按成本/时延选择模型档位"
+                      (hash 'budget string?))
+(register-v2-pattern! 'goal-setting    "目标设定与监控：目标、进度与偏差处理"
+                      (hash 'goal string?))
+
