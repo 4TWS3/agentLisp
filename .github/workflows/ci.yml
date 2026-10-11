@@ -198,8 +198,23 @@ jobs:
         run: |
           uv run python -c "import host.gateway, host.workflow, host.sandbox; print('host import ok')"
 
+      - name: Build wheel + sdist and generate SHA256SUMS
+        shell: bash
+        working-directory: python
+        run: |
+          # runtime/tests 的断言要求 python/dist 下存在 1 个 whl / 1 个 tar.gz / SHA256SUMS，
+          # 属发布产物校验；CI 从不构建，故在 pytest 之前构建（与 release.yml 同款清单）。
+          uv build --out-dir dist
+          ls -l dist
+          ( cd dist && find . -maxdepth 1 -type f ! -name SHA256SUMS | LC_ALL=C sort | sed 's|^\./||' \
+              | xargs -I{} sh -c 'sha256sum "{}"' > SHA256SUMS )
+          echo '--- SHA256SUMS ---'; cat dist/SHA256SUMS
+
       - name: Run pytest with coverage
         shell: bash
+        env:
+          # 显式给出仓库根：确保 examples.dist.* 在 CI venv 中可导入
+          PYTHONPATH: ${{ github.workspace }}
         run: |
           mkdir -p junit artifacts
           uv run pytest runtime/tests python/tests tests/step_defs -v \
@@ -290,8 +305,23 @@ jobs:
         run: |
           uv sync --extra all
 
+      - name: Build wheel + sdist and generate SHA256SUMS
+        shell: bash
+        working-directory: python
+        run: |
+          # runtime/tests 的断言要求 python/dist 下存在 1 个 whl / 1 个 tar.gz / SHA256SUMS，
+          # 属发布产物校验；CI 从不构建，故在 pytest 之前构建（与 release.yml 同款清单）。
+          uv build --out-dir dist
+          ls -l dist
+          ( cd dist && find . -maxdepth 1 -type f ! -name SHA256SUMS | LC_ALL=C sort | sed 's|^\./||' \
+              | xargs -I{} sh -c 'sha256sum "{}"' > SHA256SUMS )
+          echo '--- SHA256SUMS ---'; cat dist/SHA256SUMS
+
       - name: Run perf pytest (NFR-PERF-1b + NFR-PERF-2, CI 真机真跑 racket 几何均值)
         shell: bash
+        env:
+          # 显式给出仓库根：确保 examples.dist.* 在 CI venv 中可导入
+          PYTHONPATH: ${{ github.workspace }}
         run: |
           mkdir -p junit artifacts
           uv run pytest runtime/tests -v \
