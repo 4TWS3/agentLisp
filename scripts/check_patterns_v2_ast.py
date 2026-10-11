@@ -325,14 +325,6 @@ def main() -> int:
             if name is None or str(name) != str(form[1]):
                 errs.append(f"{where}: 展开后 agent 名与输入不一致")
             blocks = datum[2:]
-            model = next((b for b in blocks if tag(b) == ":model"), None)
-            prompt = ""
-            if model:
-                i = 1
-                while i + 1 < len(model):
-                    if str(model[i]) == ":system-prompt":
-                        prompt = model[i + 1]
-                    i += 2
             # CR-42 P-4：语义标记的**承载处**已从 system-prompt 迁到 (:pattern …) 块。
             # 这里改为在 :pattern 块里核对（prompt-only 路径已关闭）。
             pattern_text = ""
