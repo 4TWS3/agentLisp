@@ -235,7 +235,9 @@ jobs:
           PYTHONPATH: ${{ github.workspace }}
         run: |
           mkdir -p junit artifacts
-          uv run pytest runtime/tests python/tests tests/step_defs -v \
+          # tests/patterns 必须在内：FR-PATTERN-01/02 与 NFR-PATTERN-01/02 的用例都在这里，
+          # 漏掉会让可追溯性矩阵把它们判成 ORPHAN（CI 实测 4 条）。
+          uv run pytest runtime/tests python/tests tests/step_defs tests/patterns -v \
             --cov=runtime \
             --cov=host \
             --cov=python/agentlisp_runtime \

@@ -1998,10 +1998,13 @@ def test_nfr_perf_2_compile_wall_clock_lt_200ms(tmp_path: Path) -> None:
     if racket_bin is not None:
         perf_script = repo / "scripts" / "perf_compile_geo_mean.py"
         assert perf_script.is_file(), f"NFR-PERF-2 唯一实现脚本缺失：{perf_script}"
+        # Windows 控制台默认 cp1252：脚本输出 UTF-8，必须显式按 utf-8 解码（否则 UnicodeDecodeError）
         cp = subprocess.run(
             [sys.executable, str(perf_script)],
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             cwd=str(repo),
             timeout=300,
         )
