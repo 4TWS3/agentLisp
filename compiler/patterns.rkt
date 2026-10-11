@@ -215,6 +215,10 @@
                  :temperature 0.0
                  :system-prompt "你是一个智能路由门控，负责分析用户意图并分发至正确 Worker。")
          (:tools (import-builtin bash))
+         ;; CR-42 P-3：模式语义进 AST（模式块是 :harness 的兄弟节点）
+         (:pattern :kind router
+                   :config (:markers ("按用户意图分发至正确 Worker"
+                                      "路由判定先于任何工具执行")))
          (:context :memory-policy (:markdown-fs "./memory/router.md"
                                    :layers ('L0-Abstract)
                                    :auto-append #f)
@@ -267,6 +271,11 @@ PROMPT
                    :temperature 0.0
                    :system-prompt sp)
            (:tools (import-builtin bash pytest))
+           ;; CR-42 P-3：模式语义进 AST
+           (:pattern :kind chain
+                     :config (:markers ("步骤按给定顺序执行，不得跳过"
+                                        "每步 :out 注入后续 :in 上下文"
+                                        "最终 Answer 汇总为 JSON")))
            (:context :memory-policy (:markdown-fs "./memory/doc-pipeline.md"
                                      :layers ('L0-Abstract 'L1-Overview)
                                      :auto-append #t)
@@ -299,6 +308,11 @@ PROMPT
                  :temperature 0.0
                  :system-prompt "你是一个并行分支协调器（Parallelization Coordinator）。所有 :branches 下的 Worker 将被同时拉起，不得串行；全部结束后将各 Worker 结果交给 :reducer aggregator-agent 归并。并行断言：search-a 与 search-b 的轮次允许在 trajectory 时间线上交错。")
          (:tools (import-builtin bash read-pdf))
+         ;; CR-42 P-3：模式语义进 AST
+         (:pattern :kind parallel
+                   :config (:markers ("所有分支同时拉起，不得串行"
+                                      "分支轮次允许在轨迹时间线交错"
+                                      "全部结束后交给 reducer 归并")))
          (:context :memory-policy (:markdown-fs "./memory/multi-search.md"
                                    :layers ('L0-Abstract)
                                    :auto-append #f)
@@ -359,6 +373,11 @@ PROMPT
                    :temperature 0.7
                    :system-prompt sp)
            (:tools (import-builtin web-search read-pdf))
+           ;; CR-42 P-3：模式语义进 AST
+           (:pattern :kind planner
+                     :config (:markers ("首部输出计划 JSON，步骤数 ∈ (3,5)"
+                                        "按计划逐步执行"
+                                        "FIN 阶段报告完成度，unfinished 必须为空")))
            (:context :memory-policy (:markdown-fs "./memory/deep-researcher.md"
                                      :layers ('L0-Abstract 'L1-Overview)
                                      :auto-append #t)
