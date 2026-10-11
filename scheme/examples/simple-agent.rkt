@@ -22,22 +22,26 @@
   #:input '#hash((channel . string?) (message . string?))
   #:output '#hash((sent . boolean?)))
 
-(define-step collect-info
-  (atomic search-docs knowledge query "项目申报书" limit 50)
-  #:next check-rules)
-
-(define-step check-rules
-  (atomic verify compliance document "项目书.docx" rules (list "rule-1" "rule-2" "rule-3"))
-  #:when #t
-  #:next generate-output)
+;; 顺序说明：Racket 要求先定义后引用，而 #:next 指向下一个步骤，
+;; 因此这里按依赖倒序定义；工作流的 #:steps 仍按正向执行顺序书写（见下方）。
+(define-step notify-result
+  (atomic send-message notify channel "email" "处理完成"))
 
 (define-step generate-output
-  (atomic create-report generate data results template "标准模板")
+  (atomic create-report generate data "results" "标准模板")
   #:next notify-result)
 
-(define-step notify-result
-  (atomic send-message notify channel "email" message "处理完成"))
+(define-step check-rules
+  ;; rules 不是绑定标识符，规则清单直接作为列表传入
+  (atomic verify compliance document "项目书.docx" (list "rule-1" "rule-2" "rule-3"))
+  ;; define-step 的关键字顺序固定为 #:next 之后 #:when
+  #:next generate-output
+  #:when #t)
 
+(define-step collect-info
+  ;; atomic 的 params 是表达式列表，不能写未绑定的 limit；限制值直接作为参数传入
+  (atomic search-docs knowledge query "项目申报书" 50)
+  #:next check-rules)
 (define-workflow document-review
   #:triggers '(manual schedule)
   #:steps (collect-info check-rules generate-output notify-result))

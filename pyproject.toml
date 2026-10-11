@@ -56,14 +56,16 @@ Documentation = "https://github.com/4TWS3/agentLisp#readme"
 "Release Notes" = "https://github.com/4TWS3/agentLisp/releases"
 SRS = "https://github.com/4TWS3/agentLisp/blob/main/docs/spec/agentlisp_srs.md"
 
-[tool.hatch.metadata]
-# legacy extra 含直接引用（agentlisp-runtime @ file://python），uv/hatch 默认拒绝；
-# 显式放行，否则 uv sync 在 CI 上直接失败。
-allow-direct-references = true
+[tool.uv.sources]
+# 本地开发时 agentlisp-runtime 指向工作区内的 python/ 目录。
+# 用 uv sources 而不是 PEP 508 直接引用：后者不允许相对 URL
+# （uv 报 "relative path without a working directory: python"），
+# 且会写进发布元数据。
+agentlisp-runtime = { path = "python", editable = true }
 
 [project.optional-dependencies]
 legacy = [
-    "agentlisp-runtime @ file://python",
+    "agentlisp-runtime",
 ]
 llm = [
     "anthropic>=0.34.0",
