@@ -47,10 +47,13 @@ pytestmark = pytest.mark.skipif(not HAS_RACKET, reason="racket not on PATH")
 
 
 def test_legal_pattern_emits_patterns_structure(tmp_path: Path) -> None:
-    cp = _run_racket(tmp_path, "((:pattern :kind priority :config (:criteria \"按用户影响面\" :levels 2)))")
+    cp = _run_racket(
+        tmp_path,
+        '((:pattern :kind priority :config (:markers ("m1" "m2") :criteria "按用户影响面" :levels 2)))',
+    )
     assert cp.returncode == 0, cp.stderr[-400:]
     assert "self.PATTERNS: List[Dict[str, Any]]" in cp.stdout
-    assert "'pattern': 'priority'" in cp.stdout
+    assert "'pattern': \"priority\"" in cp.stdout or "'pattern': 'priority'" in cp.stdout
     # 生成的 Python 必须语法合法
     import ast
 
@@ -76,6 +79,6 @@ def test_unknown_kind_is_compile_error(tmp_path: Path) -> None:
 
 
 def test_unknown_config_key_is_checker_error(tmp_path: Path) -> None:
-    cp = _run_racket(tmp_path, '((:pattern :kind priority :config (:criteria "c" :typo 1)))')
+    cp = _run_racket(tmp_path, '((:pattern :kind priority :config (:markers ("m") :typo 1)))')
     assert cp.returncode != 0
     assert "ERR_PATTERN_CONFIG" in cp.stderr
