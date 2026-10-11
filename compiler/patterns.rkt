@@ -180,7 +180,13 @@
                     :reviewer-agent "检查代码逻辑漏洞")
            (:correct :max-retries 3
                      :circuit-breaker 5
-                     :on-failure 'fallback-model))))
+                     :on-failure 'fallback-model))
+           ;; CR-42 P-3：模式块必须是 :harness 的兄弟节点（放进 :harness 内会被 parse-harness 拒绝）
+           ;; kind 必须已在 compiler/pattern_registry.rkt 注册
+           (:pattern :kind reflect
+                     :config (:markers ("失败即进入反思—修正回路"
+                                        "reviewer-agent 复核后才算完成"
+                                        "超过 :max-retries 次即中止")))))
    ((_ name* . rst*)
      (let* ((name-sym (syntax->datum #'name*))
             (rst-datum (syntax->datum #'rst*))

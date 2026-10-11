@@ -196,3 +196,19 @@
 (register-v2-pattern! 'exploration      "探索发现：budget 与 convergence 声明停止条件"
                       (hash 'budget positive-integer? 'convergence real?))
 
+
+;; =============================================================================
+;; CR-42 P-3：V1 五宏对应的 kind（patterns.rkt 的 HC/GENERIC 分支产出）
+;; =============================================================================
+
+(register-v2-pattern! 'reflect  "反思/自我纠错：失败进入反思—修正回路，reviewer-agent 复核"
+                      (hash 'max-retries positive-integer?))
+(register-v2-pattern! 'router   "路由：先判定意图再分发到 Worker"
+                      (hash 'routes string-list?))
+(register-v2-pattern! 'chain    "提示链：按给定顺序执行步骤，前一步输出注入后一步"
+                      (hash 'steps string-list?))
+(register-v2-pattern! 'parallel "并行化：分支同时拉起，轮次可交错，最后归并"
+                      (hash 'branches string-list?))
+(register-v2-pattern! 'planner  "规划：先出计划再执行，结束时报告完成度"
+                      (hash 'plan-size positive-integer?))
+
