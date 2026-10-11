@@ -253,7 +253,9 @@ def rk(x) -> str:
 
 
 def prompt_of(p: dict) -> str:
-    return p["role"] + " 模式参数：{params}。约束：" + "；".join(p["markers"]) + "。"
+    # CR-42 P-4：关闭 prompt-only 语义路径 —— 语义标记不再写进 system-prompt，
+    # 只由 (:pattern :kind K :config (:markers (...))) 承载，因而可被静态断言。
+    return p["role"] + " 模式参数：{params}。"
 
 
 # CR-42 P-2：模式 key → 注册表 kind（compiler/pattern_registry.rkt 里必须存在同名 kind）

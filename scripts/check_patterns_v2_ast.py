@@ -333,9 +333,17 @@ def main() -> int:
                     if str(model[i]) == ":system-prompt":
                         prompt = model[i + 1]
                     i += 2
+            # CR-42 P-4：语义标记的**承载处**已从 system-prompt 迁到 (:pattern …) 块。
+            # 这里改为在 :pattern 块里核对（prompt-only 路径已关闭）。
+            pattern_text = ""
+            for b in blocks:
+                if tag(b) == ":pattern":
+                    pattern_text += str(b)
             for mk in markers:
-                if mk not in prompt:
-                    errs.append(f"{where}: system-prompt 缺 SRS 标记 {mk!r}")
+                if mk not in pattern_text:
+                    errs.append(f"{where}: (:pattern …) 块缺 SRS 标记 {mk!r}")
+            if not pattern_text:
+                errs.append(f"{where}: 缺 (:pattern …) 块（P-4 后语义必须由 AST 承载）")
             n += 1
     print(f"checked {n} fixtures")
     if errs:
