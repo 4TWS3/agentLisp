@@ -96,6 +96,9 @@ _BUILTIN_MARKERS = frozenset(
 )
 
 
+# optionalhook：pytest-bdd 新版本已移除该 hookspec，直接注册会触发
+# pluggy PluginValidationError（CI 实测 INTERNALERROR: unknown hook 'pytest_bdd_apply_tag'）。
+@pytest.hookimpl(optionalhook=True)
 def pytest_bdd_apply_tag(tag: str, function: Any) -> bool:
     """pytest-bdd 9.x hook：返回 True 表示「我已经消费了这个 tag，别再 getattr(pytest.mark, tag)」。
 
