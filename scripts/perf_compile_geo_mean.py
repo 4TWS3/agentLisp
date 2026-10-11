@@ -57,9 +57,10 @@ def measure() -> float:
     if not SAMPLE.is_file():
         raise RuntimeError(f"计时样本缺失：{SAMPLE}")
     body = PROBE.format(
-        compiler=ROOT / "compiler" / "agentlisp_compiler.rkt",
-        checker=ROOT / "compiler" / "checker.rkt",
-        sample=SAMPLE,
+        # 必须是正斜杠形式：Windows 的 D:\a\... 塞进 Racket 字符串会被当转义序列 → 探针解析失败（rc=2）
+        compiler=(ROOT / "compiler" / "agentlisp_compiler.rkt").as_posix(),
+        checker=(ROOT / "compiler" / "checker.rkt").as_posix(),
+        sample=SAMPLE.as_posix(),
         iters=ITERATIONS,
     )
     with tempfile.TemporaryDirectory() as td:
