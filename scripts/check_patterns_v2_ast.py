@@ -283,7 +283,7 @@ def check_datum(datum, where, errs):
     idxs = [BUCKET_ORDER.index(t) for t in tags if t in BUCKET_ORDER]
     if idxs != sorted(idxs):
         errs.append(f"{where}: 5 桶顺序不是升序：{tags}")
-    unknown = [t for t in tags if t not in BUCKET_ORDER and t != ":pattern"]
+    unknown = [t for t in tags if t not in BUCKET_ORDER and t not in (":pattern", ":evolution")]
     if unknown:
         errs.append(f"{where}: 未知顶层块 {unknown}")
     for m in (":model", ":tools", ":context"):

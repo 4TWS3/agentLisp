@@ -342,7 +342,31 @@
       (check-context-leakage      parsed)   ; SRS §4 Invariant #3
       (check-shapes               parsed)   ; 枚举值域形状（AC-1 parser boundary 断言）
       (check-patterns             parsed)   ; CR-42：模式 config 语义校验（未知键即报错）
+      (check-evolution            parsed)   ; RSI §5.1：演进契约语义校验（区间 + 不变量齐全）
       parsed)))
+
+;; RSI 契约 §5.1：(:evolution …) 的语义校验。
+;; 语法与白名单在 parse 阶段已校验；这里抓语义：
+;;   1. 三条不可变不变量必须齐全（离线 Evolver 不得少声明禁区）；
+;;   2. 两个阈值必须在合法区间（通过率 [0,1]；p 值 (0,1)）。
+(define (check-evolution parsed)
+  (define evo (hash-ref parsed 'evolution #f))
+  (when evo
+    (define invariants (hash-ref evo 'immutable-invariants '()))
+    (define missing (filter (lambda (i) (not (memq i invariants)))
+                            '(:kv-alignment :workspace-root :forbidden-commands)))
+    (when (pair? missing)
+      (raise-check 'ERR_EVOLUTION_CONFIG
+                   (format ":immutable-invariants 必须包含全部禁区；缺少 ~a" missing)))
+    (define gate (hash-ref evo 'verifier-gate (hash)))
+    (define rate (hash-ref gate 'min-pass-rate #f))
+    (define pval (hash-ref gate 'mcnemar-p-threshold #f))
+    (unless (and rate (<= 0.0 rate 1.0))
+      (raise-check 'ERR_EVOLUTION_CONFIG
+                   (format ":min-pass-rate 必须在 [0,1] 区间，得到 ~a" rate)))
+    (unless (and pval (> pval 0.0) (< pval 1.0))
+      (raise-check 'ERR_EVOLUTION_CONFIG
+                   (format ":mcnemar-p-threshold 必须在 (0,1) 开区间，得到 ~a" pval)))))
 
 ;; CR-42：模式块的语义校验。语法与类型在 parse 阶段已由注册表校验，这里抓「未知 config 键」这类语义错误。
 (define (check-patterns parsed)

@@ -110,55 +110,122 @@
   (match form
     ;; 同时接受 defagent（spec 旧写法）与 define-agent（宏展开/夹具的规范产物）
     [(list (or 'defagent 'define-agent) name blocks ...)
-     ;; partition-blocks 返回 6 个值（含 order），此处 6 个都要接住
-     (let-values ([(model ctx tools harness multi _order patterns) (partition-blocks blocks name)])
-       (unless model   (raise-parse `(defagent ,name) "缺少必需的 :model 块"))
-       (unless ctx     (raise-parse `(defagent ,name) "缺少必需的 :context 块"))
-       (unless tools   (raise-parse `(defagent ,name) "缺少必需的 :tools 块"))
-       (unless harness (raise-parse `(defagent ,name) "缺少必需的 :harness 块"))
-       ;; 重新获得 order：partition-blocks 之前已经算过，但这里再算一次以便落盘（保持简单，不重构多返回）
-       (define parsed-patterns
-         ;; CR-42：查注册表校验 kind 与 config；非法即编译期报错（可静态断言）
-         (for/list ([blk (in-list patterns)])
-           (define-values (kind cfg errs) (validate-pattern-block blk))
-           (when (pair? errs)
-             (raise-parse ':pattern (string-join errs "；")))
-           (hash 'kind kind 'config cfg)))
-       (let-values ([(_1 _2 _3 _4 _5 order _pats) (partition-blocks blocks name)])
-         (hash 'name name
-               'patterns parsed-patterns
-               'model   (parse-model model)
-               'context (parse-context ctx)
-               'tools   (parse-tools tools)
-               'harness (parse-harness harness)
-               'multi   (and multi (parse-multi multi))
-               'order   order
-               'raw form)))]
+     ;; partition-blocks 现在返回一个 hash（原先 7 个返回值，解构与重复调用都易错）
+     (define pb (partition-blocks blocks name))
+     (define model   (hash-ref pb 'model))
+     (define ctx     (hash-ref pb 'context))
+     (define tools   (hash-ref pb 'tools))
+     (define harness (hash-ref pb 'harness))
+     (define multi   (hash-ref pb 'multiagent))
+     (unless model   (raise-parse `(defagent ,name) "缺少必需的 :model 块"))
+     (unless ctx     (raise-parse `(defagent ,name) "缺少必需的 :context 块"))
+     (unless tools   (raise-parse `(defagent ,name) "缺少必需的 :tools 块"))
+     (unless harness (raise-parse `(defagent ,name) "缺少必需的 :harness 块"))
+     (define parsed-patterns
+       ;; CR-42：查注册表校验 kind 与 config；非法即编译期报错（可静态断言）
+       (for/list ([blk (in-list (hash-ref pb 'patterns))])
+         (define-values (kind cfg errs) (validate-pattern-block blk))
+         (when (pair? errs)
+           (raise-parse ':pattern (string-join errs "；")))
+         (hash 'kind kind 'config cfg)))
+     ;; RSI 契约 §5.1：(:evolution …) 可选；缺省 #f
+     (define evo (hash-ref pb 'evolution #f))
+     (define parsed-evolution (and evo (parse-evolution evo)))
+     (hash 'name name
+           'patterns parsed-patterns
+           'evolution parsed-evolution
+           'model   (parse-model model)
+           'context (parse-context ctx)
+           'tools   (parse-tools tools)
+           'harness (parse-harness harness)
+           'multi   (and multi (parse-multi multi))
+           'order   (hash-ref pb 'order)
+           'raw form)]
     [_ (raise-parse 'parse-defagent (format "顶层必须是 (defagent NAME BLOCK…)，得到：~s" form))]))
 
+;;; ---------- RSI 演进契约 §5.1：(:evolution …) ----------
+;; 值域封闭：突变目标与不可变不变量都只能取白名单内的符号。
+;; 这样离线 Evolver 生成的 :evolution 若越界，会在编译期被拦下。
+(define evolution-mutation-targets '(:pattern-macros :skills :harness-retry))
+(define evolution-invariants       '(:kv-alignment :workspace-root :forbidden-commands))
+
+(define (parse-evolution blk)
+  (match blk
+    [(list ':evolution mt iv vg)
+     (hash 'mutation-targets     (parse-evolution-targets mt)
+           'immutable-invariants (parse-evolution-invariants iv)
+           'verifier-gate        (parse-verifier-gate vg))]
+    [_ (raise-parse ':evolution
+                    "必需是 (:evolution (:mutation-targets …) (:immutable-invariants …) (:verifier-gate …))")]))
+
+(define (parse-evolution-targets mt)
+  (match mt
+    [(list ':mutation-targets ts ...)
+     (when (null? ts) (raise-parse ':evolution ":mutation-targets 不能为空"))
+     (for ([t (in-list ts)])
+       (unless (memq t evolution-mutation-targets)
+         (raise-parse ':evolution
+                      (format "未知突变目标 ~s；允许：~s" t evolution-mutation-targets))))
+     ts]
+    [_ (raise-parse ':evolution "缺少 (:mutation-targets …)")]))
+
+(define (parse-evolution-invariants iv)
+  (match iv
+    [(list ':immutable-invariants is ...)
+     (for ([i (in-list is)])
+       (unless (memq i evolution-invariants)
+         (raise-parse ':evolution
+                      (format "未知不变量 ~s；允许：~s" i evolution-invariants))))
+     is]
+    [_ (raise-parse ':evolution "缺少 (:immutable-invariants …)")]))
+
+(define (parse-verifier-gate vg)
+  ;; (:verifier-gate "t2-bench@v1.0" :min-pass-rate 0.90 :mcnemar-p-threshold 0.05)
+  (match vg
+    [(list ':verifier-gate nm k1 v1 k2 v2)
+     (unless (and (string? nm) (not (string=? nm "")))
+       (raise-parse ':evolution ":verifier-gate 的名称必须是非空字符串"))
+     (unless (eq? k1 ':min-pass-rate)
+       (raise-parse ':evolution ":verifier-gate 缺 :min-pass-rate"))
+     (unless (eq? k2 ':mcnemar-p-threshold)
+       (raise-parse ':evolution ":verifier-gate 缺 :mcnemar-p-threshold"))
+     (unless (real? v1) (raise-parse ':evolution ":min-pass-rate 必须是数"))
+     (unless (real? v2) (raise-parse ':evolution ":mcnemar-p-threshold 必须是数"))
+     (hash 'name nm
+           'min-pass-rate (exact->inexact v1)
+           'mcnemar-p-threshold (exact->inexact v2))]
+    [_ (raise-parse ':evolution
+                    ":verifier-gate 必需是 (:verifier-gate \"名称\" :min-pass-rate N :mcnemar-p-threshold N)")]))
+
 (define (partition-blocks blocks agent-name)
-  ;; CR-42：:pattern 块可多次出现（模式可组合）；第 7 个返回值 = 模式块列表
-  (let loop ([bs blocks] [model #f] [ctx #f] [tools #f] [harness #f] [multi #f] [pats '()] [order '()])
+  ;; CR-42：:pattern 块可多次出现（模式可组合）；:evolution 至多一次。
+  ;; 返回 hash，键：model context tools harness multiagent patterns evolution order
+  (let loop ([bs blocks] [model #f] [ctx #f] [tools #f] [harness #f] [multi #f] [pats '()] [evo #f] [order '()])
     (if (null? bs)
-        (values model ctx tools harness multi (reverse order) (reverse pats))
+        (hash 'model model 'context ctx 'tools tools 'harness harness
+              'multiagent multi 'patterns (reverse pats) 'evolution evo 'order (reverse order))
         (let ([b (car bs)] [rest (cdr bs)])
           (define tag (and (pair? b) (car b)))
           (cond
             [(eq? tag ':model)   (when model (raise-parse `(defagent ,agent-name) ":model 块重复"))
-                                 (loop rest b ctx tools harness multi pats (cons ':model order))]
+                                 (loop rest b ctx tools harness multi pats evo (cons ':model order))]
             [(eq? tag ':context) (when ctx (raise-parse `(defagent ,agent-name) ":context 块重复"))
-                                 (loop rest model b tools harness multi pats (cons ':context order))]
+                                 (loop rest model b tools harness multi pats evo (cons ':context order))]
             [(eq? tag ':tools)   (when tools (raise-parse `(defagent ,agent-name) ":tools 块重复"))
-                                 (loop rest model ctx b harness multi pats (cons ':tools order))]
+                                 (loop rest model ctx b harness multi pats evo (cons ':tools order))]
             [(eq? tag ':harness) (when harness (raise-parse `(defagent ,agent-name) ":harness 块重复"))
-                                 (loop rest model ctx tools b multi pats (cons ':harness order))]
+                                 (loop rest model ctx tools b multi pats evo (cons ':harness order))]
             [(eq? tag ':multiagent) (when multi (raise-parse `(defagent ,agent-name) ":multiagent 块重复"))
-                                     (loop rest model ctx tools harness b pats (cons ':multiagent order))]
+                                     (loop rest model ctx tools harness b pats evo (cons ':multiagent order))]
             [(eq? tag ':pattern)
              ;; CR-42：模式块交给注册表校验（kind/config），可多次出现
-             (loop rest model ctx tools harness multi (cons b pats) (cons ':pattern order))]
+             (loop rest model ctx tools harness multi (cons b pats) evo (cons ':pattern order))]
+            [(eq? tag ':evolution)
+             ;; RSI 契约 §5.1：至多一次；不存在时为 #f
+             (when evo (raise-parse `(defagent ,agent-name) ":evolution 块重复"))
+             (loop rest model ctx tools harness multi pats b (cons ':evolution order))]
             [else (raise-parse `(defagent ,agent-name)
-                                (format "未知块 ~s；应为 :model/:context/:tools/:harness（可选 :multiagent/:pattern）" tag))])))))
+                                (format "未知块 ~s；应为 :model/:context/:tools/:harness（可选 :multiagent/:pattern/:evolution）" tag))])))))
 
 ;;; ---------- parse-model (修复 MAJOR-3 temperature 范围 + PROVIDER-ENUM 值域) ----------
 (define (parse-model form)
@@ -408,6 +475,7 @@
    (emit-context-dict ctx)
    (emit-tools-config tools)
    (emit-patterns-dict parsed)
+   (emit-evolution-dict parsed)
    (emit-harness-dict harness)
    (emit-multi-class-vars multi)
    (emit-init-footer cls-name)
@@ -428,6 +496,27 @@
                           (registry-emit (hash-ref p 'kind)
                                          (hash-ref p 'config (hash))))
                         ", "))))
+
+;; RSI 契约 §5.1：产物携带 EVOLUTION，供离线 Evolver 读取；
+;; 没有 (:evolution …) 时显式写 None，避免运行期属性缺失。
+(define (emit-evolution-dict parsed)
+  (define evo (hash-ref parsed 'evolution #f))
+  (define body
+    (if evo
+        (format (string-append "{'mutation_targets': [~a], 'immutable_invariants': [~a], "
+                               "'verifier_gate': {'name': ~a, 'min_pass_rate': ~a, "
+                               "'mcnemar_p_threshold': ~a}}")
+                (string-join (for/list ([t (in-list (hash-ref evo 'mutation-targets))])
+                               (py-string (symbol->string t)))
+                             ", ")
+                (string-join (for/list ([i (in-list (hash-ref evo 'immutable-invariants))])
+                               (py-string (symbol->string i)))
+                             ", ")
+                (py-string (hash-ref (hash-ref evo 'verifier-gate) 'name))
+                (hash-ref (hash-ref evo 'verifier-gate) 'min-pass-rate)
+                (hash-ref (hash-ref evo 'verifier-gate) 'mcnemar-p-threshold))
+        "None"))
+  (format "        # RSI evolution contract (spec §5.1)\n        self.EVOLUTION: Dict[str, Any] = ~a\n\n" body))
 
 (define (emit-header cls-name agent-name)
   (string-append
