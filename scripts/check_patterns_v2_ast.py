@@ -342,7 +342,7 @@ def main() -> int:
         for e in errs:
             print("VIOLATION:", e)
         return 1
-    print("PATTERNS V2 AST OK (30/30 legal Core AST)")
+    print(f"PATTERNS V2 AST OK ({n}/{n} legal Core AST)")
     return 0
 
 

@@ -14,7 +14,13 @@
          defguardrails-safety-agent
          defhitl-agent
          defexception-agent
-         defexploration-agent)
+         defexploration-agent
+         defrag-agent
+         defa2a-agent
+         defreasoning-agent
+         deflearning-agent
+         defresource-aware-agent
+         defgoal-agent)
 
 
 (begin-for-syntax
@@ -78,7 +84,19 @@
      (cons 'defexception-agent
            '(define-agent %name% (:model :provider "anthropic" :name "claude-3-7-sonnet" :temperature 0.0 :system-prompt "你是一个异常恢复 Agent（Exception Handling & Recovery）。失败按三层重试阶梯恢复，超出预算转入死信队列。 模式参数：{params}。") (:tools (import-builtin bash)) (:context :memory-policy (:markdown-fs "./memory/{name}.md" :layers (L0-Abstract) :auto-append #f) :skills () :status-bar (:step-count #t :current-branch #f :test-status #t)) (:harness (:constrain :require-human-approval () :forbidden-commands ("rm -rf")) (:verify :json-schema #t :linter-check #f :test-runner "") (:correct :max-retries 3 :circuit-breaker 5 :on-failure "fallback-model")) (:pattern :kind exception :config (:markers ("Correct 段 3 层 on-failure retry（retry=3, backoff=1.5x）" "Harness Constrain+Verify+Correct 三层不少" "熔断后进入死信队列并通知人工")))))
      (cons 'defexploration-agent
-           '(define-agent %name% (:model :provider "anthropic" :name "claude-3-7-sonnet" :temperature 0.3 :system-prompt "你是一个探索式试错 Agent（Exploration & Discovery）。在预算内探索候选路径，收敛即停止并回报最优解。 模式参数：{params}。") (:tools (import-builtin bash)) (:context :memory-policy (:markdown-fs "./memory/{name}.md" :layers (L0-Abstract) :auto-append #f) :skills () :status-bar (:step-count #t :current-branch #f :test-status #t)) (:harness (:constrain :require-human-approval () :forbidden-commands ("rm -rf")) (:verify :json-schema #t :linter-check #f :test-runner "") (:correct :max-retries 2 :circuit-breaker 5 :on-failure "ask-human")) (:pattern :kind exploration :config (:markers ("Verify 段 budget + convergence 两条检查" "Correct 段 expand-more-candidates 扩展候选" "探索预算耗尽或收敛阈值触发即停止"))))))))
+           '(define-agent %name% (:model :provider "anthropic" :name "claude-3-7-sonnet" :temperature 0.3 :system-prompt "你是一个探索式试错 Agent（Exploration & Discovery）。在预算内探索候选路径，收敛即停止并回报最优解。 模式参数：{params}。") (:tools (import-builtin bash)) (:context :memory-policy (:markdown-fs "./memory/{name}.md" :layers (L0-Abstract) :auto-append #f) :skills () :status-bar (:step-count #t :current-branch #f :test-status #t)) (:harness (:constrain :require-human-approval () :forbidden-commands ("rm -rf")) (:verify :json-schema #t :linter-check #f :test-runner "") (:correct :max-retries 2 :circuit-breaker 5 :on-failure "ask-human")) (:pattern :kind exploration :config (:markers ("Verify 段 budget + convergence 两条检查" "Correct 段 expand-more-candidates 扩展候选" "探索预算耗尽或收敛阈值触发即停止")))))
+     (cons 'defrag-agent
+           '(define-agent %name% (:model :provider "anthropic" :name "claude-3-7-sonnet" :temperature 0.2 :system-prompt "你是一个智能体化 RAG Agent（Agentic RAG）。先检索证据再生成，证据必须回填到答案里。 模式参数：{params}。") (:tools (import-builtin bash)) (:context :memory-policy (:markdown-fs "./memory/{name}.md" :layers (L0-Abstract) :auto-append #f) :skills () :status-bar (:step-count #t :current-branch #f :test-status #t)) (:harness (:constrain :require-human-approval () :forbidden-commands ("rm -rf")) (:verify :json-schema #t :linter-check #f :test-runner "") (:correct :max-retries 2 :circuit-breaker 5 :on-failure "abort")) (:pattern :kind rag :config (:markers ("检索先于生成，证据必须回填到答案" "低置信度证据必须显式标注" "不得使用未检索到的外部知识")))))
+     (cons 'defa2a-agent
+           '(define-agent %name% (:model :provider "anthropic" :name "claude-3-7-sonnet" :temperature 0.2 :system-prompt "你是智能体间通信（A2A）协调 Agent。通过标准消息协议与其他 Agent 交换任务与结果。 模式参数：{params}。") (:tools (import-builtin bash)) (:context :memory-policy (:markdown-fs "./memory/{name}.md" :layers (L0-Abstract) :auto-append #f) :skills () :status-bar (:step-count #t :current-branch #f :test-status #t)) (:harness (:constrain :require-human-approval () :forbidden-commands ("rm -rf")) (:verify :json-schema #t :linter-check #f :test-runner "") (:correct :max-retries 2 :circuit-breaker 5 :on-failure "abort")) (:pattern :kind a2a :config (:markers ("跨 Agent 消息必须携带 Agent Card 标识" "请求与响应用同一 trace-id 关联" "协议错误必须显式回报而非静默重试")))))
+     (cons 'defreasoning-agent
+           '(define-agent %name% (:model :provider "anthropic" :name "claude-3-7-sonnet" :temperature 0.3 :system-prompt "你是显式推理 Agent（Reasoning）。先给出推理结构，再给结论。 模式参数：{params}。") (:tools (import-builtin bash)) (:context :memory-policy (:markdown-fs "./memory/{name}.md" :layers (L0-Abstract) :auto-append #f) :skills () :status-bar (:step-count #t :current-branch #f :test-status #t)) (:harness (:constrain :require-human-approval () :forbidden-commands ("rm -rf")) (:verify :json-schema #t :linter-check #f :test-runner "") (:correct :max-retries 2 :circuit-breaker 5 :on-failure "abort")) (:pattern :kind reasoning :config (:markers ("推理结构先于结论输出" "每个结论必须可追溯到推理步骤" "推理深度超过上限即收敛")))))
+     (cons 'deflearning-agent
+           '(define-agent %name% (:model :provider "anthropic" :name "claude-3-7-sonnet" :temperature 0.2 :system-prompt "你是学习与适应 Agent（Learning / SICA）。把反馈写回技能层供后续复用。 模式参数：{params}。") (:tools (import-builtin bash)) (:context :memory-policy (:markdown-fs "./memory/{name}.md" :layers (L0-Abstract) :auto-append #f) :skills () :status-bar (:step-count #t :current-branch #f :test-status #t)) (:harness (:constrain :require-human-approval ("bash") :forbidden-commands ("rm -rf")) (:verify :json-schema #t :linter-check #f :test-runner "pytest" :reviewer-agent "检查写回内容是否越权或重复") (:correct :max-retries 3 :circuit-breaker 5 :on-failure "ask-human")) (:pattern :kind learning :config (:markers ("反馈必须写回 :skills 目录" "写回内容必须经人工批准" "同一技能不得重复写回")))))
+     (cons 'defresource-aware-agent
+           '(define-agent %name% (:model :provider "anthropic" :name "claude-3-7-sonnet" :temperature 0.2 :system-prompt "你是资源感知 Agent（Resource-Aware）。按成本与时延选择模型档位。 模式参数：{params}。") (:tools (import-builtin bash)) (:context :memory-policy (:markdown-fs "./memory/{name}.md" :layers (L0-Abstract) :auto-append #f) :skills () :status-bar (:step-count #t :current-branch #f :test-status #t)) (:harness (:constrain :require-human-approval () :forbidden-commands ("rm -rf")) (:verify :json-schema #t :linter-check #f :test-runner "") (:correct :max-retries 2 :circuit-breaker 3 :on-failure "fallback-model")) (:pattern :kind resource-aware :config (:markers ("简单任务走小模型档位" "升级档位必须记录触发原因" "预算耗尽即降级或中止")))))
+     (cons 'defgoal-agent
+           '(define-agent %name% (:model :provider "anthropic" :name "claude-3-7-sonnet" :temperature 0.2 :system-prompt "你是目标设定与监控 Agent（Goal Setting & Monitoring）。维护目标、进度与偏差。 模式参数：{params}。") (:tools (import-builtin bash)) (:context :memory-policy (:markdown-fs "./memory/{name}.md" :layers (L0-Abstract) :auto-append #f) :skills () :status-bar (:step-count #t :current-branch #f :test-status #t)) (:harness (:constrain :require-human-approval () :forbidden-commands ("rm -rf")) (:verify :json-schema #t :linter-check #f :test-runner "") (:correct :max-retries 2 :circuit-breaker 5 :on-failure "abort")) (:pattern :kind goal-setting :config (:markers ("目标必须可度量并写入 status-bar" "每轮结束更新进度" "偏差超过阈值必须触发纠偏或上报"))))))))
 
 (define-syntax (defpriority-agent stx)
   (syntax-case stx ()
@@ -217,5 +235,89 @@
     ;; GENERIC SECOND -- 任意名 + 任意 plist；与 HC 共用同一模板，仅 name/参数不同
     ((_ name* . rst*)
        #`(quote #,(v2-instantiate (cdr (assq 'defexploration-agent v2-templates))
+                              (syntax->datum (syntax name*))
+                              (syntax->datum (syntax rst*)))))))
+
+(define-syntax (defrag-agent stx)
+  (syntax-case stx ()
+    ;; HC FIRST -- fixture 写死名分支（first-match 语义，CR-41 AC-3 锚）
+    ((_ name* . rst*)
+     (free-identifier=? (syntax rag15_hc) (syntax name*))
+       #`(quote #,(v2-instantiate (cdr (assq 'defrag-agent v2-templates))
+                              (syntax->datum (syntax name*))
+                              (syntax->datum (syntax rst*)))))
+    ;; GENERIC SECOND -- 任意名 + 任意 plist；与 HC 共用同一模板，仅 name/参数不同
+    ((_ name* . rst*)
+       #`(quote #,(v2-instantiate (cdr (assq 'defrag-agent v2-templates))
+                              (syntax->datum (syntax name*))
+                              (syntax->datum (syntax rst*)))))))
+
+(define-syntax (defa2a-agent stx)
+  (syntax-case stx ()
+    ;; HC FIRST -- fixture 写死名分支（first-match 语义，CR-41 AC-3 锚）
+    ((_ name* . rst*)
+     (free-identifier=? (syntax a2a16_hc) (syntax name*))
+       #`(quote #,(v2-instantiate (cdr (assq 'defa2a-agent v2-templates))
+                              (syntax->datum (syntax name*))
+                              (syntax->datum (syntax rst*)))))
+    ;; GENERIC SECOND -- 任意名 + 任意 plist；与 HC 共用同一模板，仅 name/参数不同
+    ((_ name* . rst*)
+       #`(quote #,(v2-instantiate (cdr (assq 'defa2a-agent v2-templates))
+                              (syntax->datum (syntax name*))
+                              (syntax->datum (syntax rst*)))))))
+
+(define-syntax (defreasoning-agent stx)
+  (syntax-case stx ()
+    ;; HC FIRST -- fixture 写死名分支（first-match 语义，CR-41 AC-3 锚）
+    ((_ name* . rst*)
+     (free-identifier=? (syntax reason17_hc) (syntax name*))
+       #`(quote #,(v2-instantiate (cdr (assq 'defreasoning-agent v2-templates))
+                              (syntax->datum (syntax name*))
+                              (syntax->datum (syntax rst*)))))
+    ;; GENERIC SECOND -- 任意名 + 任意 plist；与 HC 共用同一模板，仅 name/参数不同
+    ((_ name* . rst*)
+       #`(quote #,(v2-instantiate (cdr (assq 'defreasoning-agent v2-templates))
+                              (syntax->datum (syntax name*))
+                              (syntax->datum (syntax rst*)))))))
+
+(define-syntax (deflearning-agent stx)
+  (syntax-case stx ()
+    ;; HC FIRST -- fixture 写死名分支（first-match 语义，CR-41 AC-3 锚）
+    ((_ name* . rst*)
+     (free-identifier=? (syntax learn18_hc) (syntax name*))
+       #`(quote #,(v2-instantiate (cdr (assq 'deflearning-agent v2-templates))
+                              (syntax->datum (syntax name*))
+                              (syntax->datum (syntax rst*)))))
+    ;; GENERIC SECOND -- 任意名 + 任意 plist；与 HC 共用同一模板，仅 name/参数不同
+    ((_ name* . rst*)
+       #`(quote #,(v2-instantiate (cdr (assq 'deflearning-agent v2-templates))
+                              (syntax->datum (syntax name*))
+                              (syntax->datum (syntax rst*)))))))
+
+(define-syntax (defresource-aware-agent stx)
+  (syntax-case stx ()
+    ;; HC FIRST -- fixture 写死名分支（first-match 语义，CR-41 AC-3 锚）
+    ((_ name* . rst*)
+     (free-identifier=? (syntax resrc19_hc) (syntax name*))
+       #`(quote #,(v2-instantiate (cdr (assq 'defresource-aware-agent v2-templates))
+                              (syntax->datum (syntax name*))
+                              (syntax->datum (syntax rst*)))))
+    ;; GENERIC SECOND -- 任意名 + 任意 plist；与 HC 共用同一模板，仅 name/参数不同
+    ((_ name* . rst*)
+       #`(quote #,(v2-instantiate (cdr (assq 'defresource-aware-agent v2-templates))
+                              (syntax->datum (syntax name*))
+                              (syntax->datum (syntax rst*)))))))
+
+(define-syntax (defgoal-agent stx)
+  (syntax-case stx ()
+    ;; HC FIRST -- fixture 写死名分支（first-match 语义，CR-41 AC-3 锚）
+    ((_ name* . rst*)
+     (free-identifier=? (syntax goal20_hc) (syntax name*))
+       #`(quote #,(v2-instantiate (cdr (assq 'defgoal-agent v2-templates))
+                              (syntax->datum (syntax name*))
+                              (syntax->datum (syntax rst*)))))
+    ;; GENERIC SECOND -- 任意名 + 任意 plist；与 HC 共用同一模板，仅 name/参数不同
+    ((_ name* . rst*)
+       #`(quote #,(v2-instantiate (cdr (assq 'defgoal-agent v2-templates))
                               (syntax->datum (syntax name*))
                               (syntax->datum (syntax rst*)))))))

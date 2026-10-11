@@ -27,7 +27,13 @@
     defguardrails-safety-agent
     defhitl-agent
     defexception-agent
-    defexploration-agent))
+    defexploration-agent
+    defrag-agent
+    defa2a-agent
+    defreasoning-agent
+    deflearning-agent
+    defresource-aware-agent
+    defgoal-agent))
 
 (define (macro->kind m)
   (cond
@@ -51,6 +57,12 @@
     ((defhitl-agent)                 'hitl08_hc)
     ((defexception-agent)            'exc09_hc)
     ((defexploration-agent)          'explore10_hc)
+    ((defrag-agent)                  'rag15_hc)
+    ((defa2a-agent)                  'a2a16_hc)
+    ((defreasoning-agent)            'reason17_hc)
+    ((deflearning-agent)             'learn18_hc)
+    ((defresource-aware-agent)       'resrc19_hc)
+    ((defgoal-agent)                 'goal20_hc)
     (else #f)))
 
 (define (v1-define-agent? form)
@@ -150,7 +162,7 @@
            (set! results (cons (list (symbol->string m) 'NFR01-HC #t "HC expanded === handwritten AST byte-equal") results))))))
     (reverse results)))
 
-;; CR-42 F3：NFR02 口径统一为 8 维 × 15 宏 = 120 checkpoint，与 Python 侧
+;; CR-42 F3/P-5：NFR02 口径统一为 8 维 × 21 宏 = 168 checkpoint，与 Python 侧
 ;; tests/patterns/test_pattern_checker_v2.py 的 EIGHT_CELL_KEYS/EIGHT_CELL_LABELS 严格同集。
 ;; 删除原 d2-1（:pattern-kind tag）/ d2-2（:pattern-config kv）两维：这两个键不在
 ;; Core AST 白名单（compiler/agentlisp_compiler.rkt keyword-kvs 硬校验），产物含之即无法编译。

@@ -32,6 +32,13 @@ V2_MACROS = (
     "hitl08",
     "exc09",
     "explore10",
+    # CR-42 P-5：补齐剩余 6 个模式后，V2 宏从 10 增到 16
+    "rag15",
+    "a2a16",
+    "reason17",
+    "learn18",
+    "resrc19",
+    "goal20",
 )
 SCENES = ("HC", "GENERIC", "REVERSE")
 
@@ -129,10 +136,17 @@ V1_V2_MACROS = [
     ("defhitl-agent", "v2"),
     ("defexception-agent", "v2"),
     ("defexploration-agent", "v2"),
+    # CR-42 P-5：新增 6 个模式宏
+    ("defrag-agent", "v2"),
+    ("defa2a-agent", "v2"),
+    ("defreasoning-agent", "v2"),
+    ("deflearning-agent", "v2"),
+    ("defresource-aware-agent", "v2"),
+    ("defgoal-agent", "v2"),
 ]
 FIVE_BUCKETS = [":model", ":tools", ":context", ":harness", ":multiagent"]
 THREE_MANDATORY = [":model", ":tools", ":context"]
-# NFR-PATTERN-02 真实矩阵：8 维 × 15 宏 = 120 checkpoint。
+# NFR-PATTERN-02 真实矩阵：8 维 × 21 宏 = 168 checkpoint（CR-42 P-5 补齐 6 宏后）。
 # 原 10 维中的 d2-1/d2-2 断言 :pattern-kind / :pattern-config —— 这两个键不在 Core AST
 # 白名单内（compiler/agentlisp_compiler.rkt keyword-kvs 硬校验），产物含之即无法编译；
 # 属 CR-41 早期实现缺陷，已从产物与断言中一并移除。
@@ -277,6 +291,13 @@ def test_nfr01_macro_expand_head200_prefix_byte_identical(macro: str, ver: str):
             "defhitl": "hitl08",
             "defexception": "exc09",
             "defexploration": "explore10",
+            # CR-42 P-5：新增 6 个模式
+            "defrag": "rag15",
+            "defa2a": "a2a16",
+            "defreasoning": "reason17",
+            "deflearning": "learn18",
+            "defresource-aware": "resrc19",
+            "defgoal": "goal20",
         }
         hc_id = prefix_map_v2[suffix_id]
         al = fx_dir / f"{hc_id}_hc_HC.al"
@@ -315,7 +336,7 @@ def test_nfr01_macro_expand_head200_prefix_byte_identical(macro: str, ver: str):
     "macro,ver", V1_V2_MACROS, ids=[f"{v}-{m.split('-')[0]}" for m, v in V1_V2_MACROS]
 )
 def test_nfr02_static_safety_8d_matrix_120checkpoint_all_true(macro: str, ver: str):
-    """NFR-PATTERN-02: 8 维静态安全矩阵 × 15 宏 = 120 checkpoint 全 #t。
+    """NFR-PATTERN-02: 8 维静态安全矩阵 × 21 宏 = 168 checkpoint 全 #t。
     8 维全部是 Core AST 语法可表达的静态不变量（可编译产物才有意义）：
       d1-1: 5-bucket 严格升序
       d1-2: 三必块 model/tools/context 都存在
@@ -351,6 +372,13 @@ def test_nfr02_static_safety_8d_matrix_120checkpoint_all_true(macro: str, ver: s
             "defhitl": "hitl08",
             "defexception": "exc09",
             "defexploration": "explore10",
+            # CR-42 P-5：新增 6 个模式
+            "defrag": "rag15",
+            "defa2a": "a2a16",
+            "defreasoning": "reason17",
+            "deflearning": "learn18",
+            "defresource-aware": "resrc19",
+            "defgoal": "goal20",
         }
         hc_id = prefix_map_v2[suffix_id]
         al = fx_dir / f"{hc_id}_hc_HC.al"

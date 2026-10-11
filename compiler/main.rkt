@@ -188,7 +188,10 @@
       '(defreflect-agent defrouter-agent defchain-agent defparallel-agent defplanner-agent
         defpriority-agent defdecomposition-agent deffsm-agent defevaluator-agent
         deftopic-model-agent defdecomposer-agent defguardrails-safety-agent
-        defhitl-agent defexception-agent defexploration-agent))
+        defhitl-agent defexception-agent defexploration-agent
+        ;; CR-42 P-5：补齐 6 个模式宏（21/21）
+        defrag-agent defa2a-agent defreasoning-agent deflearning-agent
+        defresource-aware-agent defgoal-agent))
     (define all-expanded
       (for/list ((form (in-list all-forms)))
         (cond
