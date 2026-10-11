@@ -98,22 +98,29 @@ COPY config /app/config
 RUN chmod +x /app/docker/entrypoint.sh \
     && ln -sf /app/python/pyproject.toml /app/pyproject.toml
 
-# CLI 入口：优先用 uv 生成的 console script；若缺失则显式建等价 shim（走哪条路都打印，不许沉默）。
-# 末尾 --help 是构建期验收：入口不可用就让镜像构建失败，而不是等 CI 冒烟步骤报 127。
-RUN if [ -x /app/.venv/bin/agentlisp ]; then \
-      echo "[docker] CLI entry: venv console script (/app/.venv/bin/agentlisp)"; \
-    else \
-      echo "[docker] WARN: venv console script missing; creating /usr/local/bin/agentlisp shim"; \
+# CLI 入口。两个必须处理的现实：
+#  1) console script 的 shebang 由 uv 写成**构建期** venv 路径（/app/python/.venv/bin/python），
+#     运行时只有 /app/.venv —— 那个解释器不存在，于是 `exec: agentlisp: not found`（CI 实测）。
+#     → 统一把 shebang 改写为 /app/.venv/bin/python。
+#  2) 兜底 shim 只在真的缺入口时建，且必须打印走了哪条路（不许静默降级）。
+# 末尾验收**强制走 PATH 查找**：不允许用绝对路径回退掩盖问题（上一版正是这样掩盖了 shebang 缺陷）。
+RUN set -eux; \
+    for f in /app/.venv/bin/agentlisp /app/.venv/bin/agentlisp2; do \
+      if [ -f "$f" ]; then \
+        echo "[docker] shebang before: $(head -1 "$f")"; \
+        sed -i '1s|^#!.*|#!/app/.venv/bin/python|' "$f"; \
+        echo "[docker] shebang after : $(head -1 "$f")"; \
+      fi; \
+    done; \
+    if ! command -v agentlisp > /dev/null 2>&1; then \
+      echo "[docker] WARN: 没有 agentlisp 入口，创建 /usr/local/bin/agentlisp shim"; \
       printf '#!/bin/sh\nexec /app/.venv/bin/python -m agentlisp_runtime.cli "$@"\n' > /usr/local/bin/agentlisp; \
       chmod +x /usr/local/bin/agentlisp; \
-    fi \
-    && echo "[docker] PATH=$PATH" \
-    && echo "[docker] venv bin: $(ls /app/.venv/bin/ 2>&1 | tr '\n' ' ')" \
-    && echo "[docker] which agentlisp: $(command -v agentlisp || echo '<not on PATH>')" \
-    && { command -v agentlisp > /dev/null 2>&1 && agentlisp --help > /dev/null \
-         || /app/.venv/bin/agentlisp --help > /dev/null \
-         || /app/.venv/bin/python -m agentlisp_runtime.cli --help > /dev/null; } \
-    && echo "[docker] CLI smoke ok"
+    fi; \
+    echo "[docker] which agentlisp: $(command -v agentlisp)"; \
+    echo "[docker] venv bin: $(ls /app/.venv/bin/ | tr '\n' ' ')"; \
+    agentlisp --help > /dev/null; \
+    echo "[docker] CLI smoke ok（PATH 查找 + --help 均通过）"
 
 RUN cd /app \
     && ls scheme/ \
