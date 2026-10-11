@@ -28,6 +28,13 @@
 |---|---|---|---|
 | 12 | 工具调用报语法错 | 我用 TS 模板字面量包 Python/bash 时，反引号与 `${}` 被 JS 抢先解析 | **半自动**：payload 一律用 `write` 落成 `.tmp_*` 再执行，不再内联；配套守护 `test_no_scratch_files_are_tracked` |
 | 13 | 覆盖 `write` 已有文件被拒 | 默认策略要求先 `read` 再写 | 工具层策略，无需仓库判据 |
+| 18 | 本地全绿、CI 连续 5 轮仍红 | 我用「习惯的命令」验（`pytest tests`），CI 用 `runtime/tests python/tests tests/step_defs tests/patterns`；PATH 有无 racket、装没装 extra 也不同 | **半自动**：`tools/test_paths.txt` 作唯一真源 + 判据 A7；本地跑前先读它 |
+| 19 | 编译器整个加载不了（`read-syntax: expected a )`） | 给 `file->value-list` 加 `with-handlers` 时少写一个闭括号 | **自动**：判据 P6（E2E 编译 + `ast.parse`）立刻红 |
+| 20 | 判据 P4 由绿转红：宏展开失败仍返回 0 | `had-parse-error?` 定义在使用点之后；Racket 报「不能在定义前引用」，异常被外层吞掉 | **自动**：判据 P4；标记类变量一律定义在文件顶部 |
+| 21 | 断言「未捕获异常必须 exit>=4」从未通过 | 断言是未验证的假设；实测 Racket 8.12 以 1 退出，「>=4」是编译器自己的保留档 | **半自动**：写断言前先实测；改为断言 main.rkt 含该档出口 |
+| 22 | `uv sync --frozen` 成功但什么都没装 | 先 `touch` 空 `uv.lock` 再 `--frozen`：空 lock 是合法输入，sync 直接跳过 | **自动**：Dockerfile 项目层 `test -x .venv/bin/agentlisp` + 构建期 `agentlisp --help` |
+| 23 | Windows 上多路子进程调用解码崩 | `subprocess.run(text=True)` 按 locale(cp1252) 解码 UTF-8 输出 | **自动**：`encoding="utf-8"` 由 codemod 统一（29 处）+ CI 真跑 |
+| 24 | 4 条 SRS-ID 长期 ORPHAN | CI 的 pytest 路径漏了 `tests/patterns`，那批用例从未在 CI 跑过 | **自动**：判据 A7（CI 路径必须取自唯一真源） |
 | 14 | 排查慢：先猜后验 | 连续 3 次改判据都没修好，最后才打印原始失败清单 | **半自动**：`scripts/triage.py` 先聚合失败签名 / NFR cell / checker cells；`tests/test_triage.py` 守护解析逻辑 |
 
 ## 三、开工前检查（3 条动作，按顺序）
@@ -45,3 +52,6 @@
 - 2026-10-11：第二轮。坑 #12 / #14 降级为「半自动」：新增 `scripts/triage.py` 与
   `tests/test_triage.py`；payload 写法固化为「先落盘再执行」，配套守护
   `test_no_scratch_files_are_tracked`；新增第三节「开工前检查」。仅 #13 仍为纯纪律。
+- 2026-10-11：第三轮（清 CI 最后三条红）。新增 #18…#24 共 7 条。
+  其中 #18 是本轮**贯穿性**问题：本地验证命令与 CI 不一致，导致「本地绿、CI 红」重复 5 次。
+  已改为机器拦：`tools/test_paths.txt` 作唯一真源，CI 与本地都从它取路径，判据 A7 守护。
