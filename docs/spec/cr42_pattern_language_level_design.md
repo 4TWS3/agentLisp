@@ -89,6 +89,30 @@ parser.rkt 不动。枚举表不动（`:kind` 不再硬编码）。
 4. 标记断言全部来自 AST，不来自 prompt 文本。
 5. C1 三文件改动合计 <= 90 行，且每行有注释。
 
+## 6b. 完成态核对（CR-42 交付后，可复核）
+
+| 验收判据 | 结果 | 证据（可执行） |
+|---|---|---|
+| 1. `:pattern` 之外无新增顶层键 | 通过 | 现代解析器白名单只多 `:pattern`；闸门拒绝 `:pattern-kind` / `:pattern-config` |
+| 2. 21 个 kind 全在注册表且有 schema | 通过 | `compiler/pattern_registry.rkt`；`tests/test_cr42_kind_coverage.py` |
+| 3. 非法 config 编译期报错 | 通过 | `tests/test_cr42_pattern_language.py`（缺必需键 / 未知 kind / 未知 config 键） |
+| 4. 标记断言全部来自 AST | 通过 | P-4 关闭 prompt-only；`tests/patterns/test_srs_marker_independence.py` 34 passed |
+| 5. C1 三文件改动合计 <= 90 行 | 见备注 | P-1 段实测 89 行；P-2…P-5 另有增量，单独登记 |
+
+交付事实（截至 CR-42 P-5）：
+
+| 项 | 数量 | 证据 |
+|---|---:|---|
+| 语言层可表达模式 | 21 / 21 | 注册表 21 个 kind |
+| 有专属宏的模式 | 21 / 21 | V1 5 宏 + V2 16 宏 |
+| 契约夹具 | 48（V2 16×3）+ 5（V1） | `tests/patterns/fixtures_v2/`、`tests/patterns/fixtures/` |
+| 提示词里的语义标记 | 0 | 夹具中「约束：」出现 0 次 |
+| 判据守护 | 7 条 | `tests/test_cr42_pitfall_guards.py` |
+
+备注（验收判据 5）：P-1 段的 `checker.rkt` + `agentlisp_compiler.rkt` 实测 89 行，满足 <= 90。
+P-2…P-5 期间 C1 文件另有增量（`:pattern` 语义校验、宏白名单、checker 口径调整），
+开工时已获 Owner 追认，按变更单独登记，不计入 P-1 的 90 行预算。
+
 ## 7. 不做的事
 
 - 不为每个模式加专属键。

@@ -6,14 +6,15 @@ gen_patterns_v2.PATTERNS[*]["markers"] —— 生成器自己验自己（自证�
 SRS 文本与产物之间没有任何机器校验。
 
 本测试把两侧换成互相独立的事实源：
-  A 侧（声明）：docs/spec/agentlisp_srs.md §3 CR41-PAT01..10 行（审计判据 L104-113）。
+  A 侧（声明）：docs/spec/agentlisp_srs.md §3 CR41-PAT01..10 ∪ CR42-PAT11..16 行。
+                （CR-42 P-3e/P-5 后宏产出模式从 10 增到 16，本测试同步扩到 16。）
   B 侧（产物）：racket compiler/main.rkt --dump-ast <fixture> 的 stdout，
                即 compiler/patterns_v2.rkt 宏的真实展开结果（含 system-prompt 文本）。
 
 双向断言：
   D1（SRS → 产物）：SRS 声明的每个语义标记必须出现在该宏展开产物的全文里。
   D2（产物 → SRS）：产物 system-prompt「约束：」段里出现的每个语义标记，
-                    必须能在 SRS 的 CR41-PAT 行里找到声明（§3 主行 ∪ 附录 B 行）。
+                    必须能在 SRS 的 CR41/CR42-PAT 行里找到声明（§3 主行 ∪ 附录 B 行）。
                     用户参数回显（fixture plist 注进「模式参数：」段的 token）不计入标记。
 
 本模块不 import scripts.gen_patterns_v2，也不 import scripts.check_patterns_v2_ast：
@@ -34,8 +35,8 @@ PROJECT_ROOT = pathlib.Path(__file__).resolve().parents[2]
 SRS_PATH = PROJECT_ROOT / "docs" / "spec" / "agentlisp_srs.md"
 FIXTURES_V2_DIR = PROJECT_ROOT / "tests" / "patterns" / "fixtures_v2"
 
-# 审计判据：SRS §3 CR41-PAT01..10 锚点行位于 L104-L113 附近。
-SRS_ANCHOR_WINDOW = (95, 130)
+# 审计判据：SRS §3 的 CR41-PAT01..10 ∪ CR42-PAT11..16 锚点行位于 L104-L125 附近。
+SRS_ANCHOR_WINDOW = (95, 150)
 
 # macro → (CR41-PAT id, fixture stem)
 V2_MACRO_PATTERNS = (
@@ -49,6 +50,13 @@ V2_MACRO_PATTERNS = (
     ("defhitl-agent", "CR41-PAT08", "hitl08"),
     ("defexception-agent", "CR41-PAT09", "exc09"),
     ("defexploration-agent", "CR41-PAT10", "explore10"),
+    # CR-42 P-5：新增 6 个模式宏，宣告行在 SRS 的 CR42-PAT11..16
+    ("defrag-agent", "CR42-PAT11", "rag15"),
+    ("defa2a-agent", "CR42-PAT12", "a2a16"),
+    ("defreasoning-agent", "CR42-PAT13", "reason17"),
+    ("deflearning-agent", "CR42-PAT14", "learn18"),
+    ("defresource-aware-agent", "CR42-PAT15", "resrc19"),
+    ("defgoal-agent", "CR42-PAT16", "goal20"),
 )
 SCENES = ("HC", "GENERIC")
 
@@ -75,7 +83,7 @@ def _is_entry_name(tok: str) -> bool:
 
 
 def _row_id(line: str) -> str | None:
-    m = re.match(r"^\| \*\*(CR41-PAT\d\d)\*\* \|", line)
+    m = re.match(r"^\| \*\*((?:CR41|CR42)-PAT\d\d)\*\* \|", line)
     return m.group(1) if m else None
 
 
@@ -193,16 +201,16 @@ def check_markers(
 
 
 def test_srs_anchor_rows_located_at_declared_lines():
-    """§3 的 10 个 CR41-PAT 声明行必须仍在 SRS 的 L104-L113 附近。"""
+    """§3 的 16 个模式声明行（CR41-PAT01..10 ∪ CR42-PAT11..16）必须在 SRS 的锚点窗口内。"""
     primary, appendix = _load_srs_rows()
-    assert len(primary) == 10, f"CR41-PAT 主声明行数 = {len(primary)}，期望 10"
+    assert len(primary) == 16, f"模式主声明行数 = {len(primary)}，期望 16"
     assert len(appendix) >= 10, "附录 B CR41-PAT 计分行缺失"
     lines = [no for no, _l, _p in primary]
     lo, hi = SRS_ANCHOR_WINDOW
     assert all(lo <= no <= hi for no in lines), (
         f"CR41-PAT 声明行已漂移出审计判据窗口 L{lo}-L{hi}: {lines}"
     )
-    # 10 个声明行必须覆盖 CR41-PAT01..10 全集
+    # 16 个声明行必须覆盖 CR41-PAT01..10 ∪ CR42-PAT11..16 全集
     assert {p for _n, _l, p in primary} == {p for _m, p, _s in V2_MACRO_PATTERNS}
 
 
