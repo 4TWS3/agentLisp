@@ -91,11 +91,7 @@ def _check_exit_0_ok_checkonly(tmp_path: Path) -> None:
 
     main_src = COMPILER_MAIN.read_text(encoding="utf-8")
     # 兼容统一出口重构：exit 调用现为 (exit/flush N)，退出前强制 flush 两个端口
-    hits_exit0 = [
-        ln
-        for ln in main_src.splitlines()
-        if "(exit 0)" in ln or "(exit/flush 0)" in ln
-    ]
+    hits_exit0 = [ln for ln in main_src.splitlines() if "(exit 0)" in ln or "(exit/flush 0)" in ln]
     assert GOOD_AL.is_file() and GOOD_AL.stat().st_size > 0, (
         f"[exit0_ok_checkonly fallback] 合法样例缺失：{GOOD_AL}"
     )
