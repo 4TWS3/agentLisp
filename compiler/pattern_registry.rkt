@@ -234,3 +234,33 @@
 (register-v2-pattern! 'goal-setting    "目标设定与监控：目标、进度与偏差处理"
                       (hash 'goal string?))
 
+
+;; =============================================================================
+;; CR-42 后续：核心语法糖宏对应的 kind（规格 §3.3-12 记忆管理、§3.5-20 多智能体协作）
+;; 这两个模式由核心语法承载，宏只封装默认值与形状。用自定义 emitter，
+;; 把 :context-window-gc / :topology / :workers 这类关键参数带进产物。
+;; =============================================================================
+
+(define-pattern!
+ (registry-entry 'memory
+                 '(store)
+                 (hash 'store string?
+                       'context-window-gc positive-integer?
+                       'layers string-list?)
+                 (lambda (cfg)
+                   (format "{'pattern': \"memory\", 'store': ~a, 'context_window_gc': ~a}"
+                           (py-str (hash-ref cfg 'store))
+                           (py-value (hash-ref cfg 'context-window-gc 8))))
+                 "记忆管理：markdown-fs 三层加载，超限回收"))
+
+(define-pattern!
+ (registry-entry 'multi-agent
+                 '(topology workers)
+                 (hash 'topology symbol?
+                       'workers string-list?)
+                 (lambda (cfg)
+                   (format "{'pattern': \"multi-agent\", 'topology': ~a, 'workers': [~a]}"
+                           (py-str (symbol->string (hash-ref cfg 'topology)))
+                           (string-join (map py-str (hash-ref cfg 'workers)) ", ")))
+                 "多智能体协作：topology + workers 词法隔离"))
+

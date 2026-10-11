@@ -36,6 +36,8 @@ MACRO_KINDS = [
     "exploration",
 ]
 DECLARED_KINDS = ["rag", "a2a", "reasoning", "learning", "resource-aware", "goal-setting"]
+# CR-42 后续：核心语法糖宏（defmemory-agent / defmultiagent）对应的 kind
+SUGAR_KINDS = ["memory", "multi-agent"]
 
 BLOCKS = """(:model :provider "anthropic" :name "m" :system-prompt "s")
  (:tools (import-builtin bash))
@@ -69,8 +71,9 @@ def test_registry_covers_21_kinds() -> None:
     )
     cp = subprocess.run(["racket", "-e", expr], capture_output=True, text=True, timeout=60)
     kinds = [line.strip() for line in cp.stdout.splitlines() if line.strip()]
-    assert len(kinds) == 21, f"注册表 kind 数 = {len(kinds)}，应为 21：{kinds}"
-    for k in MACRO_KINDS + DECLARED_KINDS:
+    # 21 个 CR-41/CR-42 模式 kind + 2 个核心语法糖 kind（memory / multi-agent）
+    assert len(kinds) == 23, f"注册表 kind 数 = {len(kinds)}，应为 23：{kinds}"
+    for k in MACRO_KINDS + DECLARED_KINDS + SUGAR_KINDS:
         assert k in kinds, f"缺少 kind {k}"
 
 

@@ -191,7 +191,9 @@
         defhitl-agent defexception-agent defexploration-agent
         ;; CR-42 P-5：补齐 6 个模式宏（21/21）
         defrag-agent defa2a-agent defreasoning-agent deflearning-agent
-        defresource-aware-agent defgoal-agent))
+        defresource-aware-agent defgoal-agent
+        ;; CR-42 后续：核心语法糖宏（记忆管理 / 多智能体协作）
+        defmemory-agent defmultiagent))
     (define all-expanded
       (for/list ((form (in-list all-forms)))
         (cond

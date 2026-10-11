@@ -10,6 +10,9 @@
          defchain-agent
          defparallel-agent
          defplanner-agent
+         ;; CR-42 后续：核心语法糖宏（记忆管理 / 多智能体协作）
+         defmemory-agent
+         defmultiagent
          reorder-blocks
          plist->blocks
          ensure-blocks)
@@ -399,3 +402,98 @@ PROMPT
                      (list "首部输出计划 JSON，步骤数 ∈ (3,5)" "按计划逐步执行" "FIN 阶段报告完成度，unfinished 必须为空"))))
        (with-syntax (((blk ...) (datum->syntax #'here blocks)))
          #`(list 'define-agent '#,name-sym 'blk ...))))))
+
+;;; =====================================================================
+
+;;; =====================================================================
+;;; CR-42 后续：核心语法糖宏（规格 §3.3-12 记忆管理、§3.5-20 多智能体协作）
+;;; 这两个模式由核心语法承载。宏只封装默认值与形状，不新增核心键。
+;;; 关键参数走 (:pattern :kind … :config …)，因而可被静态断言。
+;;; 实现要点：块用 list 构造（不用 quasiquote），避免嵌套 unquote 陷阱。
+;;; =====================================================================
+
+;; 这些助手在宏展开期（phase 1）被调用，必须放在 begin-for-syntax 内。
+;; 教训（台账 #9）：放模块顶层会报 reference to an unbound identifier。
+(begin-for-syntax
+
+(define (sugar-model prompt)
+  (list ':model ':provider "anthropic" ':name "claude-3-7-sonnet" ':temperature 0.2
+        ':system-prompt prompt))
+
+(define (sugar-tools)
+  (list ':tools (list 'import-builtin 'bash)))
+
+(define (sugar-context store layers auto-append)
+  (list ':context ':memory-policy
+        (list ':markdown-fs store ':layers (map string->symbol layers) ':auto-append auto-append)
+        ':skills '()
+        ':status-bar (list ':step-count #t ':current-branch #f ':test-status #f)))
+
+(define (sugar-harness)
+  (list ':harness
+        (list ':constrain ':require-human-approval '() ':forbidden-commands (list "rm -rf"))
+        (list ':verify ':json-schema #t ':linter-check #f ':test-runner "")
+        (list ':correct ':max-retries 2 ':circuit-breaker 5 ':on-failure 'abort)))
+
+(define (sugar-worker name)
+  (if (string? name)
+      (list 'scoped-worker (string->symbol name)
+            (sugar-model "子 Agent：执行被分派的子任务。")
+            (sugar-tools)
+            (sugar-harness))
+      (list 'scoped-worker name
+            (sugar-model "子 Agent：执行被分派的子任务。")
+            (sugar-tools)
+            (sugar-harness))))
+
+) ; end begin-for-syntax
+
+;;; 说明：两个宏构造纯 datum（不用 quasiquote），避免嵌套 unquote 与括号计数陷阱。
+;;; 展开结果形如 (quote (define-agent NAME BLOCK ...))，与 V1 宏的产物形态一致。
+
+(define-syntax (defmemory-agent stx)
+  (syntax-case stx ()
+    ((_ name store gc)
+     (and (identifier? (syntax name))
+          (string? (syntax->datum (syntax store)))
+          (exact-positive-integer? (syntax->datum (syntax gc))))
+     (let* ((nm (syntax->datum (syntax name)))
+            (store-v (syntax->datum (syntax store)))
+            (gc-v (syntax->datum (syntax gc)))
+            (blocks
+             (list (sugar-model "你是记忆管理 Agent（Memory Management）。三层加载记忆，超限即回收。")
+                   (sugar-tools)
+                   ;; 层枚举必须与 parser 的白名单一致：L0-Abstract / L1-Overview / L2-FullText
+                   (sugar-context store-v '("L0-Abstract" "L1-Overview" "L2-FullText") #t)
+                   (sugar-harness)
+                   (list ':pattern ':kind 'memory
+                         ':config (list ':store store-v ':context-window-gc gc-v)))))
+       (datum->syntax stx (list 'quote (cons 'define-agent (cons nm blocks))))))
+    ((_ . rest)
+     (raise-syntax-error 'defmemory-agent
+                         "用法：(defmemory-agent NAME STORE-PATH WINDOW-SIZE)"))))
+
+(define-syntax (defmultiagent stx)
+  (syntax-case stx ()
+    ((_ name topology workers ...)
+     (and (identifier? (syntax name))
+          (memq (syntax->datum (syntax topology)) '(peer orchestration decentralised judge-driven))
+          (pair? (syntax->list (syntax (workers ...)))))
+     (let* ((nm (syntax->datum (syntax name)))
+            (topo (syntax->datum (syntax topology)))
+            (names (map syntax->datum (syntax->list (syntax (workers ...)))))
+            (workers-block (list ':multiagent ':topology topo ':workers (map sugar-worker names)))
+            (pattern-block (list ':pattern ':kind 'multi-agent
+                                 ':config (list ':topology topo
+                                                ':workers (map symbol->string names))))
+            (blocks
+             (list (sugar-model "你是多智能体协作团队的主控，负责分派与汇总。")
+                   (sugar-tools)
+                   (sugar-context "./memory/team.md" '("L0-Abstract") #f)
+                   (sugar-harness)
+                   workers-block
+                   pattern-block)))
+       (datum->syntax stx (list 'quote (cons 'define-agent (cons nm blocks))))))
+    ((_ . rest)
+     (raise-syntax-error 'defmultiagent
+                         "用法：(defmultiagent NAME TOPOLOGY WORKER ...)"))))

@@ -19,6 +19,7 @@
 | 10 | `:pattern` 被 `parse-harness` 拒绝 | 插到了 `:harness` 内部，而 harness 只认 c/v/c 三块 | `parse-harness` 严格匹配 + 端到端编译测试 |
 | 11 | 静态模板改坏（括号不平衡） | 批量脚本拼接模板，靠人眼数括号 | `racket` 读入即报 `missing )`；改法改为逐宏 edit + 立即读入校验 |
 | 15 | BDD 2 个用例随机失败（`ModuleNotFoundError`） | 我的新测试执行 `sys.path.insert(0, "scripts")`，而 `scripts/tests/` 存在 → `import tests` 被遮蔽，BDD 动态生成测试导入失败 | `...::test_no_global_sys_path_mutation_in_tests`；正解改用 `importlib.util.spec_from_file_location` |
+| 17 | 宏展开失败但编译仍然「成功」 | `main.rkt` 对 pattern 宏展开失败只打日志，进程仍返回 0，产物是原式 | **待修**：已登记；当前只在 `tests/test_cr42_sugar_macros.py` 按「stderr 出现 FAIL」断言，退出码语义待单独修复 |
 | 16 | triage 把关键信息匿名化 | 归一化把 `No module named 'X'` 的模块名替换成 `'X'`，聚合后看不到缺什么 | `tests/test_triage.py` 断言导入类错误保留引号内容 |
 
 ## 二、仅纪律（尚未判据化）

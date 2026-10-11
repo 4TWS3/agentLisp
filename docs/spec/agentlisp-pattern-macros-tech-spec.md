@@ -41,8 +41,15 @@ CR-42 之后，模式语义由 `:pattern` 块承载。语义不再只写在 `:sy
 | `defapproval-agent` | `defhitl-agent` |
 | `defguarded-agent` | `defguardrails-safety-agent` |
 
-无专属宏的 2 个：`defmemory-agent` 由核心语法 `:context :memory-policy` 承载；
-`defmultiagent` 由核心语法 `:multiagent` 承载。
+原先无宏的 2 个已补语法糖宏（2026-10-11）：
+
+* `defmemory-agent NAME STORE-PATH WINDOW-SIZE` → `:context :memory-policy`（三层加载）
+  + `(:pattern :kind memory :config (:store … :context-window-gc …))`；
+* `defmultiagent NAME TOPOLOGY WORKER...` → `:multiagent`（每个 worker 展开为 scoped-worker）
+  + `(:pattern :kind multi-agent :config (:topology … :workers (…)))`。
+
+两者都由 `compiler/patterns.rkt` 提供，已登记进 `compiler/main.rkt` 的宏白名单。
+注册表 kind 数因此从 21 变为 23（新增 memory / multi-agent）。
 
 ### 0.3 配置键对照
 
@@ -61,8 +68,8 @@ CR-42 之后，模式语义由 `:pattern` 块承载。语义不再只写在 `:sy
 
 | 文档位置 | 项 | 状态 |
 |---|---|---|
-| §5.1 | `(:evolution ...)` 顶层节点 | 未实现（解析器白名单不含 `:evolution`）|
-| §5.1 | `:mutation-targets` / `:immutable-invariants` / `:verifier-gate` | 未实现 |
+| §5.1 | `(:evolution ...)` 顶层节点 | **已实现**（2026-10-11）：`:evolution` 至多一次；产物写 `self.EVOLUTION`；无块时显式 `None` |
+| §5.1 | `:mutation-targets` / `:immutable-invariants` / `:verifier-gate` | **已实现**：前者走白名单；不变量三条必须齐全；通过率 ∈ [0,1]；p 值 ∈ (0,1)，违规报 `ERR_EVOLUTION_CONFIG` |
 | §5.2 | `offline_evolver.py` | 未实现 |
 | §5.2 | `:immutable-invariants` 的编译期阻断 | 未实现；已有 `ERR_UNGUARDED_TOOL_EXECUTION`，语义不同 |
 | §6.1 | `tests/test_patterns.rkt`（RackUnit）| 未实现；本机无 rackunit，覆盖由 Python 测试替代 |
