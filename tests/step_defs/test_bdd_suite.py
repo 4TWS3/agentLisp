@@ -24,6 +24,7 @@ from collections.abc import Callable
 from typing import Any
 
 import pytest
+import logging
 
 try:
     from runtime.checker import SIDEEFFECT_BUILTIN_TOOLS as _SIDEEFFECT_SET
@@ -536,7 +537,7 @@ def _step_mount_memory_fs(test_context: dict[str, Any]) -> None:
 
             h.memory_fs = MemoryFS()
         except Exception:
-            pass
+            logging.getLogger(__name__).debug("swallowed exception", exc_info=True)
 
 
 _register_all_given_variants("挂载了 MarkdownFS 记忆模块", _step_mount_memory_fs)
@@ -715,7 +716,7 @@ def _run_racket_check_on_src(test_context: dict[str, Any], src: str) -> None:
         try:
             os.unlink(tmp_path)
         except OSError:
-            pass
+            logging.getLogger(__name__).debug("swallowed exception", exc_info=True)
 
 
 def _when_check_kv(test_context: dict[str, Any]) -> None:
@@ -895,7 +896,7 @@ def _when_run_cli(test_context: dict[str, Any], cmdline: str) -> None:
             try:
                 os.unlink(tmp_path)
             except OSError:
-                pass
+                logging.getLogger(__name__).debug("swallowed exception", exc_info=True)
     else:
         test_context["cli_stdout"] = json.dumps(
             test_context.get("json_errors", []), ensure_ascii=False
@@ -1240,7 +1241,7 @@ def _then_json_fields_literal(test_context: dict[str, Any]) -> None:
                     jlist = parsed
                     break
             except Exception:
-                pass
+                logging.getLogger(__name__).debug("swallowed exception", exc_info=True)
     if not jlist:
         jlist = [{"code": "X", "srs_id": "X", "srcloc": {"line": 1, "column": 1}, "hints": []}]
     expected_keys = ("code", "srs_id", "srcloc.line", "srcloc.column", "hints")
@@ -1530,7 +1531,7 @@ def _then_status_awaiting(test_context: dict[str, Any]) -> None:
             with runner.patch_harness_constrain(h):
                 h.constrain(dict(tool_name=tool_name, args={}))
         except _HITLNeedApproval:
-            pass
+            logging.getLogger(__name__).debug("swallowed exception", exc_info=True)
         evts = list(runner.events)
     assert any(
         e.get("kind") == "human_required" or e.get("step") == "human_required" for e in evts

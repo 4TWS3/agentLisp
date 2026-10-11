@@ -267,7 +267,7 @@ def test_nfr01_macro_expand_head200_prefix_byte_identical(macro: str, ver: str):
     """
     suffix_id = macro.replace("-agent", "")
     if ver == "v1":
-        fx_dir = Path("tests/patterns/fixtures")
+        fx_dir = PROJECT_ROOT / "tests" / "patterns" / "fixtures"
         prefix_map = {
             "defreflect": "defreflect_code_refiner",
             "defrouter": "defrouter_ops_gateway",
@@ -279,7 +279,7 @@ def test_nfr01_macro_expand_head200_prefix_byte_identical(macro: str, ver: str):
         al = fx_dir / f"{hc_id}.al"
         expected = fx_dir / f"{hc_id}.expected.rkt"
     else:
-        fx_dir = Path("tests/patterns/fixtures_v2")
+        fx_dir = FIXTURES_V2_DIR
         prefix_map_v2 = {
             "defpriority": "priority01",
             "defdecomposition": "decomp02",
@@ -349,7 +349,7 @@ def test_nfr02_static_safety_8d_matrix_120checkpoint_all_true(macro: str, ver: s
     """
     suffix_id = macro.replace("-agent", "")
     if ver == "v1":
-        fx_dir = Path("tests/patterns/fixtures")
+        fx_dir = PROJECT_ROOT / "tests" / "patterns" / "fixtures"
         prefix_map = {
             "defreflect": "defreflect_code_refiner",
             "defrouter": "defrouter_ops_gateway",
@@ -360,7 +360,7 @@ def test_nfr02_static_safety_8d_matrix_120checkpoint_all_true(macro: str, ver: s
         hc_id = prefix_map[suffix_id]
         al = fx_dir / f"{hc_id}.al"
     else:
-        fx_dir = Path("tests/patterns/fixtures_v2")
+        fx_dir = FIXTURES_V2_DIR
         prefix_map_v2 = {
             "defpriority": "priority01",
             "defdecomposition": "decomp02",
