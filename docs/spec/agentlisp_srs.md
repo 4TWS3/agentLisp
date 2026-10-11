@@ -1,6 +1,6 @@
 # AgentLisp v2.0 软件需求规格说明书 (SRS)
 
-> 文档代号：`agentlisp_srs` · 版本：`2.0.0` · 基线日期：`2026-10-03`
+> 文档代号：`agentlisp_srs` · 版本：`2.1.0` · 基线日期：`2026-10-03`
 > 标准：**ISO/IEC/IEEE 29148:2018 Systems and software engineering — Life cycle processes — Requirements engineering**
 > 上级文档：[agentlisp_specification.md](file:///Users/lee/products/agentLisp/docs/spec/agentlisp_specification.md)（语言设计规范，非验收级）
 > 验收原则：**每条需求必须可验证（可量化 / 可复现 / 可判定 PASS/FAIL）**，不可验证项必须返工到「可写出测试代码」的形状。
