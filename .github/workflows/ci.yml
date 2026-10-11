@@ -179,6 +179,21 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # 必须装 Racket：patterns 校验用例以 shutil.which("racket") 为门（无则 skip），
+      # 而 skip 的用例不会把 @pytest.mark.req 写进 junit → 可追溯性矩阵误判 ORPHAN。
+      # 代价（明示）：本 job 时长增加约 1-2 分钟（8x21 矩阵用例真跑）。
+      - name: Install Racket
+        uses: Bogdanp/setup-racket@v1.11
+        with:
+          architecture: x64
+          distribution: full
+          version: ${{ env.RACKET_VERSION }}
+
+      - name: Link compiler package
+        working-directory: compiler
+        run: |
+          raco pkg install --auto --no-docs --batch --type dir --name agentlisp-compiler "$(pwd)"
+
       - name: Set up Python ${{ env.PYTHON_VERSION }}
         uses: actions/setup-python@v5
         with:
