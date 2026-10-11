@@ -7,6 +7,80 @@
 
 ---
 
+## 0. 实现口径（as-built，2026-10-11）
+
+> 本节记录**实现事实**，优先于后文的 BNF 与设计意图。
+> §3 的 BNF 是设计目标，不是当前可编译的语法。
+> 照 BNF 直接写，会报「未知块」或「unbound identifier」。
+
+### 0.1 模式语义的承载方式
+
+CR-42 之后，模式语义由 `:pattern` 块承载。语义不再只写在 `:system-prompt` 里。
+
+    (define-agent name
+      (:model ...) (:tools ...) (:context ...) (:harness ...)
+      (:pattern :kind K :config (:markers ("..." "..."))))
+
+* `:kind` 取值来自 `compiler/pattern_registry.rkt`，当前 21 个。
+* `:markers` 是必需键，类型为字符串列表。
+* 未知 kind、未知 config 键、缺必需键都在编译期报错。
+
+### 0.2 宏名对照（规格 BNF → 实现）
+
+名字一致的 7 个：`defchain-agent`、`defrouter-agent`、`defparallel-agent`、
+`defplanner-agent`、`defreflect-agent`（`compiler/patterns.rkt`）、
+`defrag-agent`、`defreasoning-agent`（`compiler/patterns_v2.rkt`）。
+
+改名的 5 个：
+
+| 规格 BNF 名 | 实现名 |
+|---|---|
+| `defprioritized-agent` | `defpriority-agent` |
+| `defa2a-server` | `defa2a-agent` |
+| `defresilient-agent` | `defexception-agent` |
+| `defapproval-agent` | `defhitl-agent` |
+| `defguarded-agent` | `defguardrails-safety-agent` |
+
+无专属宏的 2 个：`defmemory-agent` 由核心语法 `:context :memory-policy` 承载；
+`defmultiagent` 由核心语法 `:multiagent` 承载。
+
+### 0.3 配置键对照
+
+| 规格键 | 实现口径 |
+|---|---|
+| `:executor-tools`、`:steps`、`:routes`、`:branches`、`:reducer`、`:planner-prompt` | 已接受（V1 宏关键字表）|
+| `:criteria` | 归 `:pattern :config (:criteria ...)`，kind=`priority` |
+| `:kb-path` | 未接受；RAG 语义走 `:pattern :kind rag` |
+| `:technique`、`:beam-width` | 未接受；reasoning 语义走 `:pattern :kind reasoning` |
+| `:memory-store`、`:context-window-gc` | 未接受；用 `:memory-policy (:markdown-fs ... :layers ... :auto-append ...)` |
+| `:primary-tool`、`:fallback-tool` | 未接受；用 `:harness :correct (:max-retries ... :on-failure ...)` |
+| `:sensitive-tools` | 未接受；用 `:harness :constrain (:require-human-approval (...))` |
+| `:agent-card-id` | 未接受；A2A 语义走 `:pattern :kind a2a` |
+
+### 0.4 未实现清单
+
+| 文档位置 | 项 | 状态 |
+|---|---|---|
+| §5.1 | `(:evolution ...)` 顶层节点 | 未实现（解析器白名单不含 `:evolution`）|
+| §5.1 | `:mutation-targets` / `:immutable-invariants` / `:verifier-gate` | 未实现 |
+| §5.2 | `offline_evolver.py` | 未实现 |
+| §5.2 | `:immutable-invariants` 的编译期阻断 | 未实现；已有 `ERR_UNGUARDED_TOOL_EXECUTION`，语义不同 |
+| §6.1 | `tests/test_patterns.rkt`（RackUnit）| 未实现；本机无 rackunit，覆盖由 Python 测试替代 |
+| §6.2 | `tests/test_pattern_checker.py`、`compiler/transpiler.py` | 未实现；等价物 `tests/patterns/test_pattern_checker_v2.py` |
+
+### 0.5 判据指针（替代 §6.3 的 4 条 Checklist）
+
+| 原要求 | 现判据 |
+|---|---|
+| 21 种模式宏可展开 | `tests/patterns/test_pattern_checker_v2.py`（NFR01/NFR02，21 宏 × 8 维 = 168）|
+| 产物含 `:model` + `:tools` 静态前缀 | 同上 d1-1 与 d1-2 两格 |
+| 模式语义可静态断言 | `tests/patterns/test_srs_marker_independence.py`（34 passed）|
+| 21 个 kind 全覆盖 | `tests/test_cr42_kind_coverage.py` |
+| 产物 Python 语法合法 | `tests/test_compiler_end_to_end.py` |
+| `ruff` 0 诊断 | `ruff check` + `ruff format --check` |
+
+---
+
 ## 1. 项目背景、目的与总体工程目标
 
 ### 1.1 核心痛点与背景
@@ -58,6 +132,9 @@ Racket 编译前端在处理输入文件时，首先通过 `compiler/patterns.rk
 ---
 
 ## 3. 21 种 Agentic 设计模式的 DSL 抽象与 AST 降维映射规约
+
+> **口径提示**：本章 BNF 是设计目标。实际宏名与配置键见 §0.2、§0.3。
+
 
 Coding Agent 必须在 `compiler/patterns.rkt` 中实现以下 5 大类共 21 种设计模式的高层宏抽象，并确保能够精准展开为 AgentLisp Core AST。
 
@@ -374,6 +451,9 @@ Coding Agent 需要在 `compiler/main.rkt` 中引入 `patterns.rkt`，并在 AST
 
 ## 5. 对接 Phase 3 双循环 RSI (递归自我进化) 的演进契约
 
+> **口径提示**：`(:evolution ...)` 与 `offline_evolver.py` 尚未实现，见 §0.4。
+
+
 当系统进入 Phase 3 双循环递归自我进化（RSI）时，模式宏层作为离线诊断器（Evolver）的核心变异目标：
 
 ### 5.1 声明式 DSL 语法扩展
@@ -409,6 +489,9 @@ Coding Agent 需要在 `compiler/main.rkt` 中引入 `patterns.rkt`，并在 AST
 ---
 
 ## 6. Coding Agent 交付验收标准与测试套件规范
+
+> **口径提示**：§6.1/§6.2 点名的文件不存在。现行判据见 §0.5。
+
 
 Coding Agent 在完成 `compiler/patterns.rkt` 实现后，必须通过以下 3 层自动化测试方可交付：
 
