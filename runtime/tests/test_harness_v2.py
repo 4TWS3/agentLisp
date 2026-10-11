@@ -1057,6 +1057,8 @@ def test_cli_version_flag_prints_dunder_version_matches_pyproject() -> None:  # 
             [PYTHON, "-m", "agentlisp_runtime.cli", flag],
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             env=env,
             timeout=30,
         )
@@ -1830,6 +1832,8 @@ def test_emit_context_auto_append_maps_to_underscore_key_in_python_source(tmp_pa
             [racket_bin, str(repo / "compiler" / "main.rkt"), "-i", str(sample), "-o", str(out_py)],
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             cwd=str(repo),
             timeout=120,
         )
@@ -1905,6 +1909,8 @@ def test_nfr_perf_1b_first_token_latency_reduction_ge_50pct(tmp_path: Path) -> N
             ],
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             cwd=str(repo),
             timeout=120,
         )

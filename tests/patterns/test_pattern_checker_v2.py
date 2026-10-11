@@ -72,7 +72,15 @@ def _racket_macroexpand_v2(al_path: pathlib.Path) -> tuple[int, str, str]:
         "--dump-ast",
         str(al_path),
     ]
-    proc = subprocess.run(cmd, capture_output=True, text=True, cwd=str(PROJECT_ROOT))
+    # Windows 控制台默认 cp1252：racket 输出 UTF-8，必须显式按 utf-8 解码
+    proc = subprocess.run(
+        cmd,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        cwd=str(PROJECT_ROOT),
+    )
     return proc.returncode, proc.stdout, proc.stderr
 
 

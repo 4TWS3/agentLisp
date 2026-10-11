@@ -75,6 +75,8 @@ def _racket(*args: str, timeout_s: float = 15.0) -> subprocess.CompletedProcess[
         [RACKET_BIN, str(COMPILER_MAIN), *args],
         capture_output=True,
         text=True,
+        encoding="utf-8",
+        errors="replace",
         timeout=timeout_s,
         check=False,
     )
@@ -239,6 +241,8 @@ def _check_exit_ge4_panic(tmp_path: Path) -> None:
             [RACKET_BIN, str(panic_rkt)],
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             timeout=15.0,
             check=False,
         )
@@ -259,6 +263,8 @@ def _check_exit_ge4_panic(tmp_path: Path) -> None:
         [sys.executable, str(py_panic)],
         capture_output=True,
         text=True,
+        encoding="utf-8",
+        errors="replace",
         timeout=10.0,
         check=False,
     )

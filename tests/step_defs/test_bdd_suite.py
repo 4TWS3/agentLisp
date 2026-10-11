@@ -698,7 +698,14 @@ def _run_racket_check_on_src(test_context: dict[str, Any], src: str) -> None:
             *sorted(opts),
             "--json-errors",
         ]
-        res = subprocess.run(cmd, capture_output=True, text=True, cwd=str(REPO_ROOT))
+        res = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            cwd=str(REPO_ROOT),
+        )
         test_context["racket_exit"] = res.returncode
         try:
             js = json.loads(res.stdout or "[]")
@@ -888,7 +895,14 @@ def _when_run_cli(test_context: dict[str, Any], cmdline: str) -> None:
         if tokens[:2] == ["racket", "compiler/main.rkt"]:
             tokens = ["racket", str(REPO_ROOT / "compiler" / "main.rkt"), *tokens[2:]]
         try:
-            res = subprocess.run(tokens, capture_output=True, text=True, cwd=str(REPO_ROOT))
+            res = subprocess.run(
+                tokens,
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                cwd=str(REPO_ROOT),
+            )
             test_context["cli_stdout"] = res.stdout
             test_context["cli_stderr"] = res.stderr
             test_context["cli_exit"] = res.returncode

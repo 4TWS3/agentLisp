@@ -140,7 +140,14 @@ class GitHubReleaseResolver:
                 str(self.cache_dir),
             ]
             try:
-                subprocess.run(cmd, check=True, capture_output=True, text=True)
+                subprocess.run(
+                    cmd,
+                    check=True,
+                    capture_output=True,
+                    text=True,
+                    encoding="utf-8",
+                    errors="replace",
+                )
             except subprocess.CalledProcessError as exc:
                 raise FetchError(
                     f"`gh release download` failed. stderr={exc.stderr[-400:]}"

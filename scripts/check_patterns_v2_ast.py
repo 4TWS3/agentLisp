@@ -238,7 +238,14 @@ def registry_kinds():
         " (for ([k (in-list (pattern-kinds))]) (displayln k))"
     )
     try:
-        cp = subprocess.run(["racket", "-e", expr], capture_output=True, text=True, timeout=60)
+        cp = subprocess.run(
+            ["racket", "-e", expr],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=60,
+        )
         kinds = [line.strip() for line in cp.stdout.splitlines() if line.strip()]
         _REGISTRY_CACHE["kinds"] = kinds or None
     except Exception:

@@ -49,6 +49,8 @@ def test_alias_compiles_like_canonical(
         cwd=ROOT,
         capture_output=True,
         text=True,
+        encoding="utf-8",
+        errors="replace",
         timeout=180,
     )
     assert cp.returncode == 0, f"[{alias}] 编译失败：{cp.stderr[-300:]}"

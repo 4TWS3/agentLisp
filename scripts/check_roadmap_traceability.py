@@ -167,6 +167,8 @@ def _parse_pytest_fallback_subprocess() -> int | None:
             env=env,
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             timeout=900,
         )
     except (subprocess.SubprocessError, OSError):

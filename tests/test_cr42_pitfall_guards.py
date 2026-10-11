@@ -75,7 +75,14 @@ def test_every_registered_kind_has_a_producer() -> None:
         '(require (file "' + str(ROOT / "compiler" / "pattern_registry.rkt") + '"))'
         " (for ([k (in-list (pattern-kinds))]) (displayln k))"
     )
-    cp = subprocess.run(["racket", "-e", expr], capture_output=True, text=True, timeout=60)
+    cp = subprocess.run(
+        ["racket", "-e", expr],
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        timeout=60,
+    )
     kinds = {line.strip() for line in cp.stdout.splitlines() if line.strip()}
     produced = set()
     # V1 五宏的产出在 fixtures/（旧目录），V2 十六宏在 fixtures_v2/，两处都要扫
@@ -122,7 +129,14 @@ def test_all_expected_fixtures_read_to_eof() -> None:
             '(with-input-from-file "' + str(p) + '" (lambda () (let loop ([n 0]) '
             "(define t (read)) (if (eof-object? t) (void) (loop (add1 n))))))"
         )
-        cp = subprocess.run(["racket", "-e", expr], capture_output=True, text=True, timeout=60)
+        cp = subprocess.run(
+            ["racket", "-e", expr],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=60,
+        )
         if cp.returncode != 0:
             bad.append(
                 f"{p.name}: {cp.stderr.strip().splitlines()[-1][:90] if cp.stderr.strip() else 'rc!=0'}"
@@ -133,7 +147,13 @@ def test_all_expected_fixtures_read_to_eof() -> None:
 def test_no_scratch_files_are_tracked() -> None:
     """坑 #12 的配套：payload 一律写到 .tmp_* 再执行，但临时文件不得进版本库。"""
     cp = subprocess.run(
-        ["git", "ls-files", ".tmp_*"], cwd=ROOT, capture_output=True, text=True, timeout=60
+        ["git", "ls-files", ".tmp_*"],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        timeout=60,
     )
     tracked = [line for line in cp.stdout.splitlines() if line.strip()]
     assert not tracked, f"这些临时 payload 被提交了：{tracked}"
@@ -147,6 +167,8 @@ def test_ast_gate_count_matches_fixture_total() -> None:
         cwd=ROOT,
         capture_output=True,
         text=True,
+        encoding="utf-8",
+        errors="replace",
         timeout=300,
     )
     assert cp.returncode == 0, cp.stdout[-400:]

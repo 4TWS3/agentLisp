@@ -57,6 +57,8 @@ def _compile(tmp_path: Path, kind: str) -> subprocess.CompletedProcess[str]:
         cwd=ROOT,
         capture_output=True,
         text=True,
+        encoding="utf-8",
+        errors="replace",
         timeout=180,
     )
 
@@ -69,7 +71,14 @@ def test_registry_covers_21_kinds() -> None:
         '(require (file "' + str(REGISTRY) + '"))'
         " (for ([k (in-list (pattern-kinds))]) (displayln k))"
     )
-    cp = subprocess.run(["racket", "-e", expr], capture_output=True, text=True, timeout=60)
+    cp = subprocess.run(
+        ["racket", "-e", expr],
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        timeout=60,
+    )
     kinds = [line.strip() for line in cp.stdout.splitlines() if line.strip()]
     # 21 个 CR-41/CR-42 模式 kind + 2 个核心语法糖 kind（memory / multi-agent）
     assert len(kinds) == 23, f"注册表 kind 数 = {len(kinds)}，应为 23：{kinds}"

@@ -135,6 +135,9 @@ def _expand_fixture(al_path: pathlib.Path) -> str:
         cwd=PROJECT_ROOT,
         capture_output=True,
         text=True,
+        # Windows 控制台默认 cp1252：racket 输出 UTF-8，必须显式按 utf-8 解码
+        encoding="utf-8",
+        errors="replace",
     )
     assert proc.returncode == 0, (
         f"racket 展开失败 rc={proc.returncode} fixture={al_path.name}\n"

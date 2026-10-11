@@ -33,7 +33,14 @@ def _run_cli(
         ]
         if extra:
             cmd.extend(extra)
-        return subprocess.run(cmd, capture_output=True, text=True, cwd=str(REPO_ROOT))
+        return subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            cwd=str(REPO_ROOT),
+        )
     finally:
         pathlib.Path(junit_path).unlink(missing_ok=True)
 

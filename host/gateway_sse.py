@@ -222,6 +222,8 @@ def _checker_via_subprocess(source_path: Path) -> tuple[int, list[dict[str, Any]
             ],
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             timeout=15,
             cwd=str(COMPILER_DIR),
             check=False,

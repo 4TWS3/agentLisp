@@ -78,6 +78,8 @@ def test_sideeffect_builtin_tools_racket_and_python_ssot_8_items_bitwise_equal(
             [RACKET_BIN, str(script_src)],
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             env={
                 **os.environ,
                 "PLTADDONDIR": str(tmp_path / "racket-addons"),

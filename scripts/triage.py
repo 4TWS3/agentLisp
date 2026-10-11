@@ -180,7 +180,7 @@ def main(argv: list[str]) -> int:
     extra = [a for a in argv if a.startswith("-")]
     cmd = [sys.executable, "-m", "pytest", *targets, "-q", "--no-cov", "-rf", "--tb=short", *extra]
     print("运行:", " ".join(cmd))
-    cp = subprocess.run(cmd, capture_output=True, text=True)
+    cp = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace")
     report = render_report(parse_pytest_output(cp.stdout + cp.stderr))
     print(report)
     return 0 if report.startswith("结论：passed=") and "failed=0" in report.splitlines()[0] else 1
