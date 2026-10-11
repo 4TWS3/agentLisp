@@ -368,8 +368,8 @@ CR41_BASELINE_PASSED_COUNT: 158
 | **STD-A3** | 架构 | 测试不依赖 cwd | `REPO_ROOT = Path(__file__)…` |
 | **STD-A5** | 架构 | 边界枚举封闭（kind/退出码） | `tests/test_cr42_kind_coverage.py` |
 | **STD-A6** | 架构 | 妥协登记且含「守」列 | `docs/spec/agentlisp_lessons_ledger.md` |
-| **STD-A7** | 架构 | 本地验证命令 == CI 命令（唯一真源） | `tools/test_paths.txt` + `tools/verify_local.sh` + `ci.yml`（坑 #18/#24/#25） |
-| **STD-A8** | 架构 | 验收不得走回退路径 | `docker/Dockerfile` + `ci.yml` 冒烟（坑 #29） |
+| **STD-A7** | 架构 | 本地验证命令 == CI 命令（唯一真源） | `tools/test_paths.txt` + `tools/verify_local.sh` + `.github/workflows/ci.yml`（坑 #18/#24/#25） |
+| **STD-A8** | 架构 | 验收不得走回退路径 | `docker/Dockerfile` + `.github/workflows/ci.yml` 冒烟（坑 #29） |
 | **STD-E3** | 工程 | 静默 except 检查（与 P5 共用实现） | 同 STD-P5 |
 ### 孤儿需求核查（非孤儿 = 正文中 §3/§4/§5 章节存在该 SRS-ID 定义 + ≥1 条 pytest 用例覆盖；孤儿数=0）
 

@@ -231,9 +231,8 @@ def _check_a2_conventions_have_tests() -> tuple[bool, str]:
     srs = ROOT / "docs" / "spec" / "agentlisp_srs.md"
     if not srs.is_file():
         return _result(False, "SRS 缺失，无法校验工具判据登记表")
-    declared = set(
-        re.findall(r"^\|\s*\*\*(STD-[A-Z0-9]+)\*\*\s*\|", srs.read_text(encoding="utf-8"), re.M)
-    )
+    srs_text = srs.read_text(encoding="utf-8")
+    declared = set(re.findall(r"^\|\s*\*\*(STD-[A-Z0-9]+)\*\*\s*\|", srs_text, re.M))
     registered = {f"STD-{c['id']}" for c in CHECKS}
     if declared != registered:
         return _result(
@@ -241,7 +240,46 @@ def _check_a2_conventions_have_tests() -> tuple[bool, str]:
             f"判据登记表与注册表不一致：仅登记未实现={sorted(declared - registered)}，"
             f"仅实现未登记={sorted(registered - declared)}",
         )
-    return _result(True, f"{len(required)} 条约定均有测试；{len(declared)} 条判据已登记")
+
+    # 表内反引号引用的仓库路径必须真实存在。
+    # 坑 #30：我曾把 tools/verify_local.sh 拼成 toolls/…，而只比 ID 集合抓不到拼写错误。
+    table_at = srs_text.find("#### 工具判据")
+    # 必须截止到下一个标题：否则会把后续章节里的绝对路径（如 /app/...）也当成仓库路径扫
+    table = srs_text[table_at:].split("### 孤儿需求核查", 1)[0] if table_at >= 0 else ""
+    known_top = (
+        "tools",
+        "tests",
+        "scripts",
+        "runtime",
+        "docker",
+        "docs",
+        "compiler",
+        "python",
+        "host",
+        "examples",
+        ".github",
+    )
+    missing_paths: list[str] = []
+    for raw in re.findall(r"`([^`]+)`", table):
+        tok = raw.strip()
+        if not tok or not tok.isascii() or tok.startswith("-"):
+            continue
+        if any(ch in tok for ch in " (=)↔…*:"):
+            continue
+        if not (tok.endswith((".py", ".rkt", ".md", ".yml", ".txt", ".sh", ".toml")) or "/" in tok):
+            continue
+        if tok.split("/")[0] in known_top:
+            if not (ROOT / tok).exists():
+                missing_paths.append(tok)
+        elif not any(ROOT.rglob(tok)):
+            missing_paths.append(tok)
+    if missing_paths:
+        return _result(False, f"登记表引用的路径不存在：{sorted(set(missing_paths))}")
+
+    return _result(
+        True,
+        f"{len(required)} 条约定均有测试；{len(declared)} 条判据已登记；表内引用路径均存在",
+    )
 
 
 def _check_a3_no_cwd_dependence() -> tuple[bool, str]:
