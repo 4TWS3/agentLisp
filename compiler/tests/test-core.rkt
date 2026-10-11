@@ -2,6 +2,7 @@
 
 (require rackunit
          rackunit/text-ui
+         racket/string
          "../parser.rkt"
          "../checker.rkt"
          "../emitter.rkt")
