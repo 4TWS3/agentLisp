@@ -83,6 +83,7 @@ def _normalize_sexp(sexp_str: str) -> str:
 
 
 @pytest.mark.parametrize("mode_id", MVP_IDS, ids=MVP_IDS)
+@pytest.mark.req("FR-PATTERN-01")
 def test_fr_pattern_01_macro_expand_returns_valid_defagent_ast(mode_id: str) -> None:
     """FR-PATTERN-01: MVP 5 模式的高层糖语法 .al 文件走宏展开 pass（racket main.rkt --dump-ast）后，
     必须 exit=0，且 stdout 前 12 个非空 token 匹配预期 .expected.rkt 的顶层 (defagent name ...) 结构。
@@ -135,6 +136,7 @@ FR_PATTERN_02_WRONG_ORDER_ALS = {
 
 
 @pytest.mark.parametrize("mode_id", MVP_IDS, ids=[f"{m}_autoraise" for m in MVP_IDS])
+@pytest.mark.req("FR-PATTERN-02")
 def test_fr_pattern_02_wrong_input_order_auto_raised_to_static_prefix_first(mode_id: str) -> None:
     """FR-PATTERN-02: 反序输入（动态块写在静态块之前）→ 宏展开后 AST 顺序仍必须是：
        :model → :tools → :context → :harness

@@ -1068,6 +1068,7 @@ def test_cli_version_flag_prints_dunder_version_matches_pyproject() -> None:  # 
 
 
 # 15. CR-19 P1-5：MCP scheme 白名单枚举校验 (IF-MCP-1, FR-PARSER-4)
+@pytest.mark.req("IF-MCP-1")
 def test_mcp_scheme_whitelist_accepts_stdio_httpunix_https_sse_and_rejects_other() -> None:  # type: ignore[no-untyped-def]
     """CR-19 P1-5 IF-MCP-1：§3 正文 L197 指定合法 scheme ∈ {stdio://，http+unix://，https://，sse://}；其他直接 FR-PARSER-FAIL。"""
     from runtime.mcp_client import validate_mcp_scheme  # type: ignore

@@ -41,6 +41,10 @@ from runtime.status_bar import (
 # 必须放在全部 import 之后，否则 ruff E402。
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
+# 本文件即 SRS §6 AC-2 的运行时验收测试集 → 整文件登记 AC-2，
+# 供 ISO/IEC/IEEE 29148 可追溯性矩阵聚合（此前只写在注释里，矩阵判为 ORPHAN）。
+pytestmark = pytest.mark.req("AC-2")
+
 # ---------------------------------------------------------------------------
 # fixtures / helpers
 # ---------------------------------------------------------------------------

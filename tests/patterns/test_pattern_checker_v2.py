@@ -260,6 +260,7 @@ def _get_kw_blocks(define_agent_parsed):
 @pytest.mark.parametrize(
     "macro,ver", V1_V2_MACROS, ids=[f"{v}-{m.split('-')[0]}" for m, v in V1_V2_MACROS]
 )
+@pytest.mark.req("NFR-PATTERN-01")
 def test_nfr01_macro_expand_head200_prefix_byte_identical(macro: str, ver: str):
     """NFR-PATTERN-01: 15宏 × (HC head + GENERIC head shape 200bytes全等) = 30 assertions
     对应 patterns_checker_v2.rkt check-nfr01-ast-equivalence；HC fixture 文件在 fixtures/fixtures_v2 目录下。
@@ -335,6 +336,7 @@ def test_nfr01_macro_expand_head200_prefix_byte_identical(macro: str, ver: str):
 @pytest.mark.parametrize(
     "macro,ver", V1_V2_MACROS, ids=[f"{v}-{m.split('-')[0]}" for m, v in V1_V2_MACROS]
 )
+@pytest.mark.req("NFR-PATTERN-02")
 def test_nfr02_static_safety_8d_matrix_120checkpoint_all_true(macro: str, ver: str):
     """NFR-PATTERN-02: 8 维静态安全矩阵 × 21 宏 = 168 checkpoint 全 #t。
     8 维全部是 Core AST 语法可表达的静态不变量（可编译产物才有意义）：
