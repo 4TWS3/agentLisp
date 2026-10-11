@@ -106,13 +106,18 @@ def _check_exit_0_ok_checkonly(tmp_path: Path) -> None:
 
 
 def _check_exit_1_check_fail(tmp_path: Path) -> None:
-    bad_al = tmp_path / "bad_onfailure_enum.al"
+    bad_al = tmp_path / "bad_kv_order.al"
+    # 用「能解析、但违反检查」的输入验证 rc=1：
+    # 动态块 :context 放在静态块 :model/:tools 之前 → checker 报 ERR_KV_ALIGNMENT_VIOLATION。
+    # 旧夹具是 legacy plist 语法（:system-role …），现被判 PARSE_GENERIC → rc=2，验证不了 1。
     bad_al.write_text(
         """(define-agent bad-check
-   (:system-role "test"
-    :model "anthropic"
-    :temperature 0.3
-    :on-failure "NOT_A_LEGAL_ENUM_ABCXYZ"))
+  (:context :memory-policy (:markdown-fs "./m.md" :layers (L0-Abstract) :auto-append #t))
+  (:model :provider "anthropic" :name "m" :system-prompt "s")
+  (:tools (import-builtin bash))
+  (:harness (:constrain :require-human-approval () :forbidden-commands ("rm -rf"))
+            (:verify :json-schema #t)
+            (:correct :max-retries 1 :on-failure abort)))
 """,
         encoding="utf-8",
     )
@@ -175,7 +180,7 @@ def _check_exit_2_parse_fail(tmp_path: Path) -> None:
         pass
 
     main_src = COMPILER_MAIN.read_text(encoding="utf-8")
-    exit2_lines = [ln for ln in main_src.splitlines() if "(exit 2)" in ln]
+    exit2_lines = [ln for ln in main_src.splitlines() if "(exit 2)" in ln or "(exit/flush 2)" in ln]
     assert len(exit2_lines) >= 2, (
         f"[exit2_parse_fail fallback] main.rkt exit 2 调用点不足 2 处："
         f"实际 {len(exit2_lines)}，正文 L55/L90 应至少 2 处"
@@ -205,7 +210,7 @@ def _check_exit_3_io_fail(tmp_path: Path) -> None:
         assert "No such file" in msg, f"enoent 消息异常：{msg}"
 
     main_src = COMPILER_MAIN.read_text(encoding="utf-8")
-    exit3_lines = [ln for ln in main_src.splitlines() if "(exit 3)" in ln]
+    exit3_lines = [ln for ln in main_src.splitlines() if "(exit 3)" in ln or "(exit/flush 3)" in ln]
     assert len(exit3_lines) >= 1, (
         f"[exit3_io_fail fallback] main.rkt exit 3 调用点缺失：实际 {len(exit3_lines)}，"
         "正文 L79 IO_READ_FAILED handler 必须存在 1 处"

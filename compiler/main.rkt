@@ -392,6 +392,11 @@
 ;; P-1f：收集现代管线（parse-defagent → check-agent）解析出的 agent，供发射段生成忠实产物
 (define checked-agents '())
 
+;; CLI 退出码契约（IF-CLI-1）：0=成功 / 1=检查失败 / 2=解析失败 / 3=IO 失败。
+;; 现代检查循环把 parse 异常与 check 异常都收进错误列表，若不做区分，
+;; 解析失败会退化成 1（实测 [exit2_parse_fail] expected rc=2 actual=1）。
+(define had-parse-error? #f)
+
 (define check-results
   (with-handlers
     (((lambda (e) #t)
@@ -426,6 +431,7 @@
                                              errs-rev))))
                                 (exn:agentlisp:parse?
                                  (lambda (e)
+                                   (set! had-parse-error? #t)
                                    (loop (cdr xs)
                                          (cons (hasheq 'ok? #f
                                                        'title (symbol->string (exn:agentlisp:parse-code e))
@@ -434,6 +440,8 @@
                                                errs-rev))))
                                 (exn:fail?
                                  (lambda (e)
+                                   ;; reader 级错误（如括号不闭合）也属解析失败 → 退出码 2
+                                   (when (exn:fail:read? e) (set! had-parse-error? #t))
                                    (loop (cdr xs)
                                          (cons (hasheq 'ok? #f
                                                        'title "RUNTIME_CHECK_EXN"
@@ -475,7 +483,8 @@
 (define all-ok? (report-checks check-results))
 (unless all-ok?
   (fprintf (current-error-port) "\nstatic checks FAILED, aborting.\n")
-  (exit/flush 1))
+  ;; 解析失败用 2，检查失败用 1（IF-CLI-1 六码契约）
+  (exit/flush (if had-parse-error? 2 1)))
 
 (when check-only?
   (displayln "static checks PASSED (check-only mode).")

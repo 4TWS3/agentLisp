@@ -524,9 +524,9 @@ def test_compiler_structured_errors_mapped_to_exception_message_shapes():
     from pathlib import Path
 
     combined_src = (
-        Path("compiler/agentlisp_compiler.rkt").read_text()
+        Path("compiler/agentlisp_compiler.rkt").read_text(encoding="utf-8")
         + "\n"
-        + Path("compiler/checker.rkt").read_text()
+        + Path("compiler/checker.rkt").read_text(encoding="utf-8")
     )
     for code in (
         "ERR_KV_ALIGNMENT_VIOLATION",
@@ -1238,9 +1238,9 @@ def test_json_errors_shape_via_checker_rkt_source():
     """
     from pathlib import Path
 
-    checker_src = Path("compiler/checker.rkt").read_text()
-    main_src = Path("compiler/main.rkt").read_text()
-    compiler_src = Path("compiler/agentlisp_compiler.rkt").read_text()
+    checker_src = Path("compiler/checker.rkt").read_text(encoding="utf-8")
+    main_src = Path("compiler/main.rkt").read_text(encoding="utf-8")
+    compiler_src = Path("compiler/agentlisp_compiler.rkt").read_text(encoding="utf-8")
     combined = "\n".join([checker_src, main_src, compiler_src])
     # (a) 7 字段必须存在
     for token in (
@@ -1272,7 +1272,7 @@ def test_json_errors_kv_alignment_has_correct_hints_srs_id():
     import re
     from pathlib import Path
 
-    src = Path("compiler/checker.rkt").read_text()
+    src = Path("compiler/checker.rkt").read_text(encoding="utf-8")
     # 找到所有 (raise-check 'ERR_KV_ALIGNMENT_VIOLATION ...)
     # 再检查同一文件里 (define (code->srs-id ...) 对该错误的映射是 FR-CHECK-1
     _ = re.search(r"ERR_KV_ALIGNMENT_VIOLATION\)\"?\s*\"?\s*\"?FR-CHECK-1\"?", src)
