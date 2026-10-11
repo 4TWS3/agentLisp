@@ -340,6 +340,42 @@ def _check_a7_local_equals_ci() -> tuple[bool, str]:
     return _result(True, f"真源 {len(paths)} 条路径，CI 与本地脚本均引用它")
 
 
+def _check_a8_acceptance_path() -> tuple[bool, str]:
+    """A8 验收必须走生产同一条路：验收命令不得用回退链 / || true 掩盖失败。
+
+    坑 #29：Dockerfile 的构建期 CLI 验收曾写成三条绝对路径依次尝试
+    （PATH → /app/.venv/bin/agentlisp → python -m），第三条成功即算通过 ——
+    正好掩盖了 console script 的 shebang 指向构建期 venv 的真缺陷，让 Build 假绿一轮。
+
+    判据（可测）：
+      1) Dockerfile 里带 --help / python -c 的验收行，不得出现 || 回退；
+      2) ci.yml 里 docker run 冒烟不得用 || true 吞掉失败。
+    """
+    dockerfile = ROOT / "docker" / "Dockerfile"
+    ci = ROOT / ".github" / "workflows" / "ci.yml"
+    for p in (dockerfile, ci):
+        if not p.is_file():
+            return _result(False, f"缺文件：{p.relative_to(ROOT)}")
+
+    offenders: list[str] = []
+    for i, line in enumerate(dockerfile.read_text(encoding="utf-8").splitlines(), 1):
+        s = line.strip()
+        if s.startswith("#"):
+            continue
+        if ("--help" in s or "python -c" in s) and "||" in s:
+            offenders.append(f"docker/Dockerfile:{i}: {s[:70]}")
+    for i, line in enumerate(ci.read_text(encoding="utf-8").splitlines(), 1):
+        s = line.strip()
+        if s.startswith("#"):
+            continue
+        if "docker run" in s and "|| true" in s:
+            offenders.append(f"ci.yml:{i}: {s[:70]}")
+
+    if offenders:
+        return _result(False, f"验收命令存在回退/掩盖写法（坑 #29）：{offenders[:3]}")
+    return _result(True, "Dockerfile 验收与 CI 冒烟均为单一路径（无 || 回退）")
+
+
 # --------------------------------------------------------------------------- 注册表（封闭枚举）
 CHECKS: list[dict] = [
     {
@@ -405,6 +441,12 @@ CHECKS: list[dict] = [
         "fn": _check_a7_local_equals_ci,
     },
     {
+        "id": "A8",
+        "role": "架构",
+        "title": "验收不得走回退路径（坑 #29）",
+        "fn": _check_a8_acceptance_path,
+    },
+    {
         "id": "E3",
         "role": "工程",
         "title": "静默 except 检查（与 P5 共用）",
@@ -412,7 +454,7 @@ CHECKS: list[dict] = [
     },
 ]
 
-CLOSED_IDS = ("P1", "P2", "P3", "P4", "P5", "P6", "A1", "A2", "A3", "A5", "A6", "A7", "E3")
+CLOSED_IDS = ("P1", "P2", "P3", "P4", "P5", "P6", "A1", "A2", "A3", "A5", "A6", "A7", "A8", "E3")
 
 
 def _assert_registry_closed() -> None:
