@@ -8,9 +8,8 @@
 (define deps
   '("base"
     "rackunit-lib"
-    "syntax/parse"
+    "syntax-parse"
     "data-lib"
-    "json-lib"
     "parser-tools-lib"))
 
 (define build-deps
