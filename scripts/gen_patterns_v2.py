@@ -335,18 +335,13 @@ def template_of(p: dict) -> list:
         # CR-42 P-2：模式语义进入 AST（不再是「只写在 system-prompt 文本里」）。
         # markers 来自本表的单一事实源，与 SRS §3 声明一一对应。
         #
-        # ⚠️ 2026-10-11 暂时停用（CR-42 P-2 未完）：打开后 checker 报
-        #   NFR01-GEN=15 + NFR02-MATRIX=10 共 25 格失败（形如「GENERIC 5-bucket 升序assert失败」），
-        # 说明 :pattern 与 GENERIC 分支的形态判据存在未定位的交互。基础设施已就绪：
-        #   注册表 10 个 kind、AST 闸门支持 :pattern、CLI 现代管线带出 self.PATTERNS（前两轮已验证）。
-        # 下一轮：先修 checker 的 GENERIC/矩阵判据，再打开本开关并重生成 30 份夹具。
-        # [
-        #     ":pattern",
-        #     ":kind",
-        #     Sym(KIND_OF[p["key"]]),
-        #     ":config",
-        #     [":markers", list(p["markers"])],
-        # ],
+        [
+            ":pattern",
+            ":kind",
+            Sym(KIND_OF[p["key"]]),
+            ":config",
+            [":markers", list(p["markers"])],
+        ],
     ]
     if p["workers"]:
         ws = []

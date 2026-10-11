@@ -143,7 +143,7 @@ EIGHT_CELL_LABELS = [
     "d3-1harness c/v/c trichotomy",
     "d3-2无运行时eval污染",
     "d4-1agent_name是symbol",
-    "d4-2block count∈[3,6]",
+    "d4-2三必块在场",
     "d5-1顶层define-agent",
     "d5-2每block带kw tag",
 ]
@@ -320,7 +320,7 @@ def test_nfr02_static_safety_8d_matrix_120checkpoint_all_true(macro: str, ver: s
       d3-1: harness block 内 :constrain :verify :correct trichotomy
       d3-2: 整个 S-exp 无 eval/apply/eval-syntax（无运行时动态求值污染）
       d4-1: define-agent 的第二个位置是 symbol（agent_name 非 list 字符串等）
-      d4-2: block 总数 ∈ [3,5]
+      d4-2: 三必块在场（:model/:tools/:context；不再用裸块数，:pattern 正交扩展会改计数）
       d5-1: 顶层 head 形状 define-agent
       d5-2: 每 block 首 token 是 :keyword
     """
@@ -376,7 +376,9 @@ def test_nfr02_static_safety_8d_matrix_120checkpoint_all_true(macro: str, ver: s
     blocks = _get_kw_blocks(parsed)
     block_tags = [b[0] for b in blocks]
 
-    cells["d4-2"] = 3 <= len(blocks) <= 5
+    # CR-42：与 Racket 侧一致 —— 不数裸块数（:pattern 是正交扩展会改计数），只查三必块在场
+    _tags = [b[0] for b in blocks if isinstance(b, list) and b]
+    cells["d4-2"] = all(t in _tags for t in (":model", ":tools", ":context"))
 
     d5_2_ok = True
     for b in blocks:

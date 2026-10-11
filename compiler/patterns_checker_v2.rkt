@@ -77,14 +77,21 @@
         999)))
 
 (define (check-prefix-sorted-5-bucket blocks)
+  ;; CR-42：只对「5 个核心桶」检查升序。:pattern 是正交扩展（bucket->idx = 999），
+  ;; 旧实现要求每个块 idx<5，于是任何含 :pattern 的产物都被判假（曾一次造成 25 格失败）。
   (let loop ((xs blocks) (prev-idx -1))
     (cond
       ((null? xs) #t)
       (else
-       (let ((idx (bucket->idx (car xs))))
-         (and (>= idx prev-idx)
-              (< idx 5)
-              (loop (cdr xs) idx)))))))
+       (let* ((b (car xs))
+              (tag (block-tag b))
+              (is-bucket (memq tag '(:model :tools :context :harness :multiagent))))
+         (if (not is-bucket)
+             (loop (cdr xs) prev-idx)
+             (let ((idx (bucket->idx b)))
+               (and (>= idx prev-idx)
+                    (< idx 5)
+                    (loop (cdr xs) idx)))))))))
 
 (define (three-mandatory-blocks-present? blocks)
   (let ((tags (map block-tag blocks)))
