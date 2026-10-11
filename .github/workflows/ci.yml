@@ -19,7 +19,7 @@ concurrency:
 env:
   PYTHON_VERSION: "3.12"
   RACKET_VERSION: "8.12"
-  UV_VERSION: "0.4.0"
+  UV_VERSION: "0.5.4"
 
 jobs:
   scheme-tests:

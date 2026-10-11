@@ -11,6 +11,7 @@
 
 (require rackunit
          rackunit/text-ui
+         racket/string
          "../agentlisp_compiler.rkt")
 
 (define (expect-check-err code thunk)
