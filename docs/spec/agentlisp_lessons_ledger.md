@@ -37,6 +37,9 @@
 | 24 | 4 条 SRS-ID 长期 ORPHAN | CI 的 pytest 路径漏了 `tests/patterns`，那批用例从未在 CI 跑过 | **自动**：判据 A7（CI 路径必须取自唯一真源） |
 | 25 | Windows 上 pytest 报 `file or directory not found: runtime/tests` | 真源文件在 Windows 检出为 CRLF，`tr '\n' ' '` 之后每段路径尾部带 `\r` | **自动**：CI 命令 `tr -d '\r'` + `.gitattributes`（`eol=lf`）+ 判据 A7（只查命令行本身，注释不算） |
 | 26 | 判据反验「假通过」：移除代码后仍 PASS | 我把检查写成全文子串匹配，自己刚加的**注释**里也含该字符串 → 条件被注释满足 | **半自动**：反验必须先在脚本里断言「注入生效」，且判据只匹配**目标行**（本轮 A7 已按此改） |
+| 27 | Docker 镜像里 `agentlisp: not found`（exit 127） | builder 先 `touch` 空 `uv.lock` 再 `uv sync --frozen`：空 lock 是合法输入，sync「成功但什么都没装」→ 项目层也装不上 → 无 console script | **自动**：Dockerfile 项目层 `test -x .venv/bin/agentlisp` + 构建期 `agentlisp --help` |
+| 28 | Build 成功后 `docker run … agentlisp --help` 仍 not found | console script 的 shebang 由 uv 写成**构建期** venv 路径（`/app/python/.venv/bin/python`），运行时镜像只有 `/app/.venv` → execve 失败，sh 报 not found | **自动**：构建期把 shebang 改写为 `/app/.venv/bin/python` 并打印前后值；A8 要求验收走 PATH |
+| 29 | 构建期验收「假绿」一轮：真缺陷被回退链掩盖 | 我把验收写成 `PATH → /app/.venv/bin/agentlisp → python -m` 三条依次尝试，第三条成功即算通过 | **自动**：A8（验收命令不得含 `||` 回退、CI 冒烟不得 `|| true`）；验收必须走生产同一条路 |
 | 14 | 排查慢：先猜后验 | 连续 3 次改判据都没修好，最后才打印原始失败清单 | **半自动**：`scripts/triage.py` 先聚合失败签名 / NFR cell / checker cells；`tests/test_triage.py` 守护解析逻辑 |
 
 ## 三、开工前检查（3 条动作，按顺序）
@@ -57,3 +60,8 @@
 - 2026-10-11：第三轮（清 CI 最后三条红）。新增 #18…#24 共 7 条。
   其中 #18 是本轮**贯穿性**问题：本地验证命令与 CI 不一致，导致「本地绿、CI 红」重复 5 次。
   已改为机器拦：`tools/test_paths.txt` 作唯一真源，CI 与本地都从它取路径，判据 A7 守护。
+- 2026-10-12：第四轮（追 Docker Build 到绿）。新增 #25…#29 共 5 条。
+  * #25 真源文件 CRLF → 路径尾部带 \r；#26 判据反验假通过（被自己注释满足）。
+  * #27/#28/#29 是同一形态的三次现身：**安装/入口/验收**三处「看起来成功」。
+    共同判据：装完要 `test -x`、入口要跨阶段验证（shebang）、验收要走生产同一条路。
+    已落地 A8：验收命令不得含 `||` 回退，CI 冒烟不得 `|| true`。
