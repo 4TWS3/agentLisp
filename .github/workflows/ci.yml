@@ -151,7 +151,7 @@ jobs:
 
       - name: Install dependencies (workspace root)
         run: |
-          uv sync --dev
+          uv sync --extra dev
 
       - name: Ruff lint
         run: |
@@ -191,7 +191,7 @@ jobs:
 
       - name: Install dependencies (root)
         run: |
-          uv sync --dev
+          uv sync --extra dev
 
       - name: Host import smoke
         shell: bash
