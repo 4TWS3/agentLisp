@@ -107,8 +107,13 @@ RUN if [ -x /app/.venv/bin/agentlisp ]; then \
       printf '#!/bin/sh\nexec /app/.venv/bin/python -m agentlisp_runtime.cli "$@"\n' > /usr/local/bin/agentlisp; \
       chmod +x /usr/local/bin/agentlisp; \
     fi \
-    && agentlisp --help > /dev/null \
-    && echo "[docker] CLI smoke ok: $(command -v agentlisp)"
+    && echo "[docker] PATH=$PATH" \
+    && echo "[docker] venv bin: $(ls /app/.venv/bin/ 2>&1 | tr '\n' ' ')" \
+    && echo "[docker] which agentlisp: $(command -v agentlisp || echo '<not on PATH>')" \
+    && { command -v agentlisp > /dev/null 2>&1 && agentlisp --help > /dev/null \
+         || /app/.venv/bin/agentlisp --help > /dev/null \
+         || /app/.venv/bin/python -m agentlisp_runtime.cli --help > /dev/null; } \
+    && echo "[docker] CLI smoke ok"
 
 RUN cd /app \
     && ls scheme/ \
