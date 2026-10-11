@@ -56,6 +56,11 @@ Documentation = "https://github.com/4TWS3/agentLisp#readme"
 "Release Notes" = "https://github.com/4TWS3/agentLisp/releases"
 SRS = "https://github.com/4TWS3/agentLisp/blob/main/docs/spec/agentlisp_srs.md"
 
+[tool.hatch.metadata]
+# legacy extra 含直接引用（agentlisp-runtime @ file://python），uv/hatch 默认拒绝；
+# 显式放行，否则 uv sync 在 CI 上直接失败。
+allow-direct-references = true
+
 [project.optional-dependencies]
 legacy = [
     "agentlisp-runtime @ file://python",

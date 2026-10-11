@@ -69,7 +69,8 @@
 (define (validate-agent ag)
   (cond
     [(not (agent? ag)) (values #f "Not an agent struct")]
-    [(string-empty? (agent-name ag)) (values #f "Agent name is empty")]
+    ;; string-empty? 不是 Racket 内置标识符（CI 报 unbound identifier），改用 string=?
+    [(string=? (agent-name ag) "") (values #f "Agent name is empty")]
     [else
      (let loop ([tools (agent-tools ag)]
                 [workflows (agent-workflows ag)])
