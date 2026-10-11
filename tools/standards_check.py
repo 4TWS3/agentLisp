@@ -295,6 +295,19 @@ def _check_a7_local_equals_ci() -> tuple[bool, str]:
     ci_text = ci.read_text(encoding="utf-8")
     if "cat tools/test_paths.txt" not in ci_text:
         return _result(False, "CI 的 pytest 未引用唯一真源（硬编码路径会漂移，坑 #24）")
+    # Windows 检出可能是 CRLF：不去 \r 会让路径尾部多一个字符（CI 实测 file or directory not found）
+    # 只看**命令本身**：注释里出现 tr -d 不算（第一版写成全文子串检查，
+    # 结果被我自己的注释满足 → 反验时假通过）。
+    cmd_lines = [ln for ln in ci_text.splitlines() if "cat tools/test_paths.txt" in ln and "pytest" in ln]
+    if not cmd_lines:
+        return _result(False, "找不到引用真源的 pytest 命令行")
+    if not all("tr -d" in ln for ln in cmd_lines):
+        return _result(
+            False,
+            f"引用真源的 pytest 命令未去 CR（Windows CRLF 会让路径尾部带 \\r，坑 #25）：{cmd_lines[0].strip()[:60]}",
+        )
+    if ".gitattributes" not in [p.name for p in ROOT.iterdir()]:
+        return _result(False, "缺 .gitattributes：真源与 *.sh 的行尾无法固定为 LF")
     if "tools/test_paths.txt" not in verify.read_text(encoding="utf-8"):
         return _result(False, "tools/verify_local.sh 未引用同一真源")
 

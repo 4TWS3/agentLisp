@@ -1,0 +1,4 @@
+# 行尾统一：CI 在 Windows 上用 bash 读这些文件，CRLF 会让路径尾部多一个 \r
+# （实测：uv run pytest $(cat tools/test_paths.txt ...) → ERROR: file or directory not found: runtime/tests）。
+tools/test_paths.txt text eol=lf
+*.sh text eol=lf

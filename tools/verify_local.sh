@@ -19,7 +19,8 @@ if [ ! -f "$PATHS_FILE" ]; then
   exit 2
 fi
 
-read -r -a TEST_PATHS <<< "$(grep -v '^[[:space:]]*$' "$PATHS_FILE" | tr '\n' ' ')"
+# tr -d '\r'：Windows/WSL 上文件可能是 CRLF，不去掉会让路径尾部带 \r（坑 #25）
+read -r -a TEST_PATHS <<< "$(grep -v '^[[:space:]]*$' "$PATHS_FILE" | tr -d '\r' | tr '\n' ' ')"
 
 echo "[verify_local] 路径（来自 tools/test_paths.txt）: ${TEST_PATHS[*]}"
 cd "$ROOT"

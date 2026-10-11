@@ -238,7 +238,9 @@ jobs:
           # 路径必须取自唯一真源 tools/test_paths.txt（判据 A7 守护；本地同一入口 tools/verify_local.sh）。
           # 硬编码过一次的代价：tests/patterns 被漏掉，FR-PATTERN-01/02 与 NFR-PATTERN-01/02
           # 的用例从未在 CI 跑过，可追溯性矩阵长期报 4 条 ORPHAN（坑 #24）。
-          uv run pytest $(cat tools/test_paths.txt | tr '\n' ' ') -v \
+          # tr -d '\r'：Windows 检出可能是 CRLF，不去掉会让路径尾部带 \r
+          #（CI 实测 ERROR: file or directory not found: runtime/tests）。
+          uv run pytest $(cat tools/test_paths.txt | tr -d '\r' | tr '\n' ' ') -v \
             --cov=runtime \
             --cov=host \
             --cov=python/agentlisp_runtime \

@@ -35,6 +35,8 @@
 | 22 | `uv sync --frozen` 成功但什么都没装 | 先 `touch` 空 `uv.lock` 再 `--frozen`：空 lock 是合法输入，sync 直接跳过 | **自动**：Dockerfile 项目层 `test -x .venv/bin/agentlisp` + 构建期 `agentlisp --help` |
 | 23 | Windows 上多路子进程调用解码崩 | `subprocess.run(text=True)` 按 locale(cp1252) 解码 UTF-8 输出 | **自动**：`encoding="utf-8"` 由 codemod 统一（29 处）+ CI 真跑 |
 | 24 | 4 条 SRS-ID 长期 ORPHAN | CI 的 pytest 路径漏了 `tests/patterns`，那批用例从未在 CI 跑过 | **自动**：判据 A7（CI 路径必须取自唯一真源） |
+| 25 | Windows 上 pytest 报 `file or directory not found: runtime/tests` | 真源文件在 Windows 检出为 CRLF，`tr '\n' ' '` 之后每段路径尾部带 `\r` | **自动**：CI 命令 `tr -d '\r'` + `.gitattributes`（`eol=lf`）+ 判据 A7（只查命令行本身，注释不算） |
+| 26 | 判据反验「假通过」：移除代码后仍 PASS | 我把检查写成全文子串匹配，自己刚加的**注释**里也含该字符串 → 条件被注释满足 | **半自动**：反验必须先在脚本里断言「注入生效」，且判据只匹配**目标行**（本轮 A7 已按此改） |
 | 14 | 排查慢：先猜后验 | 连续 3 次改判据都没修好，最后才打印原始失败清单 | **半自动**：`scripts/triage.py` 先聚合失败签名 / NFR cell / checker cells；`tests/test_triage.py` 守护解析逻辑 |
 
 ## 三、开工前检查（3 条动作，按顺序）
