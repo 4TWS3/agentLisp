@@ -17,6 +17,10 @@ Step 2 — 基于摘要生成代码 :in (summary) :out code
 PROMPT
           )
   (:tools (import-builtin bash pytest))
+    (:pattern :kind chain
+              :config (:markers ("步骤按给定顺序执行，不得跳过"
+                              "每步 :out 注入后续 :in 上下文"
+                              "最终 Answer 汇总为 JSON")))
   (:context :memory-policy (:markdown-fs "./memory/doc-pipeline.md"
                             :layers ('L0-Abstract 'L1-Overview)
                             :auto-append #t)
@@ -29,8 +33,3 @@ PROMPT
              :linter-check #f
              :test-runner "")
     (:correct :max-retries 2 :circuit-breaker 5 :on-failure 'abort)))
-    (:pattern :kind chain
-              :config (:markers ("步骤按给定顺序执行，不得跳过"
-                              "每步 :out 注入后续 :in 上下文"
-                              "最终 Answer 汇总为 JSON")))
-)

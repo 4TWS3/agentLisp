@@ -106,6 +106,28 @@ def test_no_global_sys_path_mutation_in_tests() -> None:
     assert not offenders, f"这些测试文件改了全局 sys.path：{offenders}"
 
 
+def test_all_expected_fixtures_read_to_eof() -> None:
+    """坑 #18：夹具必须能读到 EOF。
+
+    早先我只用 (read) 读一个 datum 就判「READ-OK」，漏掉了文件末尾多余的闭括号，
+    结果 CI 的独立校验 5/5 全红。这里读**全部** token，直到 EOF。
+    """
+    files = sorted((ROOT / "tests" / "patterns" / "fixtures").glob("*.expected.rkt")) + sorted(
+        (ROOT / "tests" / "patterns" / "fixtures_v2").glob("*.expected.rkt")
+    )
+    assert files, "未找到任何 .expected.rkt 夹具"
+    bad = []
+    for p in files:
+        expr = (
+            '(with-input-from-file "' + str(p) + '" (lambda () (let loop ([n 0]) '
+            "(define t (read)) (if (eof-object? t) (void) (loop (add1 n))))))"
+        )
+        cp = subprocess.run(["racket", "-e", expr], capture_output=True, text=True, timeout=60)
+        if cp.returncode != 0:
+            bad.append(f"{p.name}: {cp.stderr.strip().splitlines()[-1][:90] if cp.stderr.strip() else 'rc!=0'}")
+    assert not bad, "这些夹具无法完整读取（读到 EOF）：\n" + "\n".join(bad)
+
+
 def test_no_scratch_files_are_tracked() -> None:
     """坑 #12 的配套：payload 一律写到 .tmp_* 再执行，但临时文件不得进版本库。"""
     cp = subprocess.run(

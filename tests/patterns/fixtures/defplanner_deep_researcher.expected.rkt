@@ -17,6 +17,10 @@ Planner Prompt："将研究目标分解为 3-5 个步骤"
 PROMPT
           )
   (:tools (import-builtin web-search read-pdf))
+    (:pattern :kind planner
+              :config (:markers ("首部输出计划 JSON，步骤数 ∈ (3,5)"
+                              "按计划逐步执行"
+                              "FIN 阶段报告完成度，unfinished 必须为空")))
   (:context :memory-policy (:markdown-fs "./memory/deep-researcher.md"
                             :layers ('L0-Abstract 'L1-Overview)
                             :auto-append #t)
@@ -29,8 +33,3 @@ PROMPT
              :linter-check #f
              :test-runner "")
     (:correct :max-retries 3 :circuit-breaker 5 :on-failure 'ask-human)))
-    (:pattern :kind planner
-              :config (:markers ("首部输出计划 JSON，步骤数 ∈ (3,5)"
-                              "按计划逐步执行"
-                              "FIN 阶段报告完成度，unfinished 必须为空")))
-)

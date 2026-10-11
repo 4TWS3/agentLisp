@@ -6,6 +6,10 @@
           :temperature 0.0
           :system-prompt "你是一个并行分支协调器（Parallelization Coordinator）。所有 :branches 下的 Worker 将被同时拉起，不得串行；全部结束后将各 Worker 结果交给 :reducer aggregator-agent 归并。并行断言：search-a 与 search-b 的轮次允许在 trajectory 时间线上交错。")
   (:tools (import-builtin bash read-pdf))
+    (:pattern :kind parallel
+              :config (:markers ("所有分支同时拉起，不得串行"
+                              "分支轮次允许在轨迹时间线交错"
+                              "全部结束后交给 reducer 归并")))
   (:context :memory-policy (:markdown-fs "./memory/multi-search.md"
                             :layers ('L0-Abstract)
                             :auto-append #f)
@@ -36,8 +40,3 @@
                            (:harness (:constrain :require-human-approval () :forbidden-commands ("rm -rf"))
                                      (:verify :json-schema #t :linter-check #f :test-runner "")
                                      (:correct :max-retries 2 :circuit-breaker 3 :on-failure 'abort))))))
-    (:pattern :kind parallel
-              :config (:markers ("所有分支同时拉起，不得串行"
-                              "分支轮次允许在轨迹时间线交错"
-                              "全部结束后交给 reducer 归并")))
-)
