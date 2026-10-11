@@ -1,6 +1,7 @@
 #lang racket/base
 
-(require racket/string)
+(require racket/string
+         racket/hash)
 
 ;; =============================================================================
 ;; CR-42 模式注册表（Pattern Registry）
@@ -152,3 +153,46 @@
             (py-value (hash-ref cfg 'criteria))
             (py-value (hash-ref cfg 'levels 3))))
   "优先级排序：按 :criteria 排序候选动作；:levels 指定层数（默认 3）"))
+
+;; =============================================================================
+;; CR-42 P-2：V2 十宏对应的 kind
+;; 语义（markers）从生成器单一事实源进入 AST 的 :config，不再只写在 system-prompt 文本里。
+;; =============================================================================
+
+(define (string-list? v) (and (list? v) (andmap string? v)))
+
+(define (register-v2-pattern! kind doc extra-schema)
+  (define-pattern!
+   (registry-entry
+    kind
+    '(markers)
+    (hash-union (hash 'markers string-list?) extra-schema #:combine (lambda (a b) b))
+    ;; 通用 emit：kind + markers（+ 各 kind 的额外键由 extra-schema 决定，emitter 只认 markers）
+    (lambda (cfg)
+      (format "{'pattern': ~a, 'markers': [~a]}"
+              (py-str (symbol->string kind))
+              (string-join (map py-str (hash-ref cfg 'markers '())) ", ")))
+    doc)))
+
+;; 额外键只声明「这个 kind 允许出现什么」，避免语法再次封闭（未知键由 checker 拦）。
+(register-v2-pattern! 'priority          "优先级排序：按 criteria 排序，levels 指定层数"
+                      (hash 'criteria string? 'levels positive-integer?))
+(register-v2-pattern! 'decomposition     "递归分解：max-depth 指定层数"
+                      (hash 'max-depth positive-integer?))
+(register-v2-pattern! 'fsm               "有限状态机：initial-state 与 states 声明状态集合"
+                      (hash 'initial-state string? 'states string-list?))
+(register-v2-pattern! 'evaluator         "评估器：thresholds 声明双阈值"
+                      (hash 'thresholds string-list?))
+(register-v2-pattern! 'topic-model       "主题建模：processor 指定子 Agent 名"
+                      (hash 'processor string?))
+(register-v2-pattern! 'decomposer        "结构化提取：schema-fields 声明字段类型检查"
+                      (hash 'schema-fields string-list?))
+(register-v2-pattern! 'guardrails-safety "护栏安全：hooks 声明三段钩子"
+                      (hash 'hooks string-list?))
+(register-v2-pattern! 'hitl              "人在环：approval-before 声明需批准的阶段"
+                      (hash 'approval-before string-list?))
+(register-v2-pattern! 'exception         "异常恢复：retries 与 backoff 声明重试策略"
+                      (hash 'retries positive-integer? 'backoff real?))
+(register-v2-pattern! 'exploration      "探索发现：budget 与 convergence 声明停止条件"
+                      (hash 'budget positive-integer? 'convergence real?))
+

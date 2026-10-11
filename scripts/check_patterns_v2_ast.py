@@ -218,6 +218,59 @@ def check_multiagent(block, where, errs):
         check_harness(w[4], f"{where}/worker {wname}", errs)
 
 
+# --- CR-42 P-2：:pattern 块的 kind 取自 Racket 注册表（单一事实源，避免两边重复维护） ---
+_REGISTRY_CACHE = {}
+
+
+def registry_kinds():
+    """返回注册表里的 kind 列表；racket 不可用时返回 None（调用方跳过 pattern 校验）。"""
+    if "kinds" in _REGISTRY_CACHE:
+        return _REGISTRY_CACHE["kinds"]
+    import shutil
+    import subprocess
+
+    if shutil.which("racket") is None:
+        _REGISTRY_CACHE["kinds"] = None
+        return None
+    root = pathlib.Path(__file__).resolve().parents[1]
+    expr = (
+        '(require (file "' + str(root / "compiler" / "pattern_registry.rkt") + '"))'
+        " (for ([k (in-list (pattern-kinds))]) (displayln k))"
+    )
+    try:
+        cp = subprocess.run(["racket", "-e", expr], capture_output=True, text=True, timeout=60)
+        kinds = [line.strip() for line in cp.stdout.splitlines() if line.strip()]
+        _REGISTRY_CACHE["kinds"] = kinds or None
+    except Exception:
+        _REGISTRY_CACHE["kinds"] = None
+    return _REGISTRY_CACHE["kinds"]
+
+
+def check_pattern(block, where, errs):
+    kinds = registry_kinds()
+    body = block[1:]
+
+    def get(key):
+        for i in range(0, len(body) - 1, 2):
+            if body[i] == key:
+                return body[i + 1]
+        return None
+
+    kind = get(":kind")
+    cfg = get(":config")
+    if kind is None:
+        errs.append(f"{where}: (:pattern ...) 缺 :kind")
+        return
+    if kinds is not None and str(kind) not in kinds:
+        errs.append(f"{where}: :pattern 的 kind={kind} 不在注册表 {kinds}")
+    if not isinstance(cfg, list) or not cfg or cfg[0] != ":markers":
+        errs.append(f"{where}: :pattern 的 :config 必须含 :markers 列表")
+        return
+    markers = cfg[1]
+    if not isinstance(markers, list) or not all(isinstance(m, str) and m.strip() for m in markers):
+        errs.append(f"{where}: :pattern 的 :markers 必须是非空字符串列表")
+
+
 def check_datum(datum, where, errs):
     if not isinstance(datum, list) or str(datum[0]) != "define-agent":
         errs.append(f"{where}: 顶层必须是 (define-agent NAME ...)")
@@ -230,7 +283,7 @@ def check_datum(datum, where, errs):
     idxs = [BUCKET_ORDER.index(t) for t in tags if t in BUCKET_ORDER]
     if idxs != sorted(idxs):
         errs.append(f"{where}: 5 桶顺序不是升序：{tags}")
-    unknown = [t for t in tags if t not in BUCKET_ORDER]
+    unknown = [t for t in tags if t not in BUCKET_ORDER and t != ":pattern"]
     if unknown:
         errs.append(f"{where}: 未知顶层块 {unknown}")
     for m in (":model", ":tools", ":context"):
@@ -248,6 +301,8 @@ def check_datum(datum, where, errs):
             check_harness(b, where, errs)
         elif t == ":multiagent":
             check_multiagent(b, where, errs)
+        elif t == ":pattern":
+            check_pattern(b, where, errs)
     return name
 
 

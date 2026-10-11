@@ -154,7 +154,7 @@
         (cons "d3-1" "harness c/v/c trichotomy")
         (cons "d3-2" "无运行时eval污染")
         (cons "d4-1" "agent name是symbol")
-        (cons "d4-2" "block count 3≤n≤5")
+        (cons "d4-2" "3 mandatory blocks present (robust to :pattern extension)")
         (cons "d5-1" "顶层形状define-agent")
         (cons "d5-2" "每block是list带kw tag")))
 
@@ -170,10 +170,9 @@
                                'd3-1 (harness-cvc-trichotomy blocks)
                                'd3-2 (no-runtime-eval-subst? expanded)
                                'd4-1 (symbol? (cadr expanded))
-                               'd4-2 (and (number? (length blocks))
-                                          (>= (length blocks) 3)
-                                          (<= (length blocks) 5)
-                                          #t)
+                               ;; CR-42 P-2：放弃裸块数判据（:pattern 正交扩展会改计数，且多 Agent 形态下
+                               ;; blocks 取值不稳）。改为复用已验证稳健的「三必块在场」断言。
+                               'd4-2 (three-mandatory-blocks-present? blocks)
                                'd5-1 (v1-define-agent? expanded)
                                'd5-2 (andmap (lambda (b) (and (list? b) (symbol? (block-tag b)))) blocks))))
             (for ((spec (in-list *nfr02-cell-specs*)))

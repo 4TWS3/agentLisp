@@ -143,7 +143,7 @@ EIGHT_CELL_LABELS = [
     "d3-1harness c/v/c trichotomy",
     "d3-2无运行时eval污染",
     "d4-1agent_name是symbol",
-    "d4-2block count∈[3,5]",
+    "d4-2block count∈[3,6]",
     "d5-1顶层define-agent",
     "d5-2每block带kw tag",
 ]
