@@ -26,6 +26,14 @@
 
 (define input-path #f)
 (define output-path #f)
+;; 统一出口：退出前必须 flush 两个端口。
+;; 教训：--json-errors 把 JSON 写到 stdout，若重定向到文件（CI 即如此）后直接 exit，
+;; 缓冲区未刷，落盘内容被截断（实测 537 字节、2 个 { 0 个 }，json.loads 报 char 457）。
+(define (exit/flush code)
+  (flush-output (current-output-port))
+  (flush-output (current-error-port))
+  (exit code))
+
 (define check-only? #f)
 (define emit-python? #t)
 (define json-errors? #f)
@@ -324,7 +332,7 @@
     (newline))
   (fprintf (current-error-port) "agentlispc: missing input file\n")
   (fprintf (current-error-port) "usage: racket compiler/main.rkt -i INPUT.al -o OUTPUT.py (--check-only) (--json-errors)\n")
-  (exit 2))
+  (exit/flush 2))
 
 (define source
   (with-handlers ((exn:fail?
@@ -343,7 +351,7 @@
                                                              'line 'null 'column 'null
                                                              'position 'null 'span 'null)
                                      'hints          '("检查文件存在性与权限；路径必须是 UTF-8"))))
-                           (exit 3))
+                           (exit/flush 3))
                          (raise e)))))
     (file->value-list input-path)))
 
@@ -353,7 +361,7 @@
 (when dump-expanded-sexp?
   (for ((form (in-list expanded-source)))
     (displayln (format "~s" form)))
-  (exit 0))
+  (exit/flush 0))
 
 (define ast
   (with-handlers
@@ -362,7 +370,7 @@
         (cond
           (json-errors?
            (emit-json-errors (list (exn->jsexpr e)))
-           (exit 2))
+           (exit/flush 2))
           (else (raise e))))))
     ;; 必须传 thunk：checker.rkt 的 with-srcloc-from-form 是宏（无法被 dynamic-require 取值），
     ;; 本文件的动态包装会退化为 (lambda (src proc) (proc))，因此这里必须给过程而不是已求值的 AST。
@@ -385,7 +393,7 @@
         (cond
           (json-errors?
            (emit-json-errors (list (exn->jsexpr e)))
-           (exit 1))
+           (exit/flush 1))
           (else
            (list (hasheq 'ok? #f 'title (format "~a" (if (exn? e) (exn-message e) e))
                          'message (format "~a" (if (exn? e) (exn-message e) e)))))))))
@@ -454,18 +462,18 @@
         (else acc))))
   (emit-json-errors json-list)
   (when (pair? json-list)
-    (exit 1))
+    (exit/flush 1))
   (when check-only?
-    (exit 0)))
+    (exit/flush 0)))
 
 (define all-ok? (report-checks check-results))
 (unless all-ok?
   (fprintf (current-error-port) "\nstatic checks FAILED, aborting.\n")
-  (exit 1))
+  (exit/flush 1))
 
 (when check-only?
   (displayln "static checks PASSED (check-only mode).")
-  (exit 0))
+  (exit/flush 0))
 
 (when emit-python?
   (define module-name (if output-path
@@ -489,7 +497,7 @@
           (displayln (format "==> emitted ~a bytes -> ~a" (string-length code) output-path))))
       (display code)))
 
-(exit 0)
+(exit/flush 0)
 
 (module+ json-errors-runner
   (void))

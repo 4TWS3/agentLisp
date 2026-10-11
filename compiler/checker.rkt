@@ -231,13 +231,20 @@
 
 ;; srcloc*? -> jsexpr（{source, line, column, position, span}，可 null）
 (define (srcloc*->jsexpr s)
+  ;; 注意：JSON 里「符号只能做键，不能做值」——write-json 遇到符号值会中途抛错，
+  ;; 导致 stdout 被截断（CI 报 json.loads: Expecting value: char 457）。
+  ;; 因此缺失字段统一用 #f（JSON false）或 "unknown"，不再用 'null。
   (if (not s)
-      (hasheq 'source #\nul 'null #f)
+      (hasheq 'source   "unknown"
+              'line     #f
+              'column   #f
+              'position #f
+              'span     #f)
       (hasheq 'source   (or (srcloc*-source s)    "unknown")
-              'line     (or (srcloc*-line s)      'null)
-              'column   (or (srcloc*-column s)    'null)
-              'position (or (srcloc*-position s)  'null)
-              'span     (or (srcloc*-span s)      'null))))
+              'line     (or (srcloc*-line s)      #f)
+              'column   (or (srcloc*-column s)    #f)
+              'position (or (srcloc*-position s)  #f)
+              'span     (or (srcloc*-span s)      #f))))
 
 (define (code->severity code-sym)
   (define s (symbol->string code-sym))
@@ -269,7 +276,7 @@
           'severity       (code->severity (exn:agentlisp:check-code e))
           'srs_id         (code->srs-id (exn:agentlisp:check-code e))
           'message        (exn-message e)
-          'agent_name     (or (exn:agentlisp:check-agent-name e) 'null)
+          'agent_name     (or (exn:agentlisp:check-agent-name e) "")
           'srcloc         (srcloc*->jsexpr (exn:agentlisp:check-srcloc e))
           'hints          (exn:agentlisp:check-hints e)))
 
@@ -281,7 +288,7 @@
           'severity       (code->severity (exn:agentlisp:parse-code e))
           'srs_id         (code->srs-id (exn:agentlisp:parse-code e))
           'message        (exn-message e)
-          'agent_name     (or (exn:agentlisp:parse-agent-name e) 'null)
+          'agent_name     (or (exn:agentlisp:parse-agent-name e) "")
           'srcloc         (srcloc*->jsexpr (exn:agentlisp:parse-al-srcloc e))
           'hints          (exn:agentlisp:parse-hints e)))
 
@@ -298,7 +305,7 @@
              'severity       "error"
              'srs_id         ""
              'message        (or msg "(no message)")
-             'agent_name     'null
+             'agent_name     ""
              'srcloc         (srcloc*->jsexpr #f)
              'hints          '())]))
 
