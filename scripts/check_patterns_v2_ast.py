@@ -314,6 +314,10 @@ def check_datum(datum, where, errs):
 
 
 def main() -> int:
+    # Windows 控制台默认 cp1252：直接 print 中文会 UnicodeEncodeError（CI 实测）。
+    for _stream in (sys.stdout, sys.stderr):
+        if hasattr(_stream, "reconfigure"):
+            _stream.reconfigure(encoding="utf-8", errors="replace")
     errs = []
     n = 0
     for p in PATTERNS:

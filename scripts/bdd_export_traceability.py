@@ -264,6 +264,10 @@ def generate_markdown(
 
 
 def main(argv: list[str] | None = None) -> int:
+    # Windows 控制台默认 cp1252：直接 print 中文会 UnicodeEncodeError（CI 实测）。
+    for _stream in (sys.stdout, sys.stderr):
+        if hasattr(_stream, "reconfigure"):
+            _stream.reconfigure(encoding="utf-8", errors="replace")
     ap = argparse.ArgumentParser(
         description="从 junitxml + fallback manifest 生成 SRS Traceability Matrix"
     )

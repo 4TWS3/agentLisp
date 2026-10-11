@@ -291,6 +291,10 @@ def check_32rows_scn_eq_pas(srs: str, stderr_list: list[str]) -> None:
 
 
 def main() -> int:
+    # Windows 控制台默认 cp1252：直接 print 中文会 UnicodeEncodeError（CI 实测）。
+    for _stream in (sys.stdout, sys.stderr):
+        if hasattr(_stream, "reconfigure"):
+            _stream.reconfigure(encoding="utf-8", errors="replace")
     args = _parse_args()
     srs = _read_srs(args.srs)
     stderr_list: list[str] = []

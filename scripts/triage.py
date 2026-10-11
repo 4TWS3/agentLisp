@@ -176,6 +176,10 @@ def render_report(rep: dict) -> str:
 
 
 def main(argv: list[str]) -> int:
+    # Windows 控制台默认 cp1252：直接 print 中文会 UnicodeEncodeError（CI 实测）。
+    for _stream in (sys.stdout, sys.stderr):
+        if hasattr(_stream, "reconfigure"):
+            _stream.reconfigure(encoding="utf-8", errors="replace")
     targets = [a for a in argv if not a.startswith("-")] or ["tests/"]
     extra = [a for a in argv if a.startswith("-")]
     cmd = [sys.executable, "-m", "pytest", *targets, "-q", "--no-cov", "-rf", "--tb=short", *extra]
