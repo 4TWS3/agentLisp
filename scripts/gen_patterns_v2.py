@@ -605,7 +605,9 @@ HELPERS = """
 
 
 def emit_racket() -> str:
-    provides = "(provide " + "\n         ".join(p["macro"] for p in PATTERNS) + ")\n"
+    # CR-42 后续：别名宏也必须进 provide，否则展开器看不到它们（与 patterns.rkt 同一陷阱）
+    all_names = [p["macro"] for p in PATTERNS] + list(SPEC_ALIASES.keys())
+    provides = "(provide " + "\n         ".join(all_names) + ")\n"
     entries = []
     for p in PATTERNS:
         macro = p["macro"]
@@ -717,8 +719,34 @@ def emit_fixture(p: dict, scene: str, al: pathlib.Path) -> str:
     return header + sexp(datum) + "\n"
 
 
+# CR-42 后续（第 3 项）：规格 §3 的 BNF 宏名与实现名不同的 5 个，提供转发别名，
+# 让规格文档里的写法可以直接编译。别名只转发，展开结果与主宏完全一致。
+SPEC_ALIASES = {
+    "defprioritized-agent": "defpriority-agent",
+    "defa2a-server": "defa2a-agent",
+    "defresilient-agent": "defexception-agent",
+    "defapproval-agent": "defhitl-agent",
+    "defguarded-agent": "defguardrails-safety-agent",
+}
+
+
+def emit_aliases() -> str:
+    head = (
+        "\n;;; ---------- CR-42 后续：规格 §3 BNF 别名（转发到实现名）----------\n"
+        ";;; 只做转发，展开结果与主宏一致；目的：规格文档里的写法可直接编译。\n"
+    )
+    body = []
+    for alias, target in SPEC_ALIASES.items():
+        body.append(
+            f"(define-syntax ({alias} stx)\n"
+            "  (syntax-case stx ()\n"
+            f"    ((_ . rest) #'({target} . rest))))\n"
+        )
+    return head + "\n".join(body)
+
+
 def main() -> None:
-    RKT.write_text(emit_racket(), encoding="utf-8")
+    RKT.write_text(emit_racket() + "\n" + emit_aliases(), encoding="utf-8")
     n = 0
     for p in PATTERNS:
         for scene in ("hc", "generic", "reverse"):

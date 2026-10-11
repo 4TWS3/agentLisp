@@ -20,7 +20,12 @@
          defreasoning-agent
          deflearning-agent
          defresource-aware-agent
-         defgoal-agent)
+         defgoal-agent
+         defprioritized-agent
+         defa2a-server
+         defresilient-agent
+         defapproval-agent
+         defguarded-agent)
 
 
 (begin-for-syntax
@@ -321,3 +326,26 @@
        #`(quote #,(v2-instantiate (cdr (assq 'defgoal-agent v2-templates))
                               (syntax->datum (syntax name*))
                               (syntax->datum (syntax rst*)))))))
+
+
+;;; ---------- CR-42 后续：规格 §3 BNF 别名（转发到实现名）----------
+;;; 只做转发，展开结果与主宏一致；目的：规格文档里的写法可直接编译。
+(define-syntax (defprioritized-agent stx)
+  (syntax-case stx ()
+    ((_ . rest) #'(defpriority-agent . rest))))
+
+(define-syntax (defa2a-server stx)
+  (syntax-case stx ()
+    ((_ . rest) #'(defa2a-agent . rest))))
+
+(define-syntax (defresilient-agent stx)
+  (syntax-case stx ()
+    ((_ . rest) #'(defexception-agent . rest))))
+
+(define-syntax (defapproval-agent stx)
+  (syntax-case stx ()
+    ((_ . rest) #'(defhitl-agent . rest))))
+
+(define-syntax (defguarded-agent stx)
+  (syntax-case stx ()
+    ((_ . rest) #'(defguardrails-safety-agent . rest))))

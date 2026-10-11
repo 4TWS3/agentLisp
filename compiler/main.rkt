@@ -193,7 +193,10 @@
         defrag-agent defa2a-agent defreasoning-agent deflearning-agent
         defresource-aware-agent defgoal-agent
         ;; CR-42 后续：核心语法糖宏（记忆管理 / 多智能体协作）
-        defmemory-agent defmultiagent))
+        defmemory-agent defmultiagent
+        ;; CR-42 后续：规格 §3 BNF 别名（转发到实现名）
+        defprioritized-agent defa2a-server defresilient-agent
+        defapproval-agent defguarded-agent))
     (define all-expanded
       (for/list ((form (in-list all-forms)))
         (cond
@@ -204,13 +207,20 @@
            (with-handlers ([exn:fail? (lambda (e)
                                         (fprintf (current-error-port) "; expand-single ~s FAIL: ~a~n" (car form) (exn-message e))
                                         form)])
-             (define expanded (eval form ns))
-             (cond
-               [(and (pair? expanded) (eq? (car expanded) 'defagent))
-                (cons 'define-agent (cdr expanded))]
-               [(and (pair? expanded) (memq (car expanded) pattern-macro-names))
-                (cons 'define-agent (cdr expanded))]
-               [else expanded]))]
+             ;; CR-42 后续：迭代展开到不动点。别名宏（规格 §3 名 → 实现名）一次 eval 后仍是宏调用，
+             ;; 旧实现直接把它当 define-agent 用，产物退化成兜底桩。深度上限用于防御别名自环。
+             (let loop ([f form] [depth 0])
+               (cond
+                 [(>= depth 5) f]
+                 [(and (pair? f) (memq (car f) pattern-macro-names))
+                  (define expanded (eval f ns))
+                  (cond
+                    [(and (pair? expanded) (eq? (car expanded) 'defagent))
+                     (cons 'define-agent (cdr expanded))]
+                    [(and (pair? expanded) (eq? (car expanded) 'define-agent))
+                     expanded]
+                    [else (loop expanded (add1 depth))])]
+                 [else f])))]
           [else form])))
     ;; CR-42 F2：真正 apply 旁路 checker（结果只落 stderr）
     (run-patterns-checker-v2/report ns)

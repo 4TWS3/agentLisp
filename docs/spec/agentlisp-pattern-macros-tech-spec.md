@@ -31,7 +31,7 @@ CR-42 之后，模式语义由 `:pattern` 块承载。语义不再只写在 `:sy
 `defplanner-agent`、`defreflect-agent`（`compiler/patterns.rkt`）、
 `defrag-agent`、`defreasoning-agent`（`compiler/patterns_v2.rkt`）。
 
-改名的 5 个：
+改名的 5 个（2026-10-11 起，规格名也可直接编译 —— 别名宏转发到实现名）：
 
 | 规格 BNF 名 | 实现名 |
 |---|---|
