@@ -14,6 +14,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import hashlib
+import logging
 import os
 import uuid
 from abc import ABC, abstractmethod
@@ -24,7 +25,6 @@ from typing import Any
 
 from runtime.base_harness import BaseHarness, ExecutionTrace
 from runtime.errors import FeatureNotInstalledError
-import logging
 
 
 @dataclass
@@ -218,7 +218,9 @@ class InMemoryHITLRunner(WorkflowRunner):
                                     susp.tool_name,
                                 )
                             except Exception:
-                                logging.getLogger(__name__).debug("swallowed exception", exc_info=True)
+                                logging.getLogger(__name__).debug(
+                                    "swallowed exception", exc_info=True
+                                )
                             # 将 trace.status 置 failed + error=human_rejected
                             if harness._trace is not None:
                                 harness._trace.status = "failed"

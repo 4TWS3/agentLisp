@@ -16,15 +16,11 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import textwrap
 import uuid
 from pathlib import Path
 from typing import Any
-
-# 仓库根：由 __file__ 派生，避免依赖 cwd（标准 A3）
-REPO_ROOT = Path(__file__).resolve().parents[2]
-
-import logging
 
 import pytest
 
@@ -40,6 +36,10 @@ from runtime.errors import FeatureNotInstalledError
 from runtime.status_bar import (
     StatusBar as LegacyStatusBarProtocol,  # type: ignore[attr-defined]  # noqa
 )
+
+# 仓库根：由 __file__ 派生，避免依赖 cwd（标准 A3）。
+# 必须放在全部 import 之后，否则 ruff E402。
+REPO_ROOT = Path(__file__).resolve().parents[2]
 
 # ---------------------------------------------------------------------------
 # fixtures / helpers

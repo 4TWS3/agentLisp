@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import time
 import uuid
 from collections.abc import AsyncIterable, Callable
@@ -13,7 +14,6 @@ import structlog
 from pydantic import BaseModel, Field
 
 from .errors import HarnessError, ToolNotFoundError
-import logging
 
 log = structlog.get_logger()
 
