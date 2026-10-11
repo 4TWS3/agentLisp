@@ -145,6 +145,7 @@ def _check_exit_1_check_fail(tmp_path: Path) -> None:
     )
 
     main_src = COMPILER_MAIN.read_text(encoding="utf-8")
+
     # 兼容两类出口写法：
     #   1) 常量出口 (exit 1) / (exit/flush 1)；
     #   2) 按标记分流 (exit/flush (if had-parse-error? 2 1)) —— 解析失败 2、检查失败 1。
