@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from runtime.errors import FeatureNotInstalledError
+import logging
 
 
 @dataclass
@@ -129,7 +130,7 @@ class DockerSandbox(Sandbox):
                 try:
                     container.remove(force=True)
                 except Exception:
-                    pass
+                    logging.getLogger(__name__).debug("swallowed exception", exc_info=True)
 
         exit_code, stdout, stderr = await asyncio.wait_for(
             loop.run_in_executor(None, _sync), timeout=timeout

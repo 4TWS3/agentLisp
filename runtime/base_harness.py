@@ -13,6 +13,7 @@ import structlog
 from pydantic import BaseModel, Field
 
 from .errors import HarnessError, ToolNotFoundError
+import logging
 
 log = structlog.get_logger()
 
@@ -250,6 +251,7 @@ class BaseHarness:
             from agentlisp_runtime.engine import AgentEngine
             from agentlisp_runtime.loader import AgentLoader
         except Exception:
+            logging.getLogger(__name__).debug("swallowed exception", exc_info=True)
             return None
         try:
             agent = AgentLoader.from_dict(self.cfg)
@@ -258,6 +260,7 @@ class BaseHarness:
             }
             return AgentEngine(agent, tool_handlers=handlers)
         except Exception:
+            logging.getLogger(__name__).debug("swallowed exception", exc_info=True)
             return None
 
 

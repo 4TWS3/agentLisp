@@ -36,6 +36,10 @@
 
 (define check-only? #f)
 (define patterns-report? #f)
+
+;; 宏展开失败也必须让进程失败（标准 P4：不许沉默）。
+;; 旧行为：handler 只打日志并返回原式 → 检查循环认不出该式 → 退出码 0（静默失败）。
+(define had-expand-error? #f)
 (define emit-python? #t)
 (define json-errors? #f)
 (define verbose? #f)
@@ -214,6 +218,7 @@
           ;; 它们必须原样透传给下游 parser/checker。
           [(and (pair? form) (memq (car form) pattern-macro-names))
            (with-handlers ([exn:fail? (lambda (e)
+                                        (set! had-expand-error? #t)
                                         (fprintf (current-error-port) "; expand-single ~s FAIL: ~a~n" (car form) (exn-message e))
                                         form)])
              ;; CR-42 后续：迭代展开到不动点。别名宏（规格 §3 名 → 实现名）一次 eval 后仍是宏调用，
@@ -231,6 +236,9 @@
                     [else (loop expanded (add1 depth))])]
                  [else f])))]
           [else form])))
+    (when had-expand-error?
+      (fprintf (current-error-port) "\nmacro expansion FAILED, aborting.\n")
+      (exit/flush 1))
     ;; CR-42 F2：真正 apply 旁路 checker（结果只落 stderr）
     ;; 性能：该报告会编译并比对 15 个模式的整张矩阵（约 +400ms）。
     ;; NFR-PERF-2 要求 parse+check+emit < 200ms，因此改为按需触发：
@@ -396,6 +404,7 @@
 ;; 现代检查循环把 parse 异常与 check 异常都收进错误列表，若不做区分，
 ;; 解析失败会退化成 1（实测 [exit2_parse_fail] expected rc=2 actual=1）。
 (define had-parse-error? #f)
+
 
 (define check-results
   (with-handlers

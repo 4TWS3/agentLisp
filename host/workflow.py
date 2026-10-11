@@ -24,6 +24,7 @@ from typing import Any
 
 from runtime.base_harness import BaseHarness, ExecutionTrace
 from runtime.errors import FeatureNotInstalledError
+import logging
 
 
 @dataclass
@@ -171,7 +172,7 @@ class InMemoryHITLRunner(WorkflowRunner):
                             str(extra),
                         )
                 except Exception:
-                    pass
+                    logging.getLogger(__name__).debug("swallowed exception", exc_info=True)
 
             def _hooked_constrain(tool_call):
                 nonlocal run_state
@@ -217,7 +218,7 @@ class InMemoryHITLRunner(WorkflowRunner):
                                     susp.tool_name,
                                 )
                             except Exception:
-                                pass
+                                logging.getLogger(__name__).debug("swallowed exception", exc_info=True)
                             # 将 trace.status 置 failed + error=human_rejected
                             if harness._trace is not None:
                                 harness._trace.status = "failed"
@@ -411,7 +412,7 @@ def default_runner(prefer_temporal: bool | None = None) -> WorkflowRunner:
         try:
             return TemporalRunner()
         except FeatureNotInstalledError:
-            pass
+            logging.getLogger(__name__).debug("swallowed exception", exc_info=True)
     return DirectRunner()
 
 
@@ -752,7 +753,7 @@ class RepairAgentPipeline:
                         self.trace = trace
                         trace_path = self._write_trace_snapshot(run_id)
                     except Exception:
-                        pass
+                        logging.getLogger(__name__).debug("swallowed exception", exc_info=True)
         self._emit_event(
             self.PHASE_FINAL, status=status, strategy=strategy, trace_path=str(trace_path)
         )

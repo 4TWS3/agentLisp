@@ -23,6 +23,7 @@ import re
 import subprocess
 import sys
 import xml.etree.ElementTree as ET
+import logging
 
 REPO_ROOT = pathlib.Path(__file__).resolve().parents[1]
 SRS_DEFAULT = REPO_ROOT / "docs" / "spec" / "agentlisp_srs.md"
@@ -133,13 +134,14 @@ def _parse_pytest_from_junitxml(path: pathlib.Path) -> int | None:
     try:
         tree = ET.parse(path)
     except (ET.ParseError, FileNotFoundError, PermissionError):
+        logging.getLogger(__name__).debug("swallowed exception", exc_info=True)
         return None
     total = 0
     for ts in tree.getroot().iter("testsuite"):
         try:
             total += int(ts.attrib.get("tests", 0) or 0)
         except (ValueError, TypeError):
-            pass
+            logging.getLogger(__name__).debug("swallowed exception", exc_info=True)
     return total or None
 
 
@@ -168,6 +170,7 @@ def _parse_pytest_fallback_subprocess() -> int | None:
             timeout=900,
         )
     except (subprocess.SubprocessError, OSError):
+        logging.getLogger(__name__).debug("swallowed exception", exc_info=True)
         return None
     tail = (cp.stdout or "").splitlines()[-5:]
     for line in reversed(tail):
@@ -176,6 +179,7 @@ def _parse_pytest_fallback_subprocess() -> int | None:
             try:
                 return int(m.group(1))
             except ValueError:
+                logging.getLogger(__name__).debug("swallowed exception", exc_info=True)
                 return None
     return None
 

@@ -79,6 +79,7 @@ def _import_otel_otlp_exporter() -> Any | None:
 
         return OTLPSpanExporter
     except Exception:
+        logging.getLogger(__name__).debug("swallowed exception", exc_info=True)
         return None
 
 

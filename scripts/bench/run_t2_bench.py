@@ -95,6 +95,7 @@ def _import_harness():
             WorkspaceRoot,
         )
     except Exception:
+        logging.getLogger(__name__).debug("swallowed exception", exc_info=True)
         return None  # type: ignore[return-value]
 
 

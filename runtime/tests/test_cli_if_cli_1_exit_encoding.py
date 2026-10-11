@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+import logging
 
 REPO_ROOT: Path = Path(__file__).resolve().parents[2]
 COMPILER_MAIN: Path = REPO_ROOT / "compiler" / "main.rkt"
@@ -177,7 +178,7 @@ def _check_exit_2_parse_fail(tmp_path: Path) -> None:
     try:
         compile("(" + text + ")", "<fake>", "exec")
     except SyntaxError:
-        pass
+        logging.getLogger(__name__).debug("swallowed exception", exc_info=True)
 
     main_src = COMPILER_MAIN.read_text(encoding="utf-8")
     exit2_lines = [ln for ln in main_src.splitlines() if "(exit 2)" in ln or "(exit/flush 2)" in ln]

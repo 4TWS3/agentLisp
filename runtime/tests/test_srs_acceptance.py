@@ -18,7 +18,11 @@ import asyncio
 import json
 import textwrap
 import uuid
+from pathlib import Path
 from typing import Any
+
+# 仓库根：由 __file__ 派生，避免依赖 cwd（标准 A3）
+REPO_ROOT = Path(__file__).resolve().parents[2]
 
 import pytest
 
@@ -34,6 +38,7 @@ from runtime.errors import FeatureNotInstalledError
 from runtime.status_bar import (
     StatusBar as LegacyStatusBarProtocol,  # type: ignore[attr-defined]  # noqa
 )
+import logging
 
 # ---------------------------------------------------------------------------
 # fixtures / helpers
@@ -524,9 +529,9 @@ def test_compiler_structured_errors_mapped_to_exception_message_shapes():
     from pathlib import Path
 
     combined_src = (
-        Path("compiler/agentlisp_compiler.rkt").read_text(encoding="utf-8")
+        (REPO_ROOT / "compiler/agentlisp_compiler.rkt").read_text(encoding="utf-8")
         + "\n"
-        + Path("compiler/checker.rkt").read_text(encoding="utf-8")
+        + (REPO_ROOT / "compiler/checker.rkt").read_text(encoding="utf-8")
     )
     for code in (
         "ERR_KV_ALIGNMENT_VIOLATION",
@@ -886,7 +891,7 @@ def test_ac_2_nfr_rel_1_redis_checkpoint_default_ttl_ge_86390s():
                 url="redis://localhost/0", client=_DummyRedisClient(), ttl_seconds=bad
             )  # type: ignore[arg-type]
         except ValueError:
-            pass
+            logging.getLogger(__name__).debug("swallowed exception", exc_info=True)
         else:
             raise AssertionError(f"NFR-REL-1: ttl_seconds={bad!r} 应抛 ValueError 未抛")
 
@@ -1238,9 +1243,9 @@ def test_json_errors_shape_via_checker_rkt_source():
     """
     from pathlib import Path
 
-    checker_src = Path("compiler/checker.rkt").read_text(encoding="utf-8")
-    main_src = Path("compiler/main.rkt").read_text(encoding="utf-8")
-    compiler_src = Path("compiler/agentlisp_compiler.rkt").read_text(encoding="utf-8")
+    checker_src = (REPO_ROOT / "compiler/checker.rkt").read_text(encoding="utf-8")
+    main_src = (REPO_ROOT / "compiler/main.rkt").read_text(encoding="utf-8")
+    compiler_src = (REPO_ROOT / "compiler/agentlisp_compiler.rkt").read_text(encoding="utf-8")
     combined = "\n".join([checker_src, main_src, compiler_src])
     # (a) 7 字段必须存在
     for token in (
@@ -1272,7 +1277,7 @@ def test_json_errors_kv_alignment_has_correct_hints_srs_id():
     import re
     from pathlib import Path
 
-    src = Path("compiler/checker.rkt").read_text(encoding="utf-8")
+    src = (REPO_ROOT / "compiler/checker.rkt").read_text(encoding="utf-8")
     # 找到所有 (raise-check 'ERR_KV_ALIGNMENT_VIOLATION ...)
     # 再检查同一文件里 (define (code->srs-id ...) 对该错误的映射是 FR-CHECK-1
     _ = re.search(r"ERR_KV_ALIGNMENT_VIOLATION\)\"?\s*\"?\s*\"?FR-CHECK-1\"?", src)

@@ -30,6 +30,7 @@ def _port_open(host: str, port: int, timeout: float = 2.0) -> bool:
         with socket.create_connection((host, port), timeout=timeout):
             return True
     except OSError:
+        logging.getLogger(__name__).debug("swallowed exception", exc_info=True)
         return False
 
 
@@ -83,7 +84,7 @@ def test_nfr_rel_1_redis_checkpoint_default_ttl_86390(event_loop):
             # redis-py >= 5.0.1: close() 标记为 Deprecated，使用 aclose()
             await store._redis.aclose()  # type: ignore[union-attr,attr-defined]
         except Exception:
-            pass
+            logging.getLogger(__name__).debug("swallowed exception", exc_info=True)
         return int(ttl), loaded
 
     ttl, loaded = event_loop.run_until_complete(_main())
@@ -136,7 +137,7 @@ def test_nfr_obs_1_otel_span_4attrs_to_jaeger(event_loop):
     try:
         provider.force_flush()
     except Exception:
-        pass
+        logging.getLogger(__name__).debug("swallowed exception", exc_info=True)
     # BatchSpanProcessor flush to Jaeger：force_flush 后 batch 到 jaeger-collector 4317 → 睡眠 1.5s 落盘索引
     time.sleep(1.5)
 

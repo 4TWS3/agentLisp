@@ -272,6 +272,17 @@ racket compiler/main.rkt \
 #  或仅跑静态检查：
 racket compiler/main.rkt --check-only -i examples/repair_agent.al
 
+### CLI 开关一览（与 `compiler/main.rkt` 实际解析一致）
+
+| 开关 | 作用 |
+|---|---|
+| `-i` / `-o` | 输入 `.al` / 输出 `.py` |
+| `--check-only`（`--no-emit`） | 只做静态检查，不发射 |
+| `--json-errors` | 错误以 JSON 数组输出到 stdout（供工具消费） |
+| `--dump-ast` | 打印展开后的 Core AST |
+| `--dump-expanded-sexp` | 打印宏展开结果 |
+| `--patterns-report` | 额外跑模式矩阵报告（较慢，默认关闭） |
+
 # 5️⃣ Python 加载并运行（DirectRunner，零外部依赖）
 uv sync --dev
 uv run python -c "

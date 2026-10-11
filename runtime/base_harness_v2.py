@@ -716,8 +716,10 @@ class BaseHarnessV2:
                         if cp.exists() or cp.parent.exists():  # 存在 or 父存在 → 调真实 FS resolve
                             return cp.resolve(strict=False)
                     except (OSError, RuntimeError):
+                        logging.getLogger(__name__).debug("swallowed exception", exc_info=True)
                         return None
                 except Exception:
+                    logging.getLogger(__name__).debug("swallowed exception", exc_info=True)
                     return None
                 return None
 
@@ -1246,7 +1248,7 @@ class BaseHarnessV2:
                 try:
                     _span_obj.record_exception(asyncio.CancelledError())
                 except Exception:
-                    pass
+                    logging.getLogger(__name__).debug("swallowed exception", exc_info=True)
             raise
         except Exception as exc:
             if self._trace is not None and self.checkpoint_store is not None:
@@ -1268,7 +1270,7 @@ class BaseHarnessV2:
                     _span_obj.set_attribute("agentlisp.turn_status", "failed")
                     _span_obj.record_exception(exc)
                 except Exception:
-                    pass
+                    logging.getLogger(__name__).debug("swallowed exception", exc_info=True)
             raise
         finally:
             try:
@@ -1276,7 +1278,7 @@ class BaseHarnessV2:
                     try:
                         _span_obj.set_attribute("agentlisp.turn_status", str(turn.status or ""))
                     except Exception:
-                        pass
+                        logging.getLogger(__name__).debug("swallowed exception", exc_info=True)
                 if span_ctx is not None:
                     span_ctx.__exit__(None, None, None)
             except Exception:

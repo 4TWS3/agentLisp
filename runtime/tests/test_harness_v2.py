@@ -32,6 +32,7 @@ from runtime.base_harness_v2 import (
     _contains_forbidden_token,
     build_kv_aligned_context,
 )
+import logging
 
 # ============================================================================
 # 1. build_kv_aligned_context 顺序 (Issue #3: Status Bar 必须是 system 角色，不是 user)
@@ -633,7 +634,7 @@ async def test_llm_orchestrator_circuit_breaker_fallback_model_invokes_fallback_
         try:
             await orch.achat(msgs)
         except Exception:
-            pass
+            logging.getLogger(__name__).debug("swallowed exception", exc_info=True)
     assert breaker.state == "open" and breaker.failure_count >= 3, breaker.stats()
     assert len(primary.calls) == 3, (
         f"前 3 次 breaker closed，primary 必须被调 3 次；actual={len(primary.calls)}"
@@ -795,7 +796,7 @@ async def test_t2_bench_wire_pipeline_n10_dry_run_reports_fields_and_phase_event
                 artifacts_dir=os.path.join(td, "per-sample", one_sample.sample_id),
             )
         except Exception:
-            pass
+            logging.getLogger(__name__).debug("swallowed exception", exc_info=True)
         if exec_one is not None:
             expected_phases = {"submission", "constrain", "execute_verify", "final"}
             phases = set(exec_one.get("phases") or [])

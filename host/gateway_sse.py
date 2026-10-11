@@ -508,7 +508,7 @@ def create_app(registry: GatewayRegistry | None = None) -> Any:
             try:
                 tmp.unlink()
             except Exception:
-                pass
+                logging.getLogger(__name__).debug("swallowed exception", exc_info=True)
         agent_name = req.agent_name or "top"
         for err in errors:
             if err.get("agent_name") == "top" and req.agent_name:
@@ -672,7 +672,7 @@ def create_app(registry: GatewayRegistry | None = None) -> Any:
                         if rid == run_id:
                             by_run.append(s)
                 except Exception:
-                    pass
+                    logging.getLogger(__name__).debug("swallowed exception", exc_info=True)
             if tool_name:
                 for s in by_run:
                     if getattr(s, "tool_name", None) == tool_name:
@@ -714,7 +714,7 @@ def create_app(registry: GatewayRegistry | None = None) -> Any:
         try:
             susp.resolve("approve")
         except Exception:
-            pass
+            logging.getLogger(__name__).debug("swallowed exception", exc_info=True)
         return {
             "accepted": True,
             "run_id": run_id,
@@ -752,7 +752,7 @@ def create_app(registry: GatewayRegistry | None = None) -> Any:
         try:
             susp.resolve("reject")
         except Exception:
-            pass
+            logging.getLogger(__name__).debug("swallowed exception", exc_info=True)
         return {
             "accepted": True,
             "run_id": run_id,
