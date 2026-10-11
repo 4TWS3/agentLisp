@@ -11,6 +11,8 @@
 
 (require rackunit
          rackunit/text-ui
+         racket/function
+         racket/file
          racket/string
          "../agentlisp_compiler.rkt")
 

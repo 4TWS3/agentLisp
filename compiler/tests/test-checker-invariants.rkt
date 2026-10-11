@@ -11,6 +11,7 @@
 
 (require rackunit
          rackunit/text-ui
+         racket/file
          racket/string
          racket/function
          racket/match
