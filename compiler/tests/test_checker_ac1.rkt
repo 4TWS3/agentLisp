@@ -126,7 +126,7 @@
        ((scoped-worker w1
           (:model :provider "mock" :name "m1" :temperature 0.0 :system-prompt "w1")
           (:tools (define-tool write-md ((s string)) ((ok boolean?))))
-          (:harness (:constrain) (:verify :json-schema #t) (:correct :max-retries 1 :circuit-breaker 2 :on-failure abort))))))))
+          (:harness (:constrain) (:verify :json-schema #t) (:correct :max-retries 1 :circuit-breaker 2 :on-failure abort)))))))
 
 (define cl2-old-key-define-tools-dup
   '(defagent cl2
@@ -138,7 +138,7 @@
        ((scoped-worker w1
           (:model :provider "mock" :name "m1" :temperature 0.0 :system-prompt "w1")
           (:tools (define-tool read-xls ((f string)) ((rows list?))))
-          (:harness (:constrain) (:verify :json-schema #t) (:correct :max-retries 1 :circuit-breaker 2 :on-failure abort))))))))
+          (:harness (:constrain) (:verify :json-schema #t) (:correct :max-retries 1 :circuit-breaker 2 :on-failure abort)))))))
 
 (define cl3-brothers-same-check-rule
   '(defagent cl3
@@ -154,7 +154,7 @@
         (scoped-worker w2
           (:model :provider "mock" :name "b" :temperature 0.0 :system-prompt "w2")
           (:tools (define-tool check-rule ((r list?)) ((ok boolean?))))
-          (:harness (:constrain) (:verify :json-schema #t) (:correct :max-retries 1 :circuit-breaker 2 :on-failure abort))))))))
+          (:harness (:constrain) (:verify :json-schema #t) (:correct :max-retries 1 :circuit-breaker 2 :on-failure abort)))))))
 
 (define cl4-brothers-string-dup-run-shell
   '(defagent cl4
@@ -170,7 +170,7 @@
         (scoped-worker w2
           (:model :provider "mock" :name "b" :temperature 0.0 :system-prompt "w2")
           (:tools (define-tool run-shell (()) ()))
-          (:harness (:constrain) (:verify :json-schema #t) (:correct :max-retries 1 :circuit-breaker 2 :on-failure abort))))))))
+          (:harness (:constrain) (:verify :json-schema #t) (:correct :max-retries 1 :circuit-breaker 2 :on-failure abort)))))))
 
 (define cl5-prefix-safe-not-dup-pos
   '(defagent cl5
@@ -182,7 +182,7 @@
        ((scoped-worker w1
           (:model :provider "mock" :name "m1" :temperature 0.0 :system-prompt "w1")
           (:tools (define-tool write-md-worker ((s string)) ((ok boolean?))))
-          (:harness (:constrain) (:verify :json-schema #t) (:correct :max-retries 1 :circuit-breaker 2 :on-failure abort))))))))
+          (:harness (:constrain) (:verify :json-schema #t) (:correct :max-retries 1 :circuit-breaker 2 :on-failure abort)))))))
 
 (define cl6-three-brothers-diff-names-pos
   '(defagent cl6
@@ -202,7 +202,7 @@
         (scoped-worker w3
           (:model :provider "mock" :name "c" :temperature 0.0 :system-prompt "w3")
           (:tools (define-tool c ((x string)) ((r list?))))
-          (:harness (:constrain) (:verify :json-schema #t) (:correct :max-retries 1 :circuit-breaker 2 :on-failure abort))))))))
+          (:harness (:constrain) (:verify :json-schema #t) (:correct :max-retries 1 :circuit-breaker 2 :on-failure abort)))))))
 
 ;; ----------------------------- suites ---------------------------------
 

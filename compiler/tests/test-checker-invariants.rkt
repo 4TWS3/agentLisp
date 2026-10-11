@@ -91,7 +91,7 @@
           (:context :memory-policy (:markdown-fs "./x" :layers (L0-Abstract) :auto-append #t))
           (:model :provider "mock" :name "m" :temperature 0.0 :system-prompt "worker-ctx-before-model")
           (:tools (import-builtin echo))
-          (:harness (:constrain) (:verify :json-schema #t) (:correct :max-retries 2 :circuit-breaker 3 :on-failure ask-human))))))))
+          (:harness (:constrain) (:verify :json-schema #t) (:correct :max-retries 2 :circuit-breaker 3 :on-failure ask-human)))))))
 
 (define-test-suite ac-1-kv-tests
   (test-case "AC-1-KV-1 context before model -> ERR_KV_ALIGNMENT_VIOLATION"
@@ -175,7 +175,7 @@
           (:model :provider "mock" :name "m1" :temperature 0.0 :system-prompt "w1")
           (:tools (define-tool write-md ((s string)) ((ok boolean?))) ; 与父重名
                  (define-tool both     ((s string)) ((ok boolean?)))) ; 与父重名
-          (:harness (:constrain) (:verify :json-schema #t) (:correct :max-retries 2 :circuit-breaker 3 :on-failure ask-human))))))))
+          (:harness (:constrain) (:verify :json-schema #t) (:correct :max-retries 2 :circuit-breaker 3 :on-failure ask-human)))))))
 
 (define cl-ok-diff-names
   '(defagent demo-cl-ok
@@ -187,7 +187,7 @@
        ((scoped-worker judge
           (:model :provider "anthropic" :name "c" :temperature 0.1 :system-prompt "judge")
           (:tools (define-tool reviewer-only ((s string)) ((score number?))))
-          (:harness (:constrain) (:verify :reviewer-agent "judge") (:correct :max-retries 2 :circuit-breaker 3 :on-failure ask-human))))))))
+          (:harness (:constrain) (:verify :reviewer-agent "judge") (:correct :max-retries 2 :circuit-breaker 3 :on-failure ask-human)))))))
 
 (define cl-ok-prefix-string-not-duplicate
   ;; 工具名是字符串前缀：不构成 ERR_CONTEXT_LEAKAGE（反误杀）
@@ -200,7 +200,7 @@
        ((scoped-worker w-suffix
           (:model :provider "mock" :name "a" :temperature 0.0 :system-prompt "w-suffix")
           (:tools (define-tool write-md-worker ((s string)) ((ok boolean?)))) ; 不重名（前缀不同完整字符串）
-          (:harness (:constrain) (:verify :json-schema #t) (:correct :max-retries 2 :circuit-breaker 3 :on-failure ask-human))))))))
+          (:harness (:constrain) (:verify :json-schema #t) (:correct :max-retries 2 :circuit-breaker 3 :on-failure ask-human)))))))
 
 (define cl-bad-3-workes-3-dups
   '(defagent demo-cl-3
@@ -211,7 +211,7 @@
      (:multiagent :topology orchestration :workers
        ((scoped-worker wa (:model :provider "mock" :name "a" :temperature 0.0 :system-prompt "a") (:tools (define-tool shared ((s string)) ((r any?)))) (:harness (:constrain) (:verify :json-schema #t) (:correct :max-retries 2 :circuit-breaker 3 :on-failure ask-human)))
         (scoped-worker wb (:model :provider "mock" :name "b" :temperature 0.0 :system-prompt "b") (:tools (define-tool shared ((s string)) ((r any?)))) (:harness (:constrain) (:verify :json-schema #t) (:correct :max-retries 2 :circuit-breaker 3 :on-failure ask-human)))
-        (scoped-worker wc (:model :provider "mock" :name "c" :temperature 0.0 :system-prompt "c") (:tools (define-tool shared ((s string)) ((r any?)))) (:harness (:constrain) (:verify :json-schema #t) (:correct :max-retries 2 :circuit-breaker 3 :on-failure ask-human))))))))
+        (scoped-worker wc (:model :provider "mock" :name "c" :temperature 0.0 :system-prompt "c") (:tools (define-tool shared ((s string)) ((r any?)))) (:harness (:constrain) (:verify :json-schema #t) (:correct :max-retries 2 :circuit-breaker 3 :on-failure ask-human)))))))
 
 (define-test-suite ac-1-cl-tests
   (test-case "AC-1-CL-1 duplicate tool name parent vs worker -> ERR_CONTEXT_LEAKAGE"
