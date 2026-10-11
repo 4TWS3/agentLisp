@@ -15,6 +15,10 @@
          ensure-blocks)
 
 (begin-for-syntax
+  ;; CR-42 P-3：编译期版本（GENERIC 分支在 phase 1 运行，必须定义在 begin-for-syntax 内）
+  (define (append-pattern/ct blocks kind markers)
+    (append blocks (list (list ':pattern ':kind kind ':config (list ':markers markers)))))
+
   (define (reorder-blocks/ct blocks)
     (define order-preference
       (hasheq ':model 0
@@ -84,6 +88,10 @@
     (define to-add (filter (lambda (tag) (not (memv tag existing-tags))) required))
     (define new-blocks (append blocks (map (lambda (tag) (list tag)) to-add)))
     (filter (lambda (b) (not (null? b))) new-blocks)))
+
+;; CR-42 P-3：给块列表追加 (:pattern :kind K :config (:markers (...)))。
+(define (append-pattern blocks kind markers)
+  (append blocks (list (list ':pattern ':kind kind ':config (list ':markers markers)))))
 
 (define (reorder-blocks blocks)
   (define order-preference
@@ -190,7 +198,10 @@
    ((_ name* . rst*)
      (let* ((name-sym (syntax->datum #'name*))
             (rst-datum (syntax->datum #'rst*))
-            (blocks (reorder-blocks/ct (ensure-blocks/ct (plist->blocks/ct rst-datum)))))
+            (blocks (append-pattern/ct
+                     (reorder-blocks/ct (ensure-blocks/ct (plist->blocks/ct rst-datum)))
+                     'reflect
+                     (list "失败即进入反思—修正回路" "reviewer-agent 复核后才算完成" "超过 :max-retries 次即中止"))))
        (with-syntax (((blk ...) (datum->syntax #'here blocks)))
          #`(list 'define-agent '#,name-sym 'blk ...))))))
 
@@ -229,7 +240,10 @@
     ((_ name* . rst*)
      (let* ((name-sym (syntax->datum #'name*))
             (rst-datum (syntax->datum #'rst*))
-            (blocks (reorder-blocks/ct (ensure-blocks/ct (plist->blocks/ct rst-datum)))))
+            (blocks (append-pattern/ct
+                     (reorder-blocks/ct (ensure-blocks/ct (plist->blocks/ct rst-datum)))
+                     'router
+                     (list "按用户意图分发至正确 Worker" "路由判定先于任何工具执行"))))
        (with-syntax (((blk ...) (datum->syntax #'here blocks)))
          #`(list 'define-agent '#,name-sym 'blk ...))))))
 
@@ -268,7 +282,10 @@ PROMPT
     ((_ name* . rst*)
      (let* ((name-sym (syntax->datum #'name*))
             (rst-datum (syntax->datum #'rst*))
-            (blocks (reorder-blocks/ct (ensure-blocks/ct (plist->blocks/ct rst-datum)))))
+            (blocks (append-pattern/ct
+                     (reorder-blocks/ct (ensure-blocks/ct (plist->blocks/ct rst-datum)))
+                     'chain
+                     (list "步骤按给定顺序执行，不得跳过" "每步 :out 注入后续 :in 上下文" "最终 Answer 汇总为 JSON"))))
        (with-syntax (((blk ...) (datum->syntax #'here blocks)))
          #`(list 'define-agent '#,name-sym 'blk ...))))))
 
@@ -315,7 +332,10 @@ PROMPT
     ((_ name* . rst*)
      (let* ((name-sym (syntax->datum #'name*))
             (rst-datum (syntax->datum #'rst*))
-            (blocks (reorder-blocks/ct (ensure-blocks/ct (plist->blocks/ct rst-datum)))))
+            (blocks (append-pattern/ct
+                     (reorder-blocks/ct (ensure-blocks/ct (plist->blocks/ct rst-datum)))
+                     'parallel
+                     (list "所有分支同时拉起，不得串行" "分支轮次允许在轨迹时间线交错" "全部结束后交给 reducer 归并"))))
        (with-syntax (((blk ...) (datum->syntax #'here blocks)))
          #`(list 'define-agent '#,name-sym 'blk ...))))))
 
@@ -354,6 +374,9 @@ PROMPT
     ((_ name* . rst*)
      (let* ((name-sym (syntax->datum #'name*))
             (rst-datum (syntax->datum #'rst*))
-            (blocks (reorder-blocks/ct (ensure-blocks/ct (plist->blocks/ct rst-datum)))))
+            (blocks (append-pattern/ct
+                     (reorder-blocks/ct (ensure-blocks/ct (plist->blocks/ct rst-datum)))
+                     'planner
+                     (list "首部输出计划 JSON，步骤数 ∈ (3,5)" "按计划逐步执行" "FIN 阶段报告完成度，unfinished 必须为空"))))
        (with-syntax (((blk ...) (datum->syntax #'here blocks)))
          #`(list 'define-agent '#,name-sym 'blk ...))))))
