@@ -349,6 +349,28 @@ CR41_BASELINE_PASSED_COUNT: 158
 | **CR41-PAT09** | 3 | 3 | 0 | 3（**CR-41 P1 T16 PASS**）| `exc09_{hc,generic,reverse}_{HC,GENERIC,REVERSE}` 3 fixtures + Correct 段 3 层 `on-failure retry`（retry=3, backoff=1.5x）| （Exception Handling & Recovery 异常恢复宏）CR-41 Spec Task 16；patterns_v2.rkt defexception-agent；Harness Constrain+Verify+Correct 流程三层不少 |
 | **CR41-PAT10** | 3 | 3 | 0 | 3（**CR-41 P1 T17 PASS**）| `explore10_{hc,generic,reverse}_{HC,GENERIC,REVERSE}` 3 fixtures + Verify 段 budget+convergence 两条 + Correct 段 expand-more-candidates | （Exploration & Discovery 探索发现宏）CR-41 Spec Task 17；patterns_v2.rkt defexploration-agent；探索预算 + 收敛阈值停止 |
 
+
+#### 工具判据（四角色标准；过程要求，非产品需求 —— ID 形如 `STD-*`，不参与上面的 FR/NFR/IF 漂移判定）
+
+来源：`tools/standards_check.py`（14 条，退出码 0 = 全过）。守护测试：`tests/test_standards.py`（含「能拦住」反验）。
+台账出处：`docs/spec/agentlisp_lessons_ledger.md`（坑 #18…#29）。判据 A2 机器校验本表与注册表一一对应。
+
+| 判据 ID | 角色 | 判据 | 守护判据的产物 |
+|---|---|---|---|
+| **STD-P1** | 产品 | CLI 开关声明与实现一致 | `README.md` 开关表 ↔ `compiler/main.rkt` |
+| **STD-P2** | 产品 | 非法输入 1 秒内拒绝 | `compiler/main.rkt` 退出码 |
+| **STD-P3** | 产品 | 错误体含「发生了什么/为什么/怎么办」 | `--json-errors` 字段契约 |
+| **STD-P4** | 产品 | 失败不得返回 0（不许沉默） | 宏展开失败必须非 0（坑 #20） |
+| **STD-P5** | 产品 | 静默 except 检查（与 E3 共用实现） | `tools/fix_silent_excepts.py` codemod |
+| **STD-P6** | 产品 | E2E 主链路：`.al` → 合法 Python | `ast.parse` + `self.PATTERNS` |
+| **STD-A1** | 架构 | 同一判断只有一处实现（perf 测量） | `scripts/perf_compile_geo_mean.py` |
+| **STD-A2** | 架构 | 关键约定有测试（含本表登记闭环） | `tests/test_standards.py` + 本表 |
+| **STD-A3** | 架构 | 测试不依赖 cwd | `REPO_ROOT = Path(__file__)…` |
+| **STD-A5** | 架构 | 边界枚举封闭（kind/退出码） | `tests/test_cr42_kind_coverage.py` |
+| **STD-A6** | 架构 | 妥协登记且含「守」列 | `docs/spec/agentlisp_lessons_ledger.md` |
+| **STD-A7** | 架构 | 本地验证命令 == CI 命令（唯一真源） | `tools/test_paths.txt` + `tools/verify_local.sh` + `ci.yml`（坑 #18/#24/#25） |
+| **STD-A8** | 架构 | 验收不得走回退路径 | `docker/Dockerfile` + `ci.yml` 冒烟（坑 #29） |
+| **STD-E3** | 工程 | 静默 except 检查（与 P5 共用实现） | 同 STD-P5 |
 ### 孤儿需求核查（非孤儿 = 正文中 §3/§4/§5 章节存在该 SRS-ID 定义 + ≥1 条 pytest 用例覆盖；孤儿数=0）
 
 以下 48 SRS-ID 在 SRS 正文中 **均存在唯一锚点**（ISO 29148 §5.2 需求唯一性 + §8.3 验证完备性）：

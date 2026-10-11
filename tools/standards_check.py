@@ -225,7 +225,23 @@ def _check_a2_conventions_have_tests() -> tuple[bool, str]:
     missing = [k for k, v in required.items() if not v.is_file()]
     if missing:
         return _result(False, f"这些约定缺测试：{missing}")
-    return _result(True, f"{len(required)} 条约定均有测试")
+
+    # 登记闭环：判据注册表 ↔ SRS 附录 B 的「工具判据」表必须一一对应。
+    # 只加判据不登记（或登记了不存在的判据）都失败 —— 枚举封闭用到判据表上。
+    srs = ROOT / "docs" / "spec" / "agentlisp_srs.md"
+    if not srs.is_file():
+        return _result(False, "SRS 缺失，无法校验工具判据登记表")
+    declared = set(
+        re.findall(r"^\|\s*\*\*(STD-[A-Z0-9]+)\*\*\s*\|", srs.read_text(encoding="utf-8"), re.M)
+    )
+    registered = {f"STD-{c['id']}" for c in CHECKS}
+    if declared != registered:
+        return _result(
+            False,
+            f"判据登记表与注册表不一致：仅登记未实现={sorted(declared - registered)}，"
+            f"仅实现未登记={sorted(registered - declared)}",
+        )
+    return _result(True, f"{len(required)} 条约定均有测试；{len(declared)} 条判据已登记")
 
 
 def _check_a3_no_cwd_dependence() -> tuple[bool, str]:
