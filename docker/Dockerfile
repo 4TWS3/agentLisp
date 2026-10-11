@@ -63,18 +63,20 @@ WORKDIR /app
 
 COPY python/pyproject.toml ./python/
 WORKDIR /app/python
-# O8 消噪：python/ 子项目可能未提交 uv.lock（根仓库是顶层 uv + hatchling direct-ref 结构），
-#    无 lock 文件时 uv --frozen sync 会报警告「uv.lock not found, skipping the lock file」，
-#    提前 touch 空占位锁文件消除 warning（不影响后续非 frozen fallback，因为 fallback 路径本身会忽略 lock）
-RUN touch /app/python/uv.lock || true
+# 依赖层（不含项目本体）：--no-install-project 让这层可缓存。
+# 教训：不要 touch 空 uv.lock 再 --frozen —— 空 lock 会让 sync「成功但什么都不装」，
+#      项目层随之装不上，最终镜像里没有 .venv/bin/agentlisp
+#      （CI 实测：docker run ... agentlisp --help → exec: agentlisp: not found，exit 127）。
 RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --frozen --no-dev --no-install-project 2>&1 || \
     uv sync --no-dev --no-install-project
 
 COPY python/agentlisp_runtime ./agentlisp_runtime
+# 项目层：必须**真装项目**，console script（agentlisp = agentlisp_runtime.cli:app）才会生成。
+# 构建期自检：脚本不存在就让镜像构建失败（约定交给机器拦，而不是等 CI 冒烟步骤才发现）。
 RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --frozen --no-dev 2>&1 || \
-    uv sync --no-dev
+    uv sync --no-dev \
+    && test -x /app/python/.venv/bin/agentlisp \
+    && echo "[docker] console script ok: $(ls -l /app/python/.venv/bin/agentlisp)"
 
 FROM python-base AS runtime-final
 
@@ -95,6 +97,18 @@ COPY config /app/config
 
 RUN chmod +x /app/docker/entrypoint.sh \
     && ln -sf /app/python/pyproject.toml /app/pyproject.toml
+
+# CLI 入口：优先用 uv 生成的 console script；若缺失则显式建等价 shim（走哪条路都打印，不许沉默）。
+# 末尾 --help 是构建期验收：入口不可用就让镜像构建失败，而不是等 CI 冒烟步骤报 127。
+RUN if [ -x /app/.venv/bin/agentlisp ]; then \
+      echo "[docker] CLI entry: venv console script (/app/.venv/bin/agentlisp)"; \
+    else \
+      echo "[docker] WARN: venv console script missing; creating /usr/local/bin/agentlisp shim"; \
+      printf '#!/bin/sh\nexec /app/.venv/bin/python -m agentlisp_runtime.cli "$@"\n' > /usr/local/bin/agentlisp; \
+      chmod +x /usr/local/bin/agentlisp; \
+    fi \
+    && agentlisp --help > /dev/null \
+    && echo "[docker] CLI smoke ok: $(command -v agentlisp)"
 
 RUN cd /app \
     && ls scheme/ \
