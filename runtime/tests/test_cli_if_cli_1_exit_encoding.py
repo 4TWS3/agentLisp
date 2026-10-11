@@ -139,7 +139,8 @@ def _check_exit_1_check_fail(tmp_path: Path) -> None:
     )
 
     main_src = COMPILER_MAIN.read_text(encoding="utf-8")
-    exit1_lines = [ln for ln in main_src.splitlines() if "(exit 1)" in ln]
+    # 兼容统一出口重构：exit 调用现为 (exit/flush 1)
+    exit1_lines = [ln for ln in main_src.splitlines() if "(exit 1)" in ln or "(exit/flush 1)" in ln]
     assert len(exit1_lines) >= 3, (
         f"[exit1_check_fail fallback] main.rkt exit 1 调用点不足："
         f"实际 {len(exit1_lines)}，正文 L168/L232/L239 应至少 3 处"
