@@ -1,11 +1,11 @@
 # AgentLisp v2
 
-> ## 🎯 v2.0.0-rc2 GA 已正式发布（2026-10-06 · CR-36）
+> ## 🎯 v2.1.0 GA 已正式发布（2026-10-12 · CR-42 模式语言落地）
 >
 > **SRS 34/34 100% 完全实现**（严格遵循 ISO/IEC/IEEE 29148 §8.3 验证完备性）
 >
-> [![Release](https://img.shields.io/badge/Release-v2.0.0--rc2-success?logo=github)](https://github.com/4TWS3/agentLisp/releases/tag/v2.0.0-rc2)
-> [![CI 5/5 GREEN](https://img.shields.io/badge/CI-5%2F5%20GREEN-brightgreen?logo=githubactions&logoColor=white)](https://github.com/4TWS3/agentLisp/actions/runs/37411327310)
+> [![Release](https://img.shields.io/badge/Release-v2.1.0-success?logo=github)](https://github.com/4TWS3/agentLisp/releases/tag/v2.1.0)
+> [![CI 7/7 GREEN](https://img.shields.io/badge/CI-7%2F7%20GREEN-brightgreen?logo=githubactions&logoColor=white)](https://github.com/4TWS3/agentLisp/actions/runs/37411327310)
 > [![Docker 4 tags](https://img.shields.io/badge/Docker-4%20tags-blue?logo=docker)](https://github.com/orgs/4TWS3/packages/container/package/agentlisp)
 > [![PyPI](https://img.shields.io/pypi/v/agentlisp?label=PyPI&logo=pypi&logoColor=ffd242)](https://pypi.org/project/agentlisp)
 > [![PyPI - Python Version](https://img.shields.io/pypi/pyversions/agentlisp?logo=python&logoColor=ffd242)](https://pypi.org/project/agentlisp#files)
@@ -18,8 +18,8 @@
 >
 > **快速开始（3 行）**：
 > ```bash
-> gh release download v2.0.0-rc2 -R 4TWS3/agentLisp -p "agentlisp-v2.0.0-rc2-macos-arm64" -D /usr/local/bin && mv /usr/local/bin/agentlisp-v2.0.0-rc2-macos-arm64 /usr/local/bin/agentlisp && chmod +x /usr/local/bin/agentlisp
-> docker pull ghcr.io/4tws3/agentlisp:v2.0.0-rc2
+> gh release download v2.1.0 -R 4TWS3/agentLisp -p "agentlisp-v2.1.0-macos-arm64" -D /usr/local/bin && mv /usr/local/bin/agentlisp-v2.1.0-macos-arm64 /usr/local/bin/agentlisp && chmod +x /usr/local/bin/agentlisp
+> docker pull ghcr.io/4tws3/agentlisp:v2.1.0
 > agentlisp --version
 > ```
 
@@ -36,7 +36,7 @@
 
 ```bash
 # 镜像内编译一个带模式宏的 agent，并确认模式语义进了产物
-docker run --rm --entrypoint sh ghcr.io/4tws3/agentlisp:v2.0.0-rc2 -c \
+docker run --rm --entrypoint sh ghcr.io/4tws3/agentlisp:v2.1.0 -c \
   'printf "(defpriority-agent s\n  :criteria \"urgency\"\n  :levels 3)\n" > /tmp/s.al && \
    racket compiler/main.rkt -i /tmp/s.al -o /tmp/s.py && grep -n self.PATTERNS /tmp/s.py'
 ```
@@ -47,7 +47,7 @@ docker run --rm --entrypoint sh ghcr.io/4tws3/agentlisp:v2.0.0-rc2 -c \
 
 基于 **Racket (Scheme)** 的 Agent DSL 编译器前端 + **Python 3.12+ / uv** ReAct Harness 运行引擎 + **云原生胶水层**（FastAPI/SSE、Temporal 长流程、Docker/E2B 沙箱、Redis Checkpoint、Jaeger OTel）。
 
-> 版本：`v2.0.0-rc2 GA` · 兼容保留旧 `scheme/` 与 `python/`（v0.1）目录；`pytest runtime/tests python/tests` 双套同绿；制度化四硬指标：ruff check All passed / ruff format 82 files / pytest 128 passed / IDE 0 diagnostics。
+> 版本：`v2.1.0 GA` · 兼容保留旧 `scheme/` 与 `python/`（v0.1）目录；`pytest runtime/tests python/tests` 双套同绿；制度化四硬指标：ruff check All passed / ruff format 82 files / pytest 128 passed / IDE 0 diagnostics。
 
 ---
 
