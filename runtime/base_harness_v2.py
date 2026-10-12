@@ -474,6 +474,12 @@ class BaseHarnessV2:
         # SRS NFR-OBS-1：OTel tracer（observability 组有装时 create_tracer() 真用，否则 None 时跳过）
         self.otel_tracer: Any = None
 
+        # 模式运行时（设计 v2 §4）：把产物里的 self.PATTERNS 变成确定性行为。
+        # 未声明模式时不载入任何 handler → 行为与不带模式完全一致（向后兼容）。
+        from runtime.patterns import load as _load_patterns  # noqa: PLC0415
+
+        _load_patterns(self)
+
     # ------------------------------------------------------------------
     # 对外入口：run / step
     # ------------------------------------------------------------------
@@ -830,7 +836,7 @@ class BaseHarnessV2:
                 tools_openai_schema = self.tool_registry.to_openai_schema()
             except Exception:
                 tools_openai_schema = None
-        return build_kv_aligned_context(
+        _msgs = build_kv_aligned_context(
             system_prompt=str(self.model_config.get("system_prompt", "")),
             tools_schema_text=self.tools_config.get("tools_schema"),
             tools_openai_schema=tools_openai_schema,
@@ -840,6 +846,9 @@ class BaseHarnessV2:
             terminated=self.is_terminated,
             mounted_layers=list(self._mounted_layers) or None,
         )
+        # 模式运行时（设计 v2 §3 L3）：把模式声明的注入式行为落到上下文。
+        # 未声明模式时 patterns.handlers 为空 → 原样返回（反证口径）。
+        return self.patterns.before_turn({"messages": _msgs})["messages"]
 
     # ------------------------------------------------------------------
     # scoped_worker 上下文隔离管理器（SRS §4.3 FR-MAGT-1 Invariant #3）
