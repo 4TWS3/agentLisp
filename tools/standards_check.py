@@ -126,6 +126,48 @@ def _check_p3_error_readable() -> tuple[bool, str]:
     return _result(True, f"{len(payload)} 条错误，含 message/hints")
 
 
+def _check_a11_landed_patterns_have_contract_and_test() -> tuple[bool, str]:
+    """A11 已落地的模式 kind 必须有契约 + 运行时测试，且测试引用契约 id（设计 v2 §5）。
+
+    背景：设计 v2 把「落地」定义为 4 条判据，其中第 4 条是「契约已冻结」。
+    本判据把「LANDED 集合」与「契约文件 / 测试文件 / 契约 id 引用」绑死：
+    只把 kind 加进 LANDED 而不写契约或测试 → 失败；反之测试存在但未登记 → 不失败（允许先写测试）。
+    """
+    import ast as _ast
+
+    init_py = ROOT / "runtime" / "patterns" / "__init__.py"
+    if not init_py.is_file():
+        return _result(False, "缺 runtime/patterns/__init__.py（模式运行时未落地）")
+    tree = _ast.parse(init_py.read_text(encoding="utf-8"))
+    landed: set[str] = set()
+    for node in _ast.walk(tree):
+        if (
+            isinstance(node, _ast.AnnAssign)
+            and isinstance(node.target, _ast.Name)
+            and node.target.id == "LANDED"
+        ):
+            landed = set(_ast.literal_eval(node.value))
+    if not landed:
+        return _result(False, "runtime/patterns 的 LANDED 为空（至少要登记已落地的 kind）")
+
+    problems: list[str] = []
+    for kind in sorted(landed):
+        contract = ROOT / "docs" / "spec" / "pattern_runtime_contracts" / f"{kind}.md"
+        test = ROOT / "tests" / "patterns_runtime" / f"test_{kind}.py"
+        if not contract.is_file():
+            problems.append(f"{kind}: 缺契约 {contract.relative_to(ROOT)}")
+            continue
+        if not test.is_file():
+            problems.append(f"{kind}: 缺运行时测试 {test.relative_to(ROOT)}")
+            continue
+        cid = "CT-" + kind.upper().replace("-", "_") + "-01"
+        if cid not in test.read_text(encoding="utf-8"):
+            problems.append(f"{kind}: 测试未引用契约 id {cid}")
+    if problems:
+        return _result(False, "已落地 kind 的门禁不完整：" + "；".join(problems))
+    return _result(True, f"{len(landed)} 个已落地 kind 均有契约 + 测试 + id 引用：{sorted(landed)}")
+
+
 def _check_p4_no_silent_failure() -> tuple[bool, str]:
     """P4 不许沉默：编译失败时进程不得返回 0（宏展开失败曾只打日志、仍返回 0）。"""
     bad = ROOT / ".tmp_standards_bad_macro.al"
@@ -584,6 +626,12 @@ CHECKS: list[dict] = [
         "fn": _check_a10_all_test_dirs_in_source,
     },
     {
+        "id": "A11",
+        "role": "架构",
+        "title": "已落地模式必须有契约 + 运行时测试（设计 v2 §5）",
+        "fn": _check_a11_landed_patterns_have_contract_and_test,
+    },
+    {
         "id": "E3",
         "role": "工程",
         "title": "静默 except 检查（与 P5 共用）",
@@ -607,6 +655,7 @@ CLOSED_IDS = (
     "A8",
     "A9",
     "A10",
+    "A11",
     "E3",
 )
 
