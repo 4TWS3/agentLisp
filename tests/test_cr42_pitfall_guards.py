@@ -126,7 +126,8 @@ def test_all_expected_fixtures_read_to_eof() -> None:
     bad = []
     for p in files:
         expr = (
-            '(with-input-from-file "' + str(p) + '" (lambda () (let loop ([n 0]) '
+            # as_posix()：Windows 路径嵌进 Racket 字符串会被当转义序列（CI 实测）
+            '(with-input-from-file "' + p.as_posix() + '" (lambda () (let loop ([n 0]) '
             "(define t (read)) (if (eof-object? t) (void) (loop (add1 n))))))"
         )
         cp = subprocess.run(

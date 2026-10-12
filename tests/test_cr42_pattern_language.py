@@ -30,7 +30,7 @@ BLOCKS = """((:model :provider "anthropic" :name "m" :system-prompt "s")
 def _run_racket(tmp_path: Path, pattern_block: str) -> subprocess.CompletedProcess[str]:
     src = textwrap.dedent(
         f"""        #lang racket/base
-        (require racket/string (file "{COMPILER}"))
+        (require racket/string (file "{COMPILER.as_posix()}"))
         (define form (cons 'define-agent (cons 'a (append '{BLOCKS} '{pattern_block}))))
         (with-handlers ([(lambda (e) #t) (lambda (e) (eprintf "EXN: ~a" (exn-message e)) (exit 1))])
           (display (compile-agent-lisp form)))

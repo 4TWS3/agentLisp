@@ -91,7 +91,9 @@ def kind_line(kind: str) -> int | None:
 
 
 def rel(p: pathlib.Path) -> str:
-    return str(p.relative_to(ROOT))
+    # 必须用 POSIX 分隔符：Windows 上 str() 会给出 compiler\patterns_v2.rkt，
+    # 导致清单内容与断言（compiler/patterns_v2.rkt:）不一致（CI 实测）。
+    return p.relative_to(ROOT).as_posix()
 
 
 def main() -> int:

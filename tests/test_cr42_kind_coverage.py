@@ -68,7 +68,8 @@ pytestmark = pytest.mark.skipif(not HAS_RACKET, reason="racket not on PATH")
 
 def test_registry_covers_21_kinds() -> None:
     expr = (
-        '(require (file "' + str(REGISTRY) + '"))'
+        # as_posix()：Windows 的 C:\\... 嵌进 Racket 字符串会被当转义序列（CI 实测 \p 报错）
+        '(require (file "' + REGISTRY.as_posix() + '"))'
         " (for ([k (in-list (pattern-kinds))]) (displayln k))"
     )
     cp = subprocess.run(
