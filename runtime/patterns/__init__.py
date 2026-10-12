@@ -61,7 +61,8 @@ class PatternRuntime:
                 )
 
     def _instantiate(self) -> None:
-        from runtime.patterns import HANDLERS  # noqa: PLC0415  (避免循环导入)
+        # 延迟导入：priority.py 由本模块末尾注册，避免循环导入
+        from runtime.patterns import HANDLERS
 
         for spec in self.declared:
             if not isinstance(spec, dict):

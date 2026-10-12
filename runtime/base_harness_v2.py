@@ -476,7 +476,7 @@ class BaseHarnessV2:
 
         # 模式运行时（设计 v2 §4）：把产物里的 self.PATTERNS 变成确定性行为。
         # 未声明模式时不载入任何 handler → 行为与不带模式完全一致（向后兼容）。
-        from runtime.patterns import load as _load_patterns  # noqa: PLC0415
+        from runtime.patterns import load as _load_patterns
 
         _load_patterns(self)
 

@@ -20,7 +20,7 @@ def _harness(**kwargs: Any) -> BaseHarnessV2:
     return BaseHarnessV2({}, {}, {}, {}, **kwargs)
 
 
-def test_CT_PRIORITY_01_behavior_order_and_context_directive() -> None:
+def test_ct_priority_01_behavior_order_and_context_directive() -> None:
     """行为：带 :pattern priority → order 降序 + 上下文出现确定性指令。"""
     h = _harness()
     h.PATTERNS = [{"pattern": "priority", "criteria": "urgency", "levels": 3}]
@@ -38,7 +38,7 @@ def test_CT_PRIORITY_01_behavior_order_and_context_directive() -> None:
     assert h.patterns.landed() == ["priority"]
 
 
-def test_CT_PRIORITY_01_counterproof_without_pattern_is_baseline() -> None:
+def test_ct_priority_01_counterproof_without_pattern_is_baseline() -> None:
     """反证：不带 :pattern → 无 handler、无指令、order 为原顺序（行为回基线）。"""
     h = _harness()
     assert getattr(h, "PATTERNS", None) in (None, []), "普通 harness 不应带 PATTERNS"
