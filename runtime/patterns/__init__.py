@@ -12,11 +12,15 @@ from __future__ import annotations
 
 from typing import Any, Protocol
 
+# 具体 handler（顶部导入：无循环依赖 —— 各 handler 只依赖 typing）
+from runtime.patterns.exception import ExceptionHandler
+from runtime.patterns.priority import PriorityHandler
+
 # 已落地的 kind（每落地一个加一个；判据 A11 要求：LANDED 里每个 kind 必须有
 #   (a) docs/spec/pattern_runtime_contracts/<kind>.md
 #   (b) tests/patterns_runtime/test_<kind>.py
 #   (c) 测试里引用该契约 id
-LANDED: set[str] = {"priority"}
+LANDED: set[str] = {"priority", "exception"}
 
 # 冲突分组（设计 v2 §6）：同组内只能选一个
 GROUPS: dict[str, set[str]] = {
@@ -61,8 +65,7 @@ class PatternRuntime:
                 )
 
     def _instantiate(self) -> None:
-        # 延迟导入：priority.py 由本模块末尾注册，避免循环导入
-        from runtime.patterns import HANDLERS
+        # HANDLERS 在模块末尾定义；本方法在运行时调用，名字已解析
 
         for spec in self.declared:
             if not isinstance(spec, dict):
@@ -106,6 +109,14 @@ class PatternRuntime:
                 return fn(candidates)
         return list(candidates)
 
+    def retry_policy(self) -> dict:
+        """按已载入的 exception handler 返回策略；未声明该模式时返回 {}（反证口径）。"""
+        for h in self.handlers:
+            fn = getattr(h, "policy", None)
+            if callable(fn):
+                return fn(self.harness)
+        return {}
+
     def spec(self, kind: str) -> dict:
         for p in self.declared:
             if isinstance(p, dict) and p.get("pattern") == kind:
@@ -123,8 +134,7 @@ def load(harness: Any) -> PatternRuntime:
     return rt
 
 
-from runtime.patterns.priority import PriorityHandler  # noqa: E402
-
 HANDLERS: dict[str, Any] = {
     "priority": PriorityHandler,
+    "exception": ExceptionHandler,
 }
