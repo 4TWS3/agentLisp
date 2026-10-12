@@ -2,3 +2,16 @@
 # （实测：uv run pytest $(cat tools/test_paths.txt ...) → ERROR: file or directory not found: runtime/tests）。
 tools/test_paths.txt text eol=lf
 *.sh text eol=lf
+
+# 源码/夹具/文档一律 LF。原因（CI 实测）：
+#   Windows 检出成 CRLF 后，Racket reader 读夹具会报
+#   "unknown escape sequence \p in string"（test_cr42_pitfall_guards.py:144 抓到），
+#   且脚本写入/比较生成物时会出现逐字节不一致。
+*.rkt text eol=lf
+*.al text eol=lf
+*.py text eol=lf
+*.md text eol=lf
+*.yml text eol=lf
+*.toml text eol=lf
+*.json text eol=lf
+*.txt text eol=lf
