@@ -502,7 +502,13 @@ Coding Agent 需要在 `compiler/main.rkt` 中引入 `patterns.rkt`，并在 AST
 
 Coding Agent 在完成 `compiler/patterns.rkt` 实现后，必须通过以下 3 层自动化测试方可交付：
 
-### 6.1 单元测试套件 (`tests/test_patterns.rkt`)
+### 6.1 单元测试套件 (`tests/test_patterns.rkt`) —— ⚠️ 设计目标，**未实现**
+
+> **状态（as-built）**：`tests/test_patterns.rkt` **不存在**。
+> 现行判据：`compiler/tests/test_patterns_mvp.rkt`、`compiler/tests/test_patterns_v2_mvp.rkt` + `tests/patterns/` 下 Python 用例（见 §0.5）。
+> 下面代码是**设计示例**，不是仓库现状 —— **不要据此判断模式是否已落地**；
+> 要看落地情况请用 §0 的 as-built 表 + `compiler/patterns.rkt` / `compiler/patterns_v2.rkt`。
+
 编写 Racket 原生测试，验证所有 21 种模式宏能否无错误展开为合法的 AgentLisp AST：
 
 ```racket
@@ -519,10 +525,20 @@ Coding Agent 在完成 `compiler/patterns.rkt` 实现后，必须通过以下 3 
    [_ #f]))
 ```
 
-### 6.2 静态断言集成测试 (`tests/test_pattern_checker.py`)
+### 6.2 静态断言集成测试 (`tests/test_pattern_checker.py`) —— ⚠️ 设计目标，**未实现**
+
+> **状态（as-built）**：`tests/test_pattern_checker.py` 与 `compiler/transpiler.py` **都不存在**。
+> 下面的 `from compiler.transpiler import compile_pattern_sugar` 是**设计草案**，不是 API，也不是本仓库的文件名 ——
+> 曾有代码库评审据本节判定「21 个设计模式未落地」（并把文件名记成 `agentlisp_transpiler.py`，该名字全仓库不存在）。
+>
+> **as-built 转译器是 Racket**：`compiler/agentlisp_compiler.rkt` + `compiler/emitter.rkt`，
+> 把 `:pattern` / `:evolution` 写进 Python 产物（`self.PATTERNS` / `self.EVOLUTION`）。
+> 现行等价判据：`tests/patterns/test_pattern_checker_v2.py`（见 §0.5）。
+
 使用 Python 测试脚本验证宏展开后的代码能够通过 `ERR_KV_ALIGNMENT_VIOLATION` 校验：
 
 ```python
+# ⚠️ 设计草案：以下 import 的文件不存在，勿照抄
 import pytest
 from compiler.transpiler import compile_pattern_sugar
 
