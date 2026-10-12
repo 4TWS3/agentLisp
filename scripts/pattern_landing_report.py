@@ -60,7 +60,8 @@ def parse_gen() -> tuple[list[dict], dict, dict]:
                             + " != macro 数 "
                             + str(len(macros))
                         )
-                    patterns = [{"key": k, "macro": m} for k, m in zip(keys, macros)]
+                    # strict=True：上面已断言条数一致，这里再让语言层兜一次（ruff B905）
+                    patterns = [{"key": k, "macro": m} for k, m in zip(keys, macros, strict=True)]
                 elif t.id == "KIND_OF":
                     kind_of = ast.literal_eval(node.value)
                 elif t.id == "SPEC_ALIASES":

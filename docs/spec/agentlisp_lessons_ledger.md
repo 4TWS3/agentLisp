@@ -45,6 +45,7 @@
 | 32 | 第三次「判定模式未落地」（代码库审查） | 审查者查的是**发布物**：Latest release 仍是 v2.0.0（2026-10-10，落后 main 75 个提交，`:pattern` 0 处 / `:evolution` 0 处）；分支其实早已合并。同一形态三次现身：旧 main（#18 前）→ 镜像缺 compiler/（#31）→ release 陈旧（本条） | **半自动**：① A9（镜像自证能力）② README 写明能力边界 ③ 本条纪律：判定「是否落地」前先问**我看的是哪一层**——源码树 / git tag / release 资产 / 镜像 / wheel，五层能力并不相同 |
 | 33 | 第四次「模式未落地」判定（这次是评审 agent 的误解） | 它读的是模式规格 §6.2 的**设计草案**（tests/test_pattern_checker.py、compiler/transpiler.py，文中已标「未实现」），把一节设计目标当成整个能力缺失；并把文件名转述成 agentlisp_transpiler.py（**全仓库 0 命中**，含全部历史与 7 个 tag） | **半自动**：① §6.1/§6.2 的标题与代码块旁已加显式状态标注（含「曾有评审据此误判」说明）② 纪律：从文档判定能力前，先看该节**状态标注**与 §0 as-built 表；**文件名与仓库对不上时先怀疑转述**，不要下能力结论 |
 | 34 | 「CI 全绿」并不覆盖全部测试 | tools/test_paths.txt 只列了 tests/step_defs + tests/patterns，于是 tests/*.py、host/tests、scripts/tests 共 **97 个用例从未在 CI 运行**（CI 收集 259 vs 全量 356）；其中包含标准检查器测试、端到端编译测试、模式落地守护测试 | **自动**：判据 A10（真源必须覆盖每个含 test_*.py 的目录，排除 .venv/.git/.trae/dist）+ A7（本地 == CI）；真源已补齐 5 条路径，本地 345 passed / 5 skipped |
+| 35 | 本地 ruff「通过」，CI 却报 B905 | 我把 ruff 输出用 `\| tail -1` 截断，只看到「No fixes available」就判定通过 —— 真正的报错行（B905 zip() 缺 strict=）被截掉了 | **半自动**：ruff/门禁类命令的输出**不许截断**（或至少 grep 错误标记）；本轮已修 B905（strict=True）|
 | 14 | 排查慢：先猜后验 | 连续 3 次改判据都没修好，最后才打印原始失败清单 | **半自动**：`scripts/triage.py` 先聚合失败签名 / NFR cell / checker cells；`tests/test_triage.py` 守护解析逻辑 |
 
 ## 三、开工前检查（3 条动作，按顺序）
