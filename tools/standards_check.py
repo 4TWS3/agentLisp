@@ -221,6 +221,7 @@ def _check_a2_conventions_have_tests() -> tuple[bool, str]:
         "退出码契约": ROOT / "runtime" / "tests" / "test_cli_if_cli_1_exit_encoding.py",
         "模式注册表覆盖": ROOT / "tests" / "test_cr42_kind_coverage.py",
         "四角色标准": ROOT / "tests" / "test_standards.py",
+        "21 模式落地清单": ROOT / "tests" / "test_pattern_landing.py",
     }
     missing = [k for k, v in required.items() if not v.is_file()]
     if missing:
