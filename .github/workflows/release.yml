@@ -265,10 +265,14 @@ jobs:
 
   publish-pypi:
     name: Publish to PyPI (Trusted Publisher OIDC)
-    # rc 标签：等 TestPyPI 试点成功后，再由 environment=pypi 的 required reviewer 批准发布；
-    # 正式标签：publish-testpypi 会 skipped，此时本条等价于"构建成功即发"。
+    # 方案 B（2026-10-12）：tag push **不再自动发 PyPI**。
+    # 依据：仓库既定决策「不发 PyPI」（见 .trae/specs/no_pypi_cr41_patterns_v2_1/spec.md）；
+    #       而原条件下正式标签等价于"构建成功即发"，属不可撤回的外部动作。
+    # 新触发条件：仓库变量 PUBLISH_PYPI == 'true'（默认未设置 → 永不自动发布）。
+    # 需要发布时：Settings → Secrets and variables → Actions → Variables 设 PUBLISH_PYPI=true，
+    #             然后重跑本 job（或重推 tag）。改回代码不需要。
     if: >-
-      always() && github.event_name == 'push'
+      always() && github.event_name == 'push' && vars.PUBLISH_PYPI == 'true'
       && needs.build-windows.result == 'success'
       && needs.build-linux.result == 'success'
       && (needs.publish-testpypi.result == 'success' || needs.publish-testpypi.result == 'skipped')
