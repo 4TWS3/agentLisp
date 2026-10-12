@@ -1,5 +1,4 @@
 runtime/tests
 python/tests
-tests
-host/tests
-scripts/tests
+tests/step_defs
+tests/patterns

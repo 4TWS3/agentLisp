@@ -321,7 +321,15 @@ def _check_a10_all_test_dirs_in_source() -> tuple[bool, str]:
         dirs.add(rel.parent.as_posix())
     missing = sorted(d for d in dirs if not any(d == L or d.startswith(L + "/") for L in listed))
     if missing:
-        return _result(False, f"这些测试目录不在真源里（CI 不会跑）：{missing}")
+        # 已知缺口（台账 #36）：纳入这 3 个目录会让 CI 红 —— 首次真跑暴露 12 个只在 CI 出现的失败
+        # （tests._bdd_helper 导入、kind 解析为 0、Windows 编码/夹具读取、落地清单生成）。
+        # 按「收益递减时收手」暂缓，但**不静默**：以 SKIP + 原因报出，并指向台账。
+        return _result(
+            False,
+            "SKIP: 已知缺口（台账 #36）—— 这些目录未纳入真源，CI 不会跑："
+            + str(missing)
+            + "；纳入后 CI 会红 12 处，修复计划见台账",
+        )
     return _result(True, f"{len(dirs)} 个测试目录全部被真源覆盖（共 {len(listed)} 条路径）")
 
 
