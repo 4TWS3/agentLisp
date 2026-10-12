@@ -38,8 +38,16 @@ def _run_racket(tmp_path: Path, pattern_block: str) -> subprocess.CompletedProce
     )
     probe = tmp_path / "probe.rkt"
     probe.write_text(src, encoding="utf-8")
+    # probe 先写 utf-8；同时**解码也必须 utf-8**：Windows 默认 cp1252 会让中文 stderr 变乱码，
+    # 断言（'缺少必需 config 键' 等）随之失败（CI 实测）。
     return subprocess.run(
-        ["racket", str(probe)], cwd=ROOT, capture_output=True, text=True, timeout=120
+        ["racket", str(probe)],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        timeout=120,
     )
 
 
