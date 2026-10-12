@@ -31,7 +31,16 @@ PY_DIRS = ("runtime", "host", "python/agentlisp_runtime", "tests", "scripts", "t
 
 # --------------------------------------------------------------------------- 工具
 def _sh(cmd: list[str], timeout: int = 180) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(cmd, cwd=str(ROOT), capture_output=True, text=True, timeout=timeout)
+    # Windows 默认按 locale(cp1252) 解码 → Racket 输出含中文时 UnicodeDecodeError
+    return subprocess.run(
+        cmd,
+        cwd=str(ROOT),
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        timeout=timeout,
+    )
 
 
 def _py_files(*dirs: str) -> list[Path]:

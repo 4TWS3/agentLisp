@@ -47,7 +47,13 @@ def test_report_is_not_stale() -> None:
 
 def test_report_lists_macro_sites_and_aliases() -> None:
     text = REPORT.read_text(encoding="utf-8")
-    rows = [ln for ln in text.splitlines() if ln.startswith("| ") and "`def" in ln]
+    # 去掉可能的 \r：Windows 检出（autocrlf）会给行尾加 CR，splitlines 已处理，
+    # 但显式 strip 更稳（该测试曾在 Windows 失败）。
+    rows = [
+        ln.replace("\r", "")
+        for ln in text.splitlines()
+        if ln.replace("\r", "").startswith("| ") and "`def" in ln
+    ]
     assert len(rows) == 21, f"清单数据行应为 21，实际 {len(rows)}"
     for alias in (
         "defprioritized-agent",
