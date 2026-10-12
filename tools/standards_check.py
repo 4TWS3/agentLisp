@@ -296,6 +296,35 @@ def _check_a3_no_cwd_dependence() -> tuple[bool, str]:
     return _result(True, "测试均以 __file__ 派生路径")
 
 
+def _check_a10_all_test_dirs_in_source() -> tuple[bool, str]:
+    """A10 测试目录清单必须覆盖全部测试：真源要包含每个含 test_*.py 的目录。
+
+    坑 #34：tools/test_paths.txt 曾只写 tests/step_defs + tests/patterns，
+    于是 tests/*.py、host/tests、scripts/tests 共 97 个用例**从未在 CI 运行** ——
+    「CI 全绿」并不覆盖它们。A7 只保证「本地 == CI」，保证不了「CI == 全部测试」，
+    本条补上后半句。
+    """
+    paths_file = ROOT / "tools" / "test_paths.txt"
+    if not paths_file.is_file():
+        return _result(False, "缺 tools/test_paths.txt")
+    listed = [
+        ln.strip().strip("/")
+        for ln in paths_file.read_text(encoding="utf-8").splitlines()
+        if ln.strip()
+    ]
+    skip_parts = {".git", ".venv", "__pycache__", ".trae", "node_modules", "dist", "build"}
+    dirs: set[str] = set()
+    for p in ROOT.rglob("test_*.py"):
+        rel = p.relative_to(ROOT)
+        if any(part in skip_parts for part in rel.parts):
+            continue
+        dirs.add(rel.parent.as_posix())
+    missing = sorted(d for d in dirs if not any(d == L or d.startswith(L + "/") for L in listed))
+    if missing:
+        return _result(False, f"这些测试目录不在真源里（CI 不会跑）：{missing}")
+    return _result(True, f"{len(dirs)} 个测试目录全部被真源覆盖（共 {len(listed)} 条路径）")
+
+
 def _check_a5_closed_enums() -> tuple[bool, str]:
     """A5 边界枚举必须封闭：注册表 kind 与退出码都有计数断言。"""
     coverage = ROOT / "tests" / "test_cr42_kind_coverage.py"
@@ -531,6 +560,12 @@ CHECKS: list[dict] = [
         "fn": _check_a9_distribution_self_proof,
     },
     {
+        "id": "A10",
+        "role": "架构",
+        "title": "测试目录清单覆盖全部测试（坑 #34）",
+        "fn": _check_a10_all_test_dirs_in_source,
+    },
+    {
         "id": "E3",
         "role": "工程",
         "title": "静默 except 检查（与 P5 共用）",
@@ -553,6 +588,7 @@ CLOSED_IDS = (
     "A7",
     "A8",
     "A9",
+    "A10",
     "E3",
 )
 
