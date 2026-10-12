@@ -948,12 +948,12 @@ _register_all_when_variants("触发 Correct 纠错管道", _when_correct)
 
 
 def _when_one_react(test_context: dict[str, Any]) -> None:
-    from runtime.base_harness_v2 import BaseHarnessV2
-
     # 坑 #15 正解：按路径加载，不用 import tests（scripts/tests/ 会遮蔽仓库 tests 包，
     # 一旦 scripts/ 进 sys.path，import tests 就解析到 scripts/tests/__init__.py → 随机红）。
     import importlib.util
     import pathlib
+
+    from runtime.base_harness_v2 import BaseHarnessV2
 
     _helper = pathlib.Path(__file__).resolve().parents[1] / "_bdd_helper.py"
     _spec = importlib.util.spec_from_file_location("_bdd_helper", _helper)
