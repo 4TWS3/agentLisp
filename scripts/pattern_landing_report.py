@@ -16,6 +16,7 @@ from __future__ import annotations
 import ast
 import pathlib
 import re
+import sys
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 BT = chr(96)
@@ -94,6 +95,11 @@ def rel(p: pathlib.Path) -> str:
 
 
 def main() -> int:
+    # Windows 控制台默认 cp1252：直接 print 中文会 UnicodeEncodeError（CI 实测，位置 14-22）。
+    # 与本仓库其它脚本同款处置：显式把两个流切到 UTF-8。
+    for _stream in (sys.stdout, sys.stderr):
+        if hasattr(_stream, "reconfigure"):
+            _stream.reconfigure(encoding="utf-8", errors="replace")
     patterns, kind_of, aliases = parse_gen()
     rows: list[dict] = []
     problems: list[str] = []

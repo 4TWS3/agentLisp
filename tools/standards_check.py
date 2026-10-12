@@ -22,6 +22,7 @@ import ast
 import json
 import re
 import subprocess
+import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -619,6 +620,12 @@ def main(argv: list[str] | None = None) -> int:
             print(f"{c['id']:<3} {c['role']}  {c['title']}")
         print(f"共 {len(CHECKS)} 条（与 P5/E3 共用实现计两条注册项）")
         return 0
+
+    # Windows 控制台默认 cp1252：直接 print 中文会 UnicodeEncodeError（CI 实测，位置 14-22）。
+    # 与本仓库其它脚本同款处置：显式把两个流切到 UTF-8。
+    for _stream in (sys.stdout, sys.stderr):
+        if hasattr(_stream, "reconfigure"):
+            _stream.reconfigure(encoding="utf-8", errors="replace")
 
     selected = [c for c in CHECKS if not args.only or c["id"] in args.only]
     unknown = set(args.only) - {c["id"] for c in CHECKS}
