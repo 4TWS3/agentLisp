@@ -222,7 +222,8 @@ def main() -> int:
             + "）"
         )
     L.append("")
-    OUT.write_text("\n".join(L), encoding="utf-8")
+    # newline="\n"：Windows 上 write_text 会把 \n 翻成 CRLF，导致生成物与仓库版逐字节不一致
+    OUT.write_text("\n".join(L), encoding="utf-8", newline="\n")
     print("已写出 " + rel(OUT) + "：" + str(ok) + "/" + str(len(rows)) + " 齐全")
     for p in problems:
         print("  缺: " + p)

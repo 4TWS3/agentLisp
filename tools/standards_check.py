@@ -609,6 +609,12 @@ def _assert_registry_closed() -> None:
 
 
 def main(argv: list[str] | None = None) -> int:
+    # Windows 控制台默认 cp1252：中文 print 会 UnicodeEncodeError。
+    # 必须在**任何**输出之前设置 —— 曾放在 --list 分支之后，导致 --list 在 Windows 仍崩。
+    for _stream in (sys.stdout, sys.stderr):
+        if hasattr(_stream, "reconfigure"):
+            _stream.reconfigure(encoding="utf-8", errors="replace")
+
     ap = argparse.ArgumentParser(description="AgentLisp 标准检查器")
     ap.add_argument("--list", action="store_true", help="列出判据")
     ap.add_argument("--only", action="append", default=[], help="只跑指定 id（可多次）")
@@ -620,12 +626,6 @@ def main(argv: list[str] | None = None) -> int:
             print(f"{c['id']:<3} {c['role']}  {c['title']}")
         print(f"共 {len(CHECKS)} 条（与 P5/E3 共用实现计两条注册项）")
         return 0
-
-    # Windows 控制台默认 cp1252：直接 print 中文会 UnicodeEncodeError（CI 实测，位置 14-22）。
-    # 与本仓库其它脚本同款处置：显式把两个流切到 UTF-8。
-    for _stream in (sys.stdout, sys.stderr):
-        if hasattr(_stream, "reconfigure"):
-            _stream.reconfigure(encoding="utf-8", errors="replace")
 
     selected = [c for c in CHECKS if not args.only or c["id"] in args.only]
     unknown = set(args.only) - {c["id"] for c in CHECKS}
