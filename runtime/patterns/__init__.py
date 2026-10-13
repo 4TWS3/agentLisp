@@ -15,6 +15,7 @@ from typing import Any, Protocol
 # 具体 handler（顶部导入：无循环依赖 —— 各 handler 只依赖 typing）
 from runtime.patterns.declarative import DECLARATIVE
 from runtime.patterns.declarative_b2 import B2_HANDLERS
+from runtime.patterns.declarative_b3 import B3_HANDLERS
 from runtime.patterns.exception import ExceptionHandler
 from runtime.patterns.priority import PriorityHandler
 
@@ -41,6 +42,9 @@ LANDED: set[str] = {
     "exploration",
     "resource-aware",
     "goal-setting",
+    "topic-model",
+    "a2a",
+    "learning",
 }
 
 # 冲突分组（设计 v2 §6）：同组内只能选一个
@@ -171,4 +175,7 @@ HANDLERS: dict[str, Any] = {
 HANDLERS.update(DECLARATIVE)  # 批 1 接线：reflect/evaluator/guardrails-safety/hitl/rag/reasoning
 HANDLERS.update(
     B2_HANDLERS
-)  # 批 2：router/chain/parallel/planner/decomposition/fsm/decomposer/exploration/resource-aware/goal-settingrag/reasoning
+)  # 批 2：router/chain/parallel/planner/decomposition/fsm/decomposer/exploration/
+HANDLERS.update(
+    B3_HANDLERS
+)  # 批 3：topic-model/a2a/learning（Mock 端口驱动）resource-aware/goal-settingrag/reasoning
