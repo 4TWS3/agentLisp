@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
-from runtime.base_harness_v2 import BaseHarnessV2
 import logging
+
+from runtime.base_harness_v2 import BaseHarnessV2
 
 
 def _harness() -> BaseHarnessV2:
