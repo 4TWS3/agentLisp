@@ -111,6 +111,17 @@ class HitlHandler(_Base):
     def requires_approval(self, stage: str) -> bool:
         return stage in self.stages()
 
+    def on_tool_call(self, harness: Any, call: dict) -> tuple[bool, str]:
+        """M2 接线：approval-before 命中的工具，未带 approved=True 即拦截（真实生效）。"""
+        name = str(call.get("tool_name") or "")
+        args = call.get("args") or {}
+        approved = bool(call.get("approved")) or bool(
+            isinstance(args, dict) and args.get("approved")
+        )
+        if name and self.requires_approval(name) and not approved:
+            return False, f"Harness Blocked: hitl 需要人工批准（阶段 {name}，契约 CT-HITL-01）"
+        return True, ""
+
 
 class RagHandler(_Base):
     kind = "rag"

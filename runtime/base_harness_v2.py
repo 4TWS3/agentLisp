@@ -566,6 +566,12 @@ class BaseHarnessV2:
         """
         tool_name = str(tool_call.get("tool_name") or "")
         args: dict[str, Any] = tool_call.get("args", {}) or {}
+        # M2 接线（设计 v2 §3 L3）：模式 handler 也参与工具门控。
+        # 例：hitl 的 approval-before 阶段命中且未带 approved=True → 直接拦截（契约 CT-HITL-01）。
+        # 未声明模式时 handlers 为空 → 本段等价 no-op（向后兼容）。
+        _ok_pat, _why_pat = self.patterns.on_tool_call(tool_call)
+        if not _ok_pat:
+            return False, _why_pat
         cmd: str = str(args.get("command", ""))
         # (a0) FR-CHECK-2 runtime side-effect 护栏（CR-22 P3-2）
         if tool_name and tool_name in SIDEEFFECT_BUILTIN_TOOLS:
@@ -836,6 +842,10 @@ class BaseHarnessV2:
                 tools_openai_schema = self.tool_registry.to_openai_schema()
             except Exception:
                 tools_openai_schema = None
+        # M2 接线：priority 模式真的改变模型看到的工具候选顺序（契约 CT-PRIORITY-01）。
+        # 未声明 priority 时 order() 原样返回（反证口径）。
+        if isinstance(tools_openai_schema, list) and self.patterns.handlers:
+            tools_openai_schema = self.patterns.order(list(tools_openai_schema))
         _msgs = build_kv_aligned_context(
             system_prompt=str(self.model_config.get("system_prompt", "")),
             tools_schema_text=self.tools_config.get("tools_schema"),

@@ -48,10 +48,21 @@ class PriorityHandler:
         """按 criteria 降序；缺失该键的元素保持相对顺序（稳定排序的实现方式）。"""
         if not self.criteria:
             return list(candidates)
-        with_key = [c for c in candidates if self.criteria in c]
-        without = [c for c in candidates if self.criteria not in c]
+
+        def _key_of(c: dict) -> tuple[bool, Any]:
+            # 支持两种形态：平铺 {criteria: v} 与 OpenAI 工具形态 {function: {criteria: v}}
+            if self.criteria in c:
+                return True, c[self.criteria]
+            fn = c.get("function")
+            if isinstance(fn, dict) and self.criteria in fn:
+                return True, fn[self.criteria]
+            return False, None
+
+        with_key, without = [], []
+        for c in candidates:
+            (with_key if _key_of(c)[0] else without).append(c)
         try:
-            with_key.sort(key=lambda c: c[self.criteria], reverse=True)
+            with_key.sort(key=lambda c: _key_of(c)[1], reverse=True)
         except TypeError:
             return list(candidates)
         return with_key + without
