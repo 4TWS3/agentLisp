@@ -153,7 +153,10 @@ def _check_a11_landed_patterns_have_contract_and_test() -> tuple[bool, str]:
     problems: list[str] = []
     for kind in sorted(landed):
         contract = ROOT / "docs" / "spec" / "pattern_runtime_contracts" / f"{kind}.md"
+        # 测试文件名允许把连字符写成下划线（Python 模块名不能含 '-'）
         test = ROOT / "tests" / "patterns_runtime" / f"test_{kind}.py"
+        if not test.is_file():
+            test = ROOT / "tests" / "patterns_runtime" / f"test_{kind.replace('-', '_')}.py"
         if not contract.is_file():
             problems.append(f"{kind}: 缺契约 {contract.relative_to(ROOT)}")
             continue

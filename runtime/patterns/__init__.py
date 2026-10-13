@@ -13,6 +13,7 @@ from __future__ import annotations
 from typing import Any, Protocol
 
 # 具体 handler（顶部导入：无循环依赖 —— 各 handler 只依赖 typing）
+from runtime.patterns.declarative import DECLARATIVE
 from runtime.patterns.exception import ExceptionHandler
 from runtime.patterns.priority import PriorityHandler
 
@@ -20,7 +21,16 @@ from runtime.patterns.priority import PriorityHandler
 #   (a) docs/spec/pattern_runtime_contracts/<kind>.md
 #   (b) tests/patterns_runtime/test_<kind>.py
 #   (c) 测试里引用该契约 id
-LANDED: set[str] = {"priority", "exception"}
+LANDED: set[str] = {
+    "priority",
+    "exception",
+    "reflect",
+    "evaluator",
+    "guardrails-safety",
+    "hitl",
+    "rag",
+    "reasoning",
+}
 
 # 冲突分组（设计 v2 §6）：同组内只能选一个
 GROUPS: dict[str, set[str]] = {
@@ -123,6 +133,15 @@ class PatternRuntime:
                 return p
         return {}
 
+    def api(self, kind: str) -> Any:
+        """取已载入的某个 kind 的 handler（供契约测试打纯函数）；未载入则 KeyError。"""
+        for h in self.handlers:
+            if getattr(h, "kind", None) == kind:
+                return h
+        raise KeyError(
+            f"未载入 kind={kind!r}；已载入={[getattr(x, 'kind', None) for x in self.handlers]}"
+        )
+
     def landed(self) -> list[str]:
         return sorted({p.get("pattern") for p in self.declared if isinstance(p, dict)} & LANDED)
 
@@ -138,3 +157,4 @@ HANDLERS: dict[str, Any] = {
     "priority": PriorityHandler,
     "exception": ExceptionHandler,
 }
+HANDLERS.update(DECLARATIVE)  # 批 1 接线：reflect/evaluator/guardrails-safety/hitl/rag/reasoning
