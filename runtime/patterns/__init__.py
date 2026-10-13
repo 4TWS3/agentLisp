@@ -76,6 +76,8 @@ class PatternRuntime:
         self.harness = harness
         self.declared: list[dict] = list(getattr(harness, "PATTERNS", None) or [])
         self.handlers: list[PatternHandler] = []
+        # M3 观测：每次模式介入留痕（可断言、可评审；设计 v2 §3 L5）
+        self.events: list[dict] = []
         self._check_conflicts()
         self._instantiate()
 
@@ -116,9 +118,20 @@ class PatternRuntime:
     def on_tool_call(self, call: dict) -> tuple[bool, str]:
         for h in self.handlers:
             ok, why = h.on_tool_call(self.harness, call)
+            kind = getattr(h, "kind", "?")
             if not ok:
+                self._record(kind, "on_tool_call", {"blocked": True, "why": why, "call": call})
                 return False, why
+            self._record(kind, "on_tool_call", {"blocked": False, "tool": call.get("tool_name")})
         return True, ""
+
+    # ---- M3 观测 ----
+    def _record(self, kind: str, hook: str, detail: dict) -> None:
+        self.events.append({"kind": kind, "hook": hook, "detail": detail})
+        logger.info("[Pattern] %s.%s %s", kind, hook, detail)
+
+    def events_for(self, kind: str) -> list[dict]:
+        return [e for e in self.events if e["kind"] == kind]
 
     def after_turn(self, ctx: dict) -> dict:
         for h in self.handlers:
@@ -219,9 +232,19 @@ class PatternRuntime:
         return sorted({p.get("pattern") for p in self.declared if isinstance(p, dict)} & LANDED)
 
 
-def load(harness: Any) -> PatternRuntime:
-    """在 BaseHarnessV2.__init__ 末尾调用：把 self.PATTERNS 变成行为。"""
+def load(harness: Any, adapters: dict | None = None) -> PatternRuntime:
+    """在 BaseHarnessV2.__init__ 末尾调用：把 self.PATTERNS 变成行为。
+
+    M3：adapters 可把某 kind 的 Mock 端口换成生产适配器，例如
+    {"learning": FileSkillStore(dir)} —— 未提供时仍用内存 Mock（并告警）。
+    """
     rt = PatternRuntime(harness)
+    for kind, port in (adapters or {}).items():
+        for h in rt.handlers:
+            if getattr(h, "kind", None) == kind:
+                for attr in ("store", "retriever", "bus"):
+                    if hasattr(h, attr):
+                        setattr(h, attr, port)
     harness.patterns = rt
     return rt
 
@@ -234,6 +257,5 @@ HANDLERS.update(DECLARATIVE)  # 批 1 接线：reflect/evaluator/guardrails-safe
 HANDLERS.update(
     B2_HANDLERS
 )  # 批 2：router/chain/parallel/planner/decomposition/fsm/decomposer/exploration/
-HANDLERS.update(
-    B3_HANDLERS
-)  # 批 3：topic-model/a2a/learning（Mock 端口驱动）resource-aware/goal-settingrag/reasoning
+# 批 3：topic-model / a2a / learning（Mock 端口驱动，见 ports.py）
+HANDLERS.update(B3_HANDLERS)ning
