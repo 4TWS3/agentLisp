@@ -804,6 +804,10 @@ class BaseHarnessV2:
                 "[Verify] failed exit_code=%s err=%s", observation.get("exit_code"), err_msg
             )
             return False, err_msg
+        # M2 接线：观察值门控（rag 要求回答引用证据 id，契约 CT-RAG-01）
+        _ok_obs, _why_obs = self.patterns.verify_observation(observation)
+        if not _ok_obs:
+            return False, _why_obs
         return True, "Verified"
 
     async def correct(
@@ -814,7 +818,8 @@ class BaseHarnessV2:
     ) -> dict[str, Any]:
         """【护栏 3：Correct】局部重试与熔断策略。"""
         correct_cfg = self.harness_config.get("correct", {}) or {}
-        max_retries = int(correct_cfg.get("max_retries", 3))
+        # M2 接线：模式 exception 只能**收紧**重试上限（契约 CT-EXCEPTION-01）
+        max_retries = self.patterns.retries_cap(int(correct_cfg.get("max_retries", 3)))
         logger.info("[Correct] retries=%s/%s error=%s", retries, max_retries, error_msg)
         if retries >= max_retries:
             on_failure = correct_cfg.get("on_failure", "ask_human")
@@ -977,7 +982,9 @@ class BaseHarnessV2:
         retries_this_turn = 0
         while (
             not self.is_terminated
-            and len((self._trace and self._trace.turns) or []) < self.max_turns
+            # M2 接线：模式 exploration 的 budget 只收紧轮次上限（契约 CT-EXPLORATION-01）
+            and len((self._trace and self._trace.turns) or [])
+            < self.patterns.turn_budget(self.max_turns)
         ):
             self.step_count += 1
             step_result = await self._react_step()

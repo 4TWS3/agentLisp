@@ -142,6 +142,39 @@ class PatternRuntime:
                 return fn(self.harness)
         return {}
 
+    def verify_observation(self, observation: dict) -> tuple[bool, str]:
+        """M2 接线：观察值门控。声明了 rag 时，回答必须引用证据 id（契约 CT-RAG-01）。
+
+        未声明相关模式 → 直接放行（向后兼容）。
+        """
+        for h in self.handlers:
+            fn = getattr(h, "verify_evidence", None)
+            if callable(fn) and isinstance(observation, dict):
+                answer = str(observation.get("answer") or observation.get("final_answer") or "")
+                ids = observation.get("evidence_ids") or []
+                if answer or ids:
+                    return fn(answer, list(ids))
+        return True, ""
+
+    def retries_cap(self, base: int) -> int:
+        """M2 接线：生效重试上限 = min(既有, 模式策略)；未声明 exception 时返回 base。"""
+        p = self.retry_policy()
+        r = p.get("retries") if isinstance(p, dict) else None
+        return min(base, r) if isinstance(r, int) and r > 0 else base
+
+    def turn_budget(self, base: int) -> int:
+        """M2 接线：轮次上限 = min(既有, exploration.budget)；未声明则返回 base。"""
+        for h in self.handlers:
+            b = getattr(h, "budget", None)
+            if callable(b):
+                try:
+                    v = int(b())
+                except (TypeError, ValueError):
+                    continue
+                if v > 0:
+                    return min(base, v)
+        return base
+
     def spec(self, kind: str) -> dict:
         for p in self.declared:
             if isinstance(p, dict) and p.get("pattern") == kind:
