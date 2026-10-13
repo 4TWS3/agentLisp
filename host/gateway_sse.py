@@ -464,7 +464,7 @@ def create_app(registry: GatewayRegistry | None = None) -> Any:
 
     app = FastAPI(
         title="AgentLisp v2.0 Gateway",
-        version="2.1.0",
+        version="2.2.0",
         description="对齐 SRS §5.3 IF-API-1 的 FastAPI SSE/HITL/Checker 网关。",
     )
 
@@ -475,7 +475,7 @@ def create_app(registry: GatewayRegistry | None = None) -> Any:
         cp, ot = _feature_probes()
         return {
             "status": "ok",
-            "version": "2.1.0",
+            "version": "2.2.0",
             "checkpoint": cp,
             "otel": ot,
             "agents": sorted(reg.harnesses.keys()),
