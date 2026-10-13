@@ -163,6 +163,19 @@ class FsmHandler(_B2):
                 return dst.strip()
         raise ValueError(f"fsm：非法迁移 state={state!r} event={event!r}")
 
+    # ---- M2 接线：工具名即状态，非法迁移直接拦截 ----
+    def on_tool_call(self, harness: Any, call: dict) -> tuple[bool, str]:
+        name = str(call.get("tool_name") or "")
+        if not name:
+            return True, ""
+        cur = getattr(self, "_state", None) or self.initial_state()
+        try:
+            nxt = self.transition(cur, name)
+        except ValueError as e:
+            return False, f"Harness Blocked: fsm 拒绝非法迁移（当前 {cur}，工具 {name}）{e}"
+        self._state = nxt
+        return True, ""
+
 
 class DecomposerHandler(_B2):
     kind = "decomposer"
@@ -214,6 +227,13 @@ class ResourceAwareHandler(_B2):
             raise ValueError(
                 "resource-aware 的 :budget ∈ {low, mid, high}（契约 CT-RESOURCE_AWARE-01）"
             )
+
+    def on_init(self, harness: Any, others: list[str]) -> None:
+        """M2 接线：把档位写进 model_config（部署方据此选模型）。"""
+        super().on_init(harness, others)
+        cfg = getattr(harness, "model_config", None)
+        if isinstance(cfg, dict):
+            cfg["tier"] = self.tier()
 
     def summary(self) -> str:
         return f"budget={self.budget()} → tier={self.tier()}"
