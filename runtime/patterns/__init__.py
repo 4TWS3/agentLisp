@@ -10,6 +10,7 @@
 
 from __future__ import annotations
 
+import logging
 from typing import Any, Protocol
 
 # 具体 handler（顶部导入：无循环依赖 —— 各 handler 只依赖 typing）
@@ -18,6 +19,8 @@ from runtime.patterns.declarative_b2 import B2_HANDLERS
 from runtime.patterns.declarative_b3 import B3_HANDLERS
 from runtime.patterns.exception import ExceptionHandler
 from runtime.patterns.priority import PriorityHandler
+
+logger = logging.getLogger(__name__)
 
 # 已落地的 kind（每落地一个加一个；判据 A11 要求：LANDED 里每个 kind 必须有
 #   (a) docs/spec/pattern_runtime_contracts/<kind>.md
@@ -258,4 +261,4 @@ HANDLERS.update(
     B2_HANDLERS
 )  # 批 2：router/chain/parallel/planner/decomposition/fsm/decomposer/exploration/
 # 批 3：topic-model / a2a / learning（Mock 端口驱动，见 ports.py）
-HANDLERS.update(B3_HANDLERS)ning
+HANDLERS.update(B3_HANDLERS)
