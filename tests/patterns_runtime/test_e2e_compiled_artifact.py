@@ -20,7 +20,12 @@ p = pathlib.Path(sys.argv[1])
 spec = importlib.util.spec_from_file_location("e2e_out", p)
 mod = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(mod)
-cls = next(getattr(mod, n) for n in dir(mod) if n.endswith("Harness"))
+cls = next(
+    getattr(mod, n)
+    for n in dir(mod)
+    if n.endswith("Harness")
+    and getattr(getattr(mod, n), "__module__", "") == mod.__name__  # 只认本模块定义的类，
+)                                                                    # 否则会抓到 import 进来的基类
 h = cls()
 print(json.dumps({
     "kinds": [x.kind for x in h.patterns.handlers],
