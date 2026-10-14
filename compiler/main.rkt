@@ -346,7 +346,7 @@
   (set! json-errors? #t))
  (("-v" "--verbose") "Verbose: print progress" (set! verbose? #t))
  (("-V" "--version") "Print SRS + compiler version, then exit 0 (IF-CLI-1)"
-  (printf "agentlispc 2.2.0 (SRS v2.2.0)\n")
+  (printf "agentlispc 2.3.0 (SRS v2.3.0)\n")
   (exit/flush 0))
  (("--dump-expanded-sexp") "Dump post-pattern-expansion s-expressions, then exit"
   (set! dump-expanded-sexp? #t))
