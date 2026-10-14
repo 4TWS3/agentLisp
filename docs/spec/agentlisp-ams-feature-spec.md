@@ -448,7 +448,7 @@ F-AMS-8 / F-AMS-9 / F-AMS-10：独立，可后置
 
 ---
 
-## 9. 决策（已定，2026-10-14）
+## 9. 决策（已定，2026-10-14；原问题保留在节末备查）
 
 四项已由执行者决定，见 [agentlisp-ams-decisions.md](agentlisp-ams-decisions.md)。
 
