@@ -1,18 +1,33 @@
-"""端到端（用户路径）：带模式的 .al → 编译 → import 产物 → 运行时真的载入模式。
+"""端到端（用户路径）：带模式的 .al → 编译 → **在子进程里 import 产物** → 运行时真的载入模式。
 
-这是自审发现的最大缺口：此前所有运行时测试都**手工**设置 PATTERNS，
-没有一条走「编译器产物 → patterns.load」这条路。
+设计要点（自审整改）：
+  * 不改本进程的 sys.path（坑 #15 的守护测试会拦）；用子进程 + cwd=仓库根，与真实用法一致。
+  * 产物自己构造配置，故实例化用 cls()（传位置参会与 super().__init__ 的关键字参数冲突）。
 """
 
 from __future__ import annotations
 
-import importlib.util
+import json
 import subprocess
 import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 MAIN = ROOT / "compiler" / "main.rkt"
+
+PROBE = """import importlib.util, json, pathlib, sys
+p = pathlib.Path(sys.argv[1])
+spec = importlib.util.spec_from_file_location("e2e_out", p)
+mod = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(mod)
+cls = next(getattr(mod, n) for n in dir(mod) if n.endswith("Harness"))
+h = cls()
+print(json.dumps({
+    "kinds": [x.kind for x in h.patterns.handlers],
+    "directive": "pattern:priority" in str(h.build_context()),
+    "events": len(h.patterns.events),
+}, ensure_ascii=False))
+"""
 
 
 def test_e2e_compiled_artifact_loads_patterns(tmp_path: Path) -> None:
@@ -31,18 +46,20 @@ def test_e2e_compiled_artifact_loads_patterns(tmp_path: Path) -> None:
     assert cp.returncode == 0, f"编译失败 rc={cp.returncode}：{cp.stderr[-400:]}"
     assert out.is_file(), "未生成产物"
 
-    if str(ROOT) not in sys.path:
-        sys.path.insert(0, str(ROOT))
-    spec = importlib.util.spec_from_file_location("e2e_out", out)
-    assert spec and spec.loader
-    mod = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(mod)
-    cls = next(getattr(mod, n) for n in dir(mod) if n.endswith("Harness"))
-
-    h = cls({}, {}, {}, {})
-    assert h.patterns.handlers, "编译产物的 harness 应自动载入模式 handler（端到端接线）"
-    assert [x.kind for x in h.patterns.handlers] == ["priority"], (
-        f"应载入 priority；实际 {[x.kind for x in h.patterns.handlers]!r}"
+    probe = tmp_path / "probe.py"
+    probe.write_text(PROBE, encoding="utf-8")
+    run = subprocess.run(
+        [sys.executable, str(probe), str(out)],
+        cwd=str(ROOT),
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        timeout=180,
     )
-    assert "pattern:priority" in str(h.build_context()), "模式指令应进入上下文"
-    assert h.patterns.events == [], "载入本身不应产生事件（事件只记介入）"
+    assert run.returncode == 0, f"产物在子进程里跑不起来 rc={run.returncode}：{run.stderr[-500:]}"
+    got = json.loads(run.stdout.strip().splitlines()[-1])
+
+    assert got["kinds"] == ["priority"], f"编译产物应自动载入 priority；实际 {got['kinds']!r}"
+    assert got["directive"] is True, "模式指令应进入上下文（端到端接线）"
+    assert got["events"] == 0, "载入本身不应产生事件（事件只记介入）"
