@@ -97,12 +97,18 @@ class PatternRuntime:
     def _instantiate(self) -> None:
         # HANDLERS 在模块末尾定义；本方法在运行时调用，名字已解析
 
+        seen: set[str] = set()
         for spec in self.declared:
             if not isinstance(spec, dict):
                 continue
             kind = spec.get("pattern")
             if not kind:
                 continue
+            if kind in seen:
+                # 同一 kind 出现多次 → 幂等（只载入一个 handler，设计 v2 §6）
+                logger.debug("[Pattern] 重复声明 kind=%s，已跳过", kind)
+                continue
+            seen.add(kind)
             factory = HANDLERS.get(kind)
             if factory is None:
                 raise ValueError(
