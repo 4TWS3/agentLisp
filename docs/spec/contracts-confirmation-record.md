@@ -73,7 +73,7 @@ router（69 字节）、decomposition（86 字节）。
 
 | # | 项 | 选择 |
 |---|---|---|
-| 1 | guardrails-safety 三段固定 vs 自定义 | A 固定 |
+| 1 | guardrails-safety 三段固定 vs 自定义 | A 固定。**三段 = constrain / verify / correct**（复核后改判，见 §7） |
 | 2 | 规则来源 | A 内置 + 用户扩展 |
 | 3 | 命中后行为 | A 拒绝并留痕 |
 | 4 | 三段全未命中 | A 放行不记事件 |
@@ -145,3 +145,53 @@ router（69 字节）、decomposition（86 字节）。
 2. 「通过 9 份」与用户代表初稿的「8 份」不同。差异因初稿漏计 `decomposer`。**已告知。**
 3. 三项待补项的设计代价未估。
 4. `guardrails-safety` 的三段若改为固定位置，是否与现行 `:hooks` 语法冲突，**我未核**。
+
+---
+
+## 7. 项 1 的复核与改判（2026-10-14）
+
+初判「三段 = 输入 / 工具 / 输出」。复核后**改判为 constrain / verify / correct**。
+
+### 7.1 冲突证据
+
+模式宏 `defguardrails-safety-agent` 的 markers 明写：
+
+```
+"Harness 三段 guardrails 钩子（constrain / verify / correct）"
+```
+
+来源：`compiler/patterns_v2.rkt:86`。**已知，可复现。**
+
+原判「输入/工具/输出」与 markers 不同维度。两者数量巧合都是 3。
+
+### 7.2 改判理由
+
+| # | 理由 |
+|---|---|
+| 1 | 与 markers 一致。改一处优于改两处 |
+| 2 | 与 `:harness` 现有三段同名。符合规则 5「一件事一个说法」 |
+| 3 | 「输入/工具/输出」可映射到三段内部，不冲突 |
+
+### 7.3 三段与检查点的映射
+
+| `:hooks` 位置 | 对应 harness 阶段 | 检查什么 |
+|---|---|---|
+| `:constrain` | Constrain | 输入：提示词合法性 |
+| `:verify` | Verify | 输出：生成文本合规性 |
+| `:correct` | Correct | 违规后的纠正回路 |
+
+**工具调用检查的落点**：现有 `on_tool_call` 钩子只在 `constrain` 段内生效。
+故「工具调用检查」属 `:constrain` 段的一部分，**不是独立的第四段**。
+
+### 7.4 关键结论：guardrails-safety 不需要新槽位
+
+三段的行为可通过既有机制接线：
+
+| 段 | 既有机制 | 证据 |
+|---|---|---|
+| constrain | `harness_config['constrain']` | `base_harness_v2.py` 的 `_contains_forbidden_token` 已强制 |
+| verify | `PatternRuntime.verify_observation` | `base_harness_v2.py:808` 已调用 |
+| correct | `harness_config['correct']` | 既有重试与熔断 |
+
+**含义**：本次接线**不改 `PatternHandler` 协议，不新增调用点**。
+这与 P1-1 的防膨胀规则一致（槽位只能由运行时调用点定义）。

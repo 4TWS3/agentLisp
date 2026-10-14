@@ -249,12 +249,17 @@
 
 ---
 
-## 8. 确认后新增的三处待补
+## 8. 确认后新增的待补
+
+> **项 1 已解**（2026-10-14 复核）：三段 = `constrain` / `verify` / `correct`。
+> 且确认 **guardrails-safety 不需要新槽位** —— 三段行为走既有机制
+> （`harness_config['constrain']` / `PatternRuntime.verify_observation` / `harness_config['correct']`）。
+> 详见 [contracts-confirmation-record.md](contracts-confirmation-record.md) §7。
+> 余下两处待补见表。
 
 | # | 项 | 说明 | 影响 |
 |---|---|---|---|
-| 1 | a2a 双传输开关 | 项 5 选 `A/B`，即内存（测试）+ 文件（生产）。**开关机制未定**：编译期 `--transport` 还是运行期环境变量 | 影响 F-AMS-4 的编译期断言 |
 | 2 | learning 的「失败签名」定义 | 项 13 选「计满 2 次」。**「同签名」如何判定未定**：错误类型 + 工具名 + 输入哈希，还是别的 | 影响计数正确性 |
 | 3 | topic-model 路由依赖 | 项 16 选「真改路由」，但编排调度器（P4）未实现 | 该项在 P4 之前**只能记分布，不能改路由** |
 
-三项都不阻塞契约写法。但阻塞实现。
+两项都不阻塞契约写法。但阻塞实现。
