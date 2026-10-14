@@ -96,6 +96,10 @@ def load(harness: Any) -> list[PatternHandler]: ...   # 读 harness.PATTERNS →
 | 资源 | resource-aware / exploration | 都按预算裁剪行为 |
 | 协作 | a2a / decomposition | 都产生子任务/子 agent |
 
+> **口径补充（2026-10-12）**：上表 8 组共覆盖 **19** 个 kind。
+> `priority` 与 `reasoning` **不参与互斥**（独立），可与任意模式共存。
+> 组合测试按此口径实现：21×21 = 210 对（同组 15 对必报错，跨组 195 对按声明顺序）。
+
 **顺序规则**：跨组按**声明顺序**串行；同钩子内确定性（不依赖 dict 顺序）。
 **冲突即报错**：`on_init` 检出同组多成员 → 抛错并**点名双方 kind** 与所属组。
 
@@ -200,3 +204,17 @@ CI 只在 Mock 下跑 ✓；生产适配器另开批次 ✓。
 | 高 | 剩余 12 个 kind 的引擎消费 | 5 个需新写调度器；4 个需改判定链；3 个需生产适配器 |
 | 中 | OTel span 接入 | 目前只有内存 events |
 | 中 | 21 契约的专家口径确认 | 口径由我按注册表推断 |
+
+## 14. 进度更新（2026-10-12，第二轮）
+
+| 上表欠账 | 现状 |
+|---|---|
+| 组合测试（§6） | **已完成** ✓ 210 对参数化（同组 15 必报错并点名双方；跨组 195 按声明顺序）+ 3 条结构断言 = 213 用例 |
+| 剩余 12 个 kind 的引擎消费 | **13/21 已真消费** ✓（批 B 补 4 个：reflect / guardrails-safety / reasoning / goal-setting）。剩 8 个：5 个需新写调度器 ✗，3 个需生产适配器 ✗ |
+| OTel span 接入 | **已完成** ✓ _record 同步发 pattern.<kind>.<hook> 事件给 harness.otel_tracer；发送失败写 warning（不静默） |
+| 生产适配器 | **3/3 端口均有真实适配器** ✓ FileSkillStore（learning）/ FileCorpusRetriever（rag、topic-model）/ FileMessageBus（a2a，落盘 inbox.jsonl，可被消费者读取） |
+| 专家口径确认 | **仍未做** ✗ 需人工评审（我无法替代） |
+
+**仍不可在本轮完成的一项**：router / chain / parallel / planner / decomposition 的调度器 ✗。
+原因：引擎没有多步编排与多 worker 结构 ✗。这不是接线，是新功能（经验值 5–9 工程日 ✗）。
+硬接会做成假实现，违反「声称能做，必须真能做」（产品标准 1 ✗）。

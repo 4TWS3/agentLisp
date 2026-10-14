@@ -67,3 +67,34 @@ class FileCorpusRetriever:
         if not hits:
             logger.warning("FileCorpusRetriever：query=%r 无命中（返回空）", query)
         return hits[:k]
+
+
+class FileMessageBus:
+    """文件消息总线（a2a 的真实适配器）：消息追加到 <root>/inbox.jsonl。
+
+    真实落盘 → 另一个进程或 agent 可读取（received()）。无网络依赖。
+    """
+
+    adapter = "file"
+
+    def __init__(self, root: str | Path) -> None:
+        self.root = Path(root)
+        self.root.mkdir(parents=True, exist_ok=True)
+        self.inbox = self.root / "inbox.jsonl"
+
+    def send(self, to_agent: str, payload: dict) -> dict:
+        rec = {"to": to_agent, "payload": dict(payload)}
+        with self.inbox.open("a", encoding="utf-8") as f:
+            f.write(json.dumps(rec, ensure_ascii=False) + "\n")
+        return {"delivered": True, "to": to_agent, "echo": payload.get("id")}
+
+    def received(self, agent: str | None = None) -> list[dict]:
+        if not self.inbox.is_file():
+            return []
+        out: list[dict] = []
+        for line in self.inbox.read_text(encoding="utf-8").splitlines():
+            if line.strip():
+                rec = json.loads(line)
+                if agent is None or rec.get("to") == agent:
+                    out.append(rec)
+        return out

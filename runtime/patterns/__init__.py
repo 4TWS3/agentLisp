@@ -138,6 +138,19 @@ class PatternRuntime:
     def _record(self, kind: str, hook: str, detail: dict) -> None:
         self.events.append({"kind": kind, "hook": hook, "detail": detail})
         logger.info("[Pattern] %s.%s %s", kind, hook, detail)
+        # 优先级 3：有 OTel tracer 时同步发事件（与 SRS NFR-OBS-1 共用同一个 tracer）
+        tracer = getattr(self.harness, "otel_tracer", None)
+        if tracer is not None:
+            try:
+                tracer.on_step(
+                    getattr(self.harness, "run_id", "-"),
+                    len(self.events),
+                    f"pattern.{kind}.{hook}",
+                    detail,
+                )
+            except Exception:
+                # 失败必须留痕（不得静默）
+                logger.warning("[Pattern] OTel 事件发送失败", exc_info=True)
 
     def events_for(self, kind: str) -> list[dict]:
         return [e for e in self.events if e["kind"] == kind]
