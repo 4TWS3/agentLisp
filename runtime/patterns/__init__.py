@@ -201,6 +201,27 @@ class PatternRuntime:
                         False,
                         f"evaluator：score={observation['score']} → {verdict}（契约 CT-EVALUATOR-01）",
                     )
+        # ---- M2 批 B：reflect / guardrails-safety / reasoning / goal-setting 观察门 ----
+        kinds = {getattr(h, "kind", None): h for h in self.handlers}
+        if isinstance(observation, dict):
+            if "reflect" in kinds and not observation.get("reviewer"):
+                self._record("reflect", "verify", {"missing": "reviewer"})
+                return False, "reflect：缺 reviewer 复核结论（契约 CT-REFLECT-01）"
+            if "guardrails-safety" in kinds and not observation.get("audit"):
+                self._record("guardrails-safety", "verify", {"missing": "audit"})
+                return False, "guardrails-safety：缺审计记录 audit（契约 CT-GUARDRAILS_SAFETY-01）"
+            if "reasoning" in kinds and not observation.get("reasoning"):
+                self._record("reasoning", "verify", {"missing": "reasoning"})
+                return False, "reasoning：缺显式推理结构（契约 CT-REASONING-01）"
+            if "goal-setting" in kinds and "progress" in observation:
+                _gs = kinds["goal-setting"]
+                try:
+                    _dev = _gs.deviation(float(observation["progress"]))
+                except (TypeError, ValueError):
+                    _dev = False
+                if _dev:
+                    self._record("goal-setting", "verify", {"progress": observation["progress"]})
+                    return False, "goal-setting：进度未达目标（契约 CT-GOAL_SETTING-01）"
         return True, ""
 
     def retries_cap(self, base: int) -> int:
