@@ -22,10 +22,17 @@ from runtime.patterns.priority import PriorityHandler
 
 logger = logging.getLogger(__name__)
 
-# 已落地的 kind（每落地一个加一个；判据 A11 要求：LANDED 里每个 kind 必须有
-#   (a) docs/spec/pattern_runtime_contracts/<kind>.md
-#   (b) tests/patterns_runtime/test_<kind>.py
-#   (c) 测试里引用该契约 id
+# ---- 口径唯一真源（README / 本注释 / docs/spec/agentlisp_pattern_landing.md 三处必须一致）----
+# 口径短语（三处逐字一致，脚本核对）：落地 21 / 引擎消费 13 / 仅声明 8
+#   LANDED          = 有契约 + 运行时测试（每落地一个加一个；判据 A11 要求每个 kind 必须有
+#                     (a) docs/spec/pattern_runtime_contracts/<kind>.md
+#                     (b) tests/patterns_runtime/test_<kind>.py
+#                     (c) 测试里引用该契约 id）
+#   DECLARED_ONLY   = 有 handler，但引擎不调其行为。显式登记为声明层，不假装生效（不变式 I1）。
+#   ENGINE_CONSUMED = LANDED - DECLARED_ONLY。
+# 核对脚本：python3 scripts/check_pattern_consistency.py
+# 代价登记：本台账是**声明式**的，不是从调用点反推。槽位模型（US-30 / P1-1）会把
+# 「引擎消费」变成结构化事实。在那之前，本台账 + 核对脚本保证文档不漂。
 LANDED: set[str] = {
     "priority",
     "exception",
@@ -49,6 +56,20 @@ LANDED: set[str] = {
     "a2a",
     "learning",
 }
+
+# 仅声明层：handler 在，但引擎不消费其输出（名单来自机器验证报告 §4.2 的实测）。
+DECLARED_ONLY: set[str] = {
+    "a2a",
+    "chain",
+    "decomposition",
+    "learning",
+    "parallel",
+    "planner",
+    "router",
+    "topic-model",
+}
+
+ENGINE_CONSUMED: set[str] = LANDED - DECLARED_ONLY
 
 # 冲突分组（设计 v2 §6）：同组内只能选一个
 GROUPS: dict[str, set[str]] = {
