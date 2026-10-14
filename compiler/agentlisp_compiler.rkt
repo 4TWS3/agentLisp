@@ -842,28 +842,20 @@ EOS
           ))
 
 (define (emit-build-kv-aligned-context-hook)
-  ;; 修复 CRIT-2：Status Bar 必须 system 角色；同时注入 tools_schema 静态段（修复 MINOR-14）
-  ;; 注意：BaseHarnessV2.build_context() 方法签名为无参 self 版本，此处我们 override 为"接受或不接受 trajectory 参数均可"的兼容形态
+  ;; 兼容旧签名：BaseHarnessV2.build_context() 是无参版本，这里允许可选 trajectory。
+  ;; 关键修复：不再复制一份四段拼装实现。旧实现在此处漏了 patterns.before_turn / order，
+  ;; 编译产物（端到端用户路径）因此看不到模式注入 —— 单测手工设 PATTERNS 时发现不了。
+  ;; 一处判断只留一处实现：拼装与模式注入都委托给基类。
   #<<EOS
     def build_context(self, trajectory=None):
-        import copy as _copy
         if trajectory is None:
-            trajectory = self.trajectory
-        tools_openai_schema = None
-        if self.tool_registry is not None:
-            try:
-                tools_openai_schema = self.tool_registry.to_openai_schema()
-            except Exception:  # noqa: BLE001
-                tools_openai_schema = None
-        return build_kv_aligned_context(
-            system_prompt=self.model_config.get('system_prompt', ''),
-            tools_schema_text=self.tools_config.get('tools_schema'),
-            tools_openai_schema=tools_openai_schema,
-            trajectory=list(_copy.deepcopy(trajectory) if False else trajectory),
-            step_count=self.step_count,
-            status_bar_config=self.context_config.get('status_bar', {}) or {},
-            terminated=self.is_terminated,
-        )
+            return super().build_context()
+        _saved = self.trajectory
+        self.trajectory = trajectory
+        try:
+            return super().build_context()
+        finally:
+            self.trajectory = _saved
 
 EOS
   )

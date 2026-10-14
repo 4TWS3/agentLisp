@@ -329,6 +329,19 @@ racket compiler/main.rkt --check-only -i examples/repair_agent.al
 - 指纹覆盖**整个文件**（含尾注）。只覆盖生成段会让「末尾追加」漏检。
 - 手工逻辑不要写进产物。写在使用方自己的子类/包装里。
 
+### 产物运行前置：`runtime` 包必须可导入
+
+产物首部有 `from runtime.base_harness_v2 import …`。所以运行产物前，`runtime` 必须可导入。
+
+| 场景 | 做法 |
+|---|---|
+| pip 装包（`pip install agentlisp`） | 已满足。wheel 含 `runtime` |
+| 仓库内直接跑产物 | 设 `PYTHONPATH` 指向仓库根；或用 `uv run` |
+| 子进程跑产物（探针在别的目录） | 显式传 `PYTHONPATH`。子进程的 `sys.path[0]` 是脚本目录，不是 cwd |
+
+**这是产物的公开合同，不是测试技巧。** 端到端测试见
+`tests/patterns_runtime/test_e2e_compiled_artifact.py`。
+
 
 # 5️⃣ Python 加载并运行（DirectRunner，零外部依赖）
 uv sync --dev

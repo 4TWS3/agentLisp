@@ -446,12 +446,20 @@ def template_of(p: dict) -> list:
         # CR-42 P-2：模式语义进入 AST（不再是「只写在 system-prompt 文本里」）。
         # markers 来自本表的单一事实源，与 SRS §3 声明一一对应。
         #
+        # CR-42 P-4 修订：用户的模式参数必须进 :config，否则运行时 handler 拿不到
+        # （CT-PRIORITY-01 要求 criteria/levels 可被消费）。%pattern-params% 在
+        # instantiate / v2-instantiate 里被替换成用户 plist，见 v2-splice-params。
         [
             ":pattern",
             ":kind",
             Sym(KIND_OF[p["key"]]),
             ":config",
             [":markers", list(p["markers"])],
+            # 用户参数进 :params，不进 :config。编译期只把本 kind 在注册表声明过的键
+            # 提升进 :config；其余保持 prompt-only。这样既让 criteria 这类键被消费，
+            # 又不让任意参数触发「未知 config 键」编译错误（见 validate-pattern-block）。
+            ":params",
+            [Sym("%pattern-params%")],
         ],
     ]
     if p["workers"]:
@@ -549,7 +557,24 @@ def instantiate(tmpl, name: str, rst: list) -> list:
             return [fix(i) for i in x]
         return x
 
-    return fix(subst(tmpl, name, params))
+    def is_placeholder(x) -> bool:
+        return (
+            isinstance(x, list)
+            and len(x) == 1
+            and isinstance(x[0], Sym)
+            and str(x[0]) == "%pattern-params%"
+        )
+
+    def splice(x):
+        # (%pattern-params%) → 用户 plist 作为一个值（:params 的值）。
+        # 简单 cons/列表替换即可：父层会把它当成单个元素，得到 (:params (…))。
+        if is_placeholder(x):
+            return list(rst)
+        if isinstance(x, list):
+            return [splice(i) for i in x]
+        return x
+
+    return splice(fix(subst(tmpl, name, params)))
 
 
 # -------------------------------------------------------------- file emitters
@@ -599,8 +624,24 @@ HELPERS = """
           ((string? x) x)
           (else (format "~s" x))))
 
+  ;; (%pattern-params%) 占位（单元素列表）→ 用户 plist 原样 splice 进 :config。
+  ;; 为什么必须进 :config：运行时 handler 从 spec 读键（如 priority 读 criteria）。
+  ;; 只写进 system-prompt 文本 = 声明有、消费无（违反不变式 I1）。
+  (define (v2-placeholder? x)
+    (and (pair? x) (eq? (car x) '%pattern-params%) (null? (cdr x))))
+
+  ;; (%pattern-params%) 作为「一个值」替换成用户 plist（即 :params 的值）。
+  ;; 简单 cons 替换即可：父层把它当单个元素，得到 (:params (…))。
+  (define (v2-splice-params x rst)
+    (cond
+      ((v2-placeholder? x) rst)
+      ((pair? x) (cons (v2-splice-params (car x) rst) (v2-splice-params (cdr x) rst)))
+      (else x)))
+
   (define (v2-instantiate tmpl name rst)
-    (v2-name-fix (v2-subst tmpl (v2-name->string name) (v2-params->string rst)) name))
+    (v2-splice-params
+     (v2-name-fix (v2-subst tmpl (v2-name->string name) (v2-params->string rst)) name)
+     rst))
 """
 
 

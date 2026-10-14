@@ -115,20 +115,36 @@
        (string->symbol (if (and (> (string-length s) 0) (char=? (string-ref s 0) #\:))
                            (substring s 1)
                            s)))
+     (define (normalize raw)
+       (define h (if (hash? raw) raw (plist->hash raw)))
+       (for/hash ([(k v) (in-hash h)]) (values (norm-key k) v)))
      (define kind-raw (get ':kind #f))
-     (define cfg-raw
-       (let* ([c (get ':config '())]
-              [h (if (hash? c) c (plist->hash c))])
-         (for/hash ([(k v) (in-hash h)]) (values (norm-key k) v))))
      (cond
        [(not kind-raw) (fail "(:pattern …) 缺少 :kind")]
        [else
         (define kind (if (symbol? kind-raw) kind-raw (string->symbol (format "~a" kind-raw))))
-        (define cfg (if (hash? cfg-raw)
-                        (for/hash ([(k v) (in-hash cfg-raw)])
-                          (values (if (symbol? k) k (string->symbol (format "~a" k))) v))
-                        cfg-raw))
-        (values kind cfg (registry-validate-config kind cfg))])]
+        (define cfg (normalize (get ':config '())))
+        ;; 宏把用户参数放 :params（不塞进 :config，避免任意键触发未知键错误）。
+        ;; 只有本 kind 在注册表声明过的键才提升进 :config；其余保持 prompt-only。
+        ;; 显式 (:config …) 里的未知键仍然报错（test_unknown_config_key_is_checker_error）。
+        (define params (normalize (get ':params '())))
+        (define e (registry-lookup kind))
+        ;; 类型也要过：:params 是宽松的宏参数。只有键在注册表里有、且值过该键的谓词，
+        ;; 才提升进 :config；否则保持 prompt-only。这样正向夹具里的宽松值
+        ;; （如 fsm 的 (idle running done) 符号列表）不会被误判为 config 类型错。
+        (define (promotable? k v)
+          (and e
+               (or (memq k (registry-entry-required e))
+                   (hash-has-key? (registry-entry-schema e) k))
+               (let ([pred (hash-ref (registry-entry-schema e) k #f)])
+                 (or (not pred) (pred v)))))
+        (define promoted
+          (for/hash ([(k v) (in-hash params)] #:when (promotable? k v))
+            (values k v)))
+        ;; 显式 :config 优先：同键冲突取 cfg 的值（combine 的第二个参数）
+        (define merged
+          (hash-union promoted cfg #:combine (lambda (_from-params from-config) from-config)))
+        (values kind merged (registry-validate-config kind merged))])]
     [else (fail (format "不是合法的模式块：~a" blk))]))
 
 ;; ---------- 生成（emitter 调用） ----------
@@ -143,16 +159,11 @@
 ;; =============================================================================
 
 ;; 构造顺序：kind required schema emit doc（位置参数）
-(define-pattern!
- (registry-entry
-  'priority
-  '(criteria)
-  (hash 'criteria string? 'levels positive-integer?)
-  (lambda (cfg)
-    (format "{'pattern': 'priority', 'criteria': ~a, 'levels': ~a}"
-            (py-value (hash-ref cfg 'criteria))
-            (py-value (hash-ref cfg 'levels 3))))
-  "优先级排序：按 :criteria 排序候选动作；:levels 指定层数（默认 3）"))
+;;
+;; 注意：这里**不**注册 priority。priority 的唯一注册点在下方 register-v2-pattern!。
+;; 曾在此处有一份旧条目，被下方 V2 注册静默覆盖 —— 覆盖后 criteria 的 emit 分支变死代码，
+;; 产物只剩 markers，运行时 PriorityHandler 因缺 criteria 起不来（CT-PRIORITY-01 违约）。
+;; 一处判断只留一处实现：kind 的 schema 以 V2 注册为准。
 
 ;; =============================================================================
 ;; CR-42 P-2：V2 十宏对应的 kind
@@ -167,11 +178,23 @@
     kind
     '(markers)
     (hash-union (hash 'markers string-list?) extra-schema #:combine (lambda (a b) b))
-    ;; 通用 emit：kind + markers（+ 各 kind 的额外键由 extra-schema 决定，emitter 只认 markers）
+    ;; 通用 emit：kind + markers + 本 kind 声明的额外键（schema 里有、cfg 里就发）。
+    ;; 为什么必须发额外键：运行时 handler 从 spec 读它们（如 priority 读 criteria）。
+    ;; 只发 markers = 声明有、消费无（违反不变式 I1）。
+    ;; 键按符号名字典序输出，保证同输入同产物（不变式 I3：编译期确定性）。
     (lambda (cfg)
-      (format "{'pattern': ~a, 'markers': [~a]}"
+      (define extra-keys
+        (sort (hash-keys extra-schema)
+              (lambda (a b) (string<? (symbol->string a) (symbol->string b)))))
+      (define extra-parts
+        (for/list ([k (in-list extra-keys)] #:when (hash-has-key? cfg k))
+          (format "'~a': ~a" k (py-value (hash-ref cfg k)))))
+      (format "{'pattern': ~a, 'markers': [~a]~a}"
               (py-str (symbol->string kind))
-              (string-join (map py-str (hash-ref cfg 'markers '())) ", ")))
+              (string-join (map py-str (hash-ref cfg 'markers '())) ", ")
+              (if (null? extra-parts)
+                  ""
+                  (string-append ", " (string-join extra-parts ", ")))))
     doc)))
 
 ;; 额外键只声明「这个 kind 允许出现什么」，避免语法再次封闭（未知键由 checker 拦）。
