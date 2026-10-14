@@ -5,6 +5,7 @@
 | 栏 | 内容 |
 |---|---|
 | **id** | CT-REFLECT-01 |
+| **槽位** | `verify` |
 | **输入** | 模式块键：:reviewer-agent |
 | **期望（可观测）** | reviewer 非空即通过校验；config() 返回 reviewer；且 build_context() 含 [pattern:reflect] 指令 |
 | **反证** | 去掉 :pattern → handlers 为空、无指令、查询口返回空/基线 |

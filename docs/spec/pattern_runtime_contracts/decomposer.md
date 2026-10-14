@@ -5,6 +5,7 @@
 | 栏 | 内容 |
 |---|---|
 | **id** | CT-DECOMPOSER-01 |
+| **槽位** | `verify` |
 | **输入（合法键）** | :schema-fields |
 | **期望（可观测）** | dc = h.patterns.api("decomposer")；ok, bad = dc.validate_payload({"name": "a"})；assert not ok and bad == ["kind"]；且 build_context() 含 [pattern:decomposer] 指令 |
 | **反证** | 去掉 :pattern → handlers 为空、无指令、api(kind) 抛 KeyError |

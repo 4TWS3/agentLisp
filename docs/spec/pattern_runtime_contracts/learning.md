@@ -5,6 +5,7 @@
 | 栏 | 内容 |
 |---|---|
 | **id** | CT-LEARNING-01 |
+| **槽位** | 无（declaration-only） |
 | **输入（合法键）** | :skill-dir |
 | **期望（可观测）** | ll = h.patterns.api("learning")；assert ll.skill_dir() == ".agentlisp/skills"；k = ll.write_back({"id": "fb1", "text": "慢一步"})；assert "fb1" in k and ll.recall(k) == {"id": "fb1", "text": "慢一步"}；且 build_context() 含 [pattern:learning] 指令 |
 | **反证** | 去掉 :pattern → handlers 为空、无指令 |

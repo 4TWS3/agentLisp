@@ -5,6 +5,7 @@
 | 栏 | 内容 |
 |---|---|
 | **id** | CT-REASONING-01 |
+| **槽位** | `verify` |
 | **输入** | 模式块键：:technique ∈ {cot, tree-of-thought} |
 | **期望（可观测）** | technique() 归一化返回；且 build_context() 含 [pattern:reasoning] 指令 |
 | **反证** | 去掉 :pattern → handlers 为空、无指令、查询口返回空/基线 |

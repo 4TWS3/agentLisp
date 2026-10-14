@@ -5,6 +5,7 @@
 | 栏 | 内容 |
 |---|---|
 | **id** | CT-TOPIC_MODEL-01 |
+| **槽位** | 无（declaration-only） |
 | **输入（合法键）** | :processor |
 | **期望（可观测）** | tm = h.patterns.api("topic-model")；assert tm.processor() == "cluster-agent"；assert tm.retrieve("billing") == ["topic: billing"]；assert set(tm.topics(["a", "b"])) == {"T0", "T1"}；且 build_context() 含 [pattern:topic-model] 指令 |
 | **反证** | 去掉 :pattern → handlers 为空、无指令 |

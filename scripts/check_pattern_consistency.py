@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """US-42 口径核对：README / LANDED 注释 / 落地清单三处数字必须一致。
 
-唯一真源：runtime/patterns/__init__.py 的 LANDED / DECLARED_ONLY / ENGINE_CONSUMED。
-三处文本必须逐字含同一口径短语：`落地 N / 引擎消费 M / 仅声明 K`。
+唯一真源：runtime/patterns/__init__.py 的 CONTRACTED / LANDED / DECLARED_ONLY。
+三处文本必须逐字含同一口径短语：`契约 N / 落地 M / 声明层 K`。
+（US-30 换口径：旧短语「落地 21 / 引擎消费 13 / 仅声明 8」见 US-42 handoff。）
 
 退出码：0 = 三处一致；1 = 有不一致。
 """
@@ -16,7 +17,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from runtime.patterns import DECLARED_ONLY, ENGINE_CONSUMED, LANDED  # noqa: E402
+from runtime.patterns import CONTRACTED, DECLARED_ONLY, LANDED  # noqa: E402
 
 TARGETS = [
     ("README.md", ROOT / "README.md"),
@@ -26,15 +27,13 @@ TARGETS = [
 
 
 def canonical_phrase() -> str:
-    return f"落地 {len(LANDED)} / 引擎消费 {len(ENGINE_CONSUMED)} / 仅声明 {len(DECLARED_ONLY)}"
+    return f"契约 {len(CONTRACTED)} / 落地 {len(LANDED)} / 声明层 {len(DECLARED_ONLY)}"
 
 
 def check() -> list[str]:
     problems: list[str] = []
-    if not DECLARED_ONLY <= LANDED:
-        problems.append(f"DECLARED_ONLY 含未落地 kind：{sorted(DECLARED_ONLY - LANDED)}")
-    if ENGINE_CONSUMED != LANDED - DECLARED_ONLY:
-        problems.append("ENGINE_CONSUMED != LANDED - DECLARED_ONLY")
+    if DECLARED_ONLY & LANDED or (LANDED | DECLARED_ONLY) != CONTRACTED:
+        problems.append("LANDED / DECLARED_ONLY 不构成 CONTRACTED 的划分")
     want = canonical_phrase()
     for label, path in TARGETS:
         if not path.is_file():

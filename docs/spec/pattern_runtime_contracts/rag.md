@@ -5,6 +5,7 @@
 | 栏 | 内容 |
 |---|---|
 | **id** | CT-RAG-01 |
+| **槽位** | `verify` |
 | **输入** | 模式块键：无必需键 |
 | **期望（可观测）** | verify_evidence(answer, ids) 校验引用；且 build_context() 含 [pattern:rag] 指令 |
 | **反证** | 去掉 :pattern → handlers 为空、无指令、查询口返回空/基线 |

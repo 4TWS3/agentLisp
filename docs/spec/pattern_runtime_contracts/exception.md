@@ -5,6 +5,7 @@
 | 栏 | 内容 |
 |---|---|
 | **id** | `CT-EXCEPTION-01` |
+| **槽位** | `budget` |
 | **输入** | .al：`(defexception-agent s :retries 3 :backoff "exponential")`；harness 既有策略 `correct.max_retries = 5` |
 | **期望（可观测）** | ① `harness.patterns.retry_policy()` 返回 `{"retries": 3, "backoff": "exponential"}`；② 该策略**不放宽**既有保护：生效值 = `min(pattern.retries, harness.max_retries)` = 3；③ `build_context()` 含 `[pattern:exception]` 指令 |
 | **反证** | 去掉 `:pattern`：① `retry_policy()` 返回 `{}`；② `build_context()` 不含 `pattern:exception` |

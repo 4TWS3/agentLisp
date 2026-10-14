@@ -5,6 +5,7 @@
 | 栏 | 内容 |
 |---|---|
 | **id** | CT-GOAL_SETTING-01 |
+| **槽位** | `verify` |
 | **输入（合法键）** | :goal |
 | **期望（可观测）** | gg = h.patterns.api("goal-setting")；assert gg.goal() == "提高核销率"；assert gg.deviation(0.5) is True and gg.deviation(1.0) is False；且 build_context() 含 [pattern:goal-setting] 指令 |
 | **反证** | 去掉 :pattern → handlers 为空、无指令、api(kind) 抛 KeyError |

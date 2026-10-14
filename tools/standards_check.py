@@ -159,19 +159,25 @@ def _check_a11_landed_patterns_have_contract_and_test() -> tuple[bool, str]:
     if not init_py.is_file():
         return _result(False, "缺 runtime/patterns/__init__.py（模式运行时未落地）")
     tree = _ast.parse(init_py.read_text(encoding="utf-8"))
-    landed: set[str] = set()
+    # US-30 槽位模型：LANDED 现在是派生量（= 占槽位非空的 kind），不再是字面量。
+    # 唯一真源改为 KIND_SLOTS。契约 + 测试对**全部已登记 kind**（21）都要有。
+    kind_slots: dict[str, list[str]] = {}
     for node in _ast.walk(tree):
         if (
             isinstance(node, _ast.AnnAssign)
             and isinstance(node.target, _ast.Name)
-            and node.target.id == "LANDED"
+            and node.target.id == "KIND_SLOTS"
         ):
-            landed = set(_ast.literal_eval(node.value))
+            kind_slots = _ast.literal_eval(node.value)
+    if not kind_slots:
+        return _result(False, "runtime/patterns 的 KIND_SLOTS 为空（槽位模型未登记）")
+    registered = set(kind_slots)
+    landed = {k for k, s in kind_slots.items() if s}
     if not landed:
-        return _result(False, "runtime/patterns 的 LANDED 为空（至少要登记已落地的 kind）")
+        return _result(False, "KIND_SLOTS 没有任何 kind 占槽位（槽位模型失效）")
 
     problems: list[str] = []
-    for kind in sorted(landed):
+    for kind in sorted(registered):
         contract = ROOT / "docs" / "spec" / "pattern_runtime_contracts" / f"{kind}.md"
         # 测试文件名允许把连字符写成下划线（Python 模块名不能含 '-'）
         test = ROOT / "tests" / "patterns_runtime" / f"test_{kind}.py"
@@ -187,8 +193,12 @@ def _check_a11_landed_patterns_have_contract_and_test() -> tuple[bool, str]:
         if cid not in test.read_text(encoding="utf-8"):
             problems.append(f"{kind}: 测试未引用契约 id {cid}")
     if problems:
-        return _result(False, "已落地 kind 的门禁不完整：" + "；".join(problems))
-    return _result(True, f"{len(landed)} 个已落地 kind 均有契约 + 测试 + id 引用：{sorted(landed)}")
+        return _result(False, "已登记 kind 的门禁不完整：" + "；".join(problems))
+    return _result(
+        True,
+        f"{len(registered)} 个已登记 kind 均有契约 + 测试 + id 引用；"
+        f"其中 {len(landed)} 个占槽位（落地）：{sorted(landed)}",
+    )
 
 
 def _check_p4_no_silent_failure() -> tuple[bool, str]:

@@ -5,6 +5,7 @@
 | 栏 | 内容 |
 |---|---|
 | **id** | CT-HITL-01 |
+| **槽位** | `on_tool_call` |
 | **输入** | 模式块键：:approval-before 阶段 |
 | **期望（可观测）** | requires_approval(stage) 判定；且 build_context() 含 [pattern:hitl] 指令 |
 | **反证** | 去掉 :pattern → handlers 为空、无指令、查询口返回空/基线 |

@@ -5,6 +5,7 @@
 | 栏 | 内容 |
 |---|---|
 | **id** | CT-FSM-01 |
+| **槽位** | `on_tool_call` |
 | **输入（合法键）** | :initial-state + :states（from->to:event） |
 | **期望（可观测）** | ff = h.patterns.api("fsm")；assert ff.initial_state() == "idle"；assert ff.transition("idle", "start") == "run"；try:
         ff.transition("idle", "finish")

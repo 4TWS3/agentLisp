@@ -6,6 +6,7 @@
 | 栏 | 内容 |
 |---|---|
 | **id** | `CT-PRIORITY-01` |
+| **槽位** | `order` |
 | **输入** | .al：`(defpriority-agent s :criteria "urgency" :levels 3)`；运行时：候选列表 `[{"id": "a", "urgency": 1}, {"id": "b", "urgency": 3}, {"id": "c", "urgency": 2}]` |
 | **期望（可观测）** | ① `harness.patterns.order(candidates)` 返回按 `urgency` **降序**：b, c, a；② `harness.build_context()` 中多出一条 system 消息，文本含 `pattern:priority` 与 `criteria=urgency`、`levels=3` |
 | **反证** | 去掉 `:pattern`（普通 `(define-agent …)`）：① `order()` 返回**原顺序** a, b, c；② `build_context()` **不含** `pattern:priority` |

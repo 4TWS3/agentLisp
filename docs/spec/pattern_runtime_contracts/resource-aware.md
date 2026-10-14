@@ -5,6 +5,7 @@
 | 栏 | 内容 |
 |---|---|
 | **id** | CT-RESOURCE_AWARE-01 |
+| **槽位** | `on_init` |
 | **输入（合法键）** | :budget ∈ {low, mid, high} |
 | **期望（可观测）** | ra = h.patterns.api("resource-aware")；assert ra.tier() == "small"；且 build_context() 含 [pattern:resource-aware] 指令 |
 | **反证** | 去掉 :pattern → handlers 为空、无指令、api(kind) 抛 KeyError |

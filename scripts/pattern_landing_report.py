@@ -23,7 +23,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 # US-42：运行时口径唯一真源。清单头部必须与 README / LANDED 注释一致。
-from runtime.patterns import DECLARED_ONLY, ENGINE_CONSUMED, LANDED  # noqa: E402
+from runtime.patterns import CONTRACTED, DECLARED_ONLY, LANDED  # noqa: E402
 
 BT = chr(96)
 OUT = ROOT / "docs" / "spec" / "agentlisp_pattern_landing.md"
@@ -168,7 +168,7 @@ def main() -> int:
         + "（判据：rc=0 表示 21/21 齐全）。",
         "> 口径：21 = V1 5 个 + V2 16 个，与注册表 21 个模式 kind 一一对应（注册表共 23 = 21 + memory + multi-agent）。",
         "> 运行时口径（唯一真源 runtime/patterns/__init__.py）："
-        + f"落地 {len(LANDED)} / 引擎消费 {len(ENGINE_CONSUMED)} / 仅声明 {len(DECLARED_ONLY)}"
+        + f"契约 {len(CONTRACTED)} / 落地 {len(LANDED)} / 声明层 {len(DECLARED_ONLY)}"
         + "。核对脚本 scripts/check_pattern_consistency.py。",
         "> 每行的「位置」是 " + BT + "文件:行号" + BT + "，可直接跳转核对。",
         "",

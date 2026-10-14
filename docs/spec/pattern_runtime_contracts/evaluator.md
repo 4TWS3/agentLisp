@@ -5,6 +5,7 @@
 | 栏 | 内容 |
 |---|---|
 | **id** | CT-EVALUATOR-01 |
+| **槽位** | `evaluate`、`verify` |
 | **输入** | 模式块键：:thresholds 双阈值 |
 | **期望（可观测）** | evaluate(0.9/0.5/0.1) → pass/rework/escalate；且 build_context() 含 [pattern:evaluator] 指令 |
 | **反证** | 去掉 :pattern → handlers 为空、无指令、查询口返回空/基线 |

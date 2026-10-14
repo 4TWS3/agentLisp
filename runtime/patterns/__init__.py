@@ -22,54 +22,68 @@ from runtime.patterns.priority import PriorityHandler
 
 logger = logging.getLogger(__name__)
 
-# ---- 口径唯一真源（README / 本注释 / docs/spec/agentlisp_pattern_landing.md 三处必须一致）----
-# 口径短语（三处逐字一致，脚本核对）：落地 21 / 引擎消费 13 / 仅声明 8
-#   LANDED          = 有契约 + 运行时测试（每落地一个加一个；判据 A11 要求每个 kind 必须有
+# ---- 槽位模型（F-AMS-6 / 决策 D3）：口径唯一真源 ----
+# 口径短语（README / 本注释 / docs/spec/agentlisp_pattern_landing.md 三处逐字一致）：
+#   契约 21 / 落地 13 / 声明层 8
+#
+#   SLOTS         = 行为槽位。防膨胀规则（D3）：槽位只能由运行时的**真实调用点**定义。
+#   KIND_SLOTS    = 每个 kind 占用的槽位。空 = declaration-only（声明层）。
+#   LANDED        = 占槽位非空的 kind（= 引擎真消费）。派生，不手写第二份。
+#   DECLARED_ONLY = 占槽位为空的 kind。显式登记，不假装生效（不变式 I1）。
+#   CONTRACTED    = 有契约 + 运行时测试的 kind（= KIND_SLOTS 全部；判据 A11 要求
 #                     (a) docs/spec/pattern_runtime_contracts/<kind>.md
 #                     (b) tests/patterns_runtime/test_<kind>.py
-#                     (c) 测试里引用该契约 id）
-#   DECLARED_ONLY   = 有 handler，但引擎不调其行为。显式登记为声明层，不假装生效（不变式 I1）。
-#   ENGINE_CONSUMED = LANDED - DECLARED_ONLY。
-# 核对脚本：python3 scripts/check_pattern_consistency.py
-# 代价登记：本台账是**声明式**的，不是从调用点反推。槽位模型（US-30 / P1-1）会把
-# 「引擎消费」变成结构化事实。在那之前，本台账 + 核对脚本保证文档不漂。
-LANDED: set[str] = {
-    "priority",
-    "exception",
-    "reflect",
-    "evaluator",
-    "guardrails-safety",
-    "hitl",
-    "rag",
-    "reasoning",
-    "router",
-    "chain",
-    "parallel",
-    "planner",
-    "decomposition",
-    "fsm",
-    "decomposer",
-    "exploration",
-    "resource-aware",
-    "goal-setting",
-    "topic-model",
-    "a2a",
-    "learning",
+#                     (c) 测试里引用该契约 id）。
+#
+# 实测修正（2026-10-14，US-30）：D3 的 8 个已实现槽位含 after_turn，但
+# PatternRuntime.after_turn 全仓无调用点（grep 零命中）→ 按 D3 自己的防膨胀规则，
+# after_turn 不是槽位，已删。故已实现 7 个槽位 + orchestrate 待实现。
+# 通用 base 注入（所有 kind 都有的 before_turn 摘要）不算槽位占用，否则 21 个全非空、
+# 槽位模型失去意义。
+#
+# 核对：python3 scripts/check_slot_model.py
+SLOTS: dict[str, str] = {
+    "on_init": "PatternRuntime._instantiate -> handler.on_init",
+    "before_turn": "BaseHarnessV2.build_context -> PatternRuntime.before_turn",
+    "on_tool_call": "BaseHarnessV2.call_tool -> PatternRuntime.on_tool_call",
+    "verify": "BaseHarnessV2.verify -> PatternRuntime.verify_observation",
+    "evaluate": "verify_observation 的 evaluator 分派 -> handler.evaluate",
+    "order": "BaseHarnessV2.build_context -> PatternRuntime.order",
+    "budget": "retries_cap + turn_budget",
+    "orchestrate": "待实现（F-AMS-7 select_next）",
 }
 
-# 仅声明层：handler 在，但引擎不消费其输出（名单来自机器验证报告 §4.2 的实测）。
-DECLARED_ONLY: set[str] = {
-    "a2a",
-    "chain",
-    "decomposition",
-    "learning",
-    "parallel",
-    "planner",
-    "router",
-    "topic-model",
+PENDING_SLOTS: set[str] = {"orchestrate"}
+
+# 每个 kind 占用的槽位。只算「引擎按 kind 分派、且改变引擎行为」的调用点。
+KIND_SLOTS: dict[str, list[str]] = {
+    "priority": ["order"],
+    "exception": ["budget"],
+    "exploration": ["budget"],
+    "resource-aware": ["on_init"],
+    "hitl": ["on_tool_call"],
+    "fsm": ["on_tool_call"],
+    "rag": ["verify"],
+    "decomposer": ["verify"],
+    "evaluator": ["evaluate", "verify"],
+    "reflect": ["verify"],
+    "guardrails-safety": ["verify"],
+    "reasoning": ["verify"],
+    "goal-setting": ["verify"],
+    # ---- 声明层（declaration-only）：handler 在，但引擎不调其行为 ----
+    "a2a": [],
+    "chain": [],
+    "decomposition": [],
+    "learning": [],
+    "parallel": [],
+    "planner": [],
+    "router": [],
+    "topic-model": [],
 }
 
-ENGINE_CONSUMED: set[str] = LANDED - DECLARED_ONLY
+LANDED: set[str] = {k for k, s in KIND_SLOTS.items() if s}
+DECLARED_ONLY: set[str] = {k for k, s in KIND_SLOTS.items() if not s}
+CONTRACTED: set[str] = set(KIND_SLOTS)
 
 # 冲突分组（设计 v2 §6）：同组内只能选一个
 GROUPS: dict[str, set[str]] = {
