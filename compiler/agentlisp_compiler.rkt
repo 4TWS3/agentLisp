@@ -582,9 +582,11 @@
    "# 不一致 = 上次生成后有人手工改过 →\n"
    "# 拒绝覆盖并给出退出码 3（可用 --force 强制覆盖）。\n"
    "# 手工逻辑请写在使用方自己的子类/包装里，不要写进本文件。\n"
+   ;; __future__ 必须在所有语句之前（含下面的 sha256 赋值）——否则产物 SyntaxError。
+   ;; 台账 #38：自审用端到端测试（编译→import 产物）才发现，手工设 PATTERNS 的单测漏掉了它。
+   "from __future__ import annotations\n\n"
    (format "~a = \"\"\n" CONTENT-SHA256-FIELD)
    "\n"
-   "from __future__ import annotations\n\n"
    "from typing import Any, Dict, List, Optional\n"
    "from runtime.base_harness_v2 import BaseHarnessV2, build_kv_aligned_context\n\n"
    (format "class ~a(BaseHarnessV2):\n" cls-name)
