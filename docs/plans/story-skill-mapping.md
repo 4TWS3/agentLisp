@@ -157,7 +157,7 @@
 | 1 | 修 E2E 红灯 | US-27 第一步 | E2E 用例子进程跑通 | **已完成**（见 `docs/handoff/20261014_p0_1_e2e_red_three_causes_handoff.md`） |
 | 2 | 提交门禁 | US-35 | 注入红灯被拒 | **已完成**（见 `docs/handoff/20261014_us35_commit_gate_handoff.md`） |
 | 3 | 口径三处对齐 | US-42 | 数字一致 + 脚本核对 | **已完成**（见 `docs/handoff/20261014_us42_pattern_tally_consistency_handoff.md`） |
-| 4 | 观察值键文档 | US-24 | 6 个键有用户可见说明 | 待做 |
+| 4 | 观察值键文档 | US-24 | 6 个键有用户可见说明（实测 14） | **已完成**（见 `docs/handoff/20261014_us24_observation_keys_handoff.md`） |
 | 5 | 槽位模型 | US-30 | 槽位数 == 运行时调用点数 | 待做 |
 | 6 | 契约栏位机器拦 | US-33 | 栏位缺失 → 判据失败 | 待做 |
 | 7 | 21 条 E2E | US-27 | 21 条全绿 | 待做 |
