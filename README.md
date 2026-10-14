@@ -311,6 +311,24 @@ racket compiler/main.rkt --check-only -i examples/repair_agent.al
 | `--dump-ast` | 打印展开后的 Core AST |
 | `--dump-expanded-sexp` | 打印宏展开结果 |
 | `--patterns-report` | 额外跑模式矩阵报告（较慢，默认关闭） |
+| `--force` | 覆盖已漂移产物（放弃 drift 保护） |
+| `--check-output-drift` | 只读校验 `-o` 文件是否被手工改过（clean=0 / drifted=1），不写盘 |
+| `-v` / `--verbose` | 打印进度 |
+
+### 产物漂移（drift）闸门
+
+产物头部内嵌**全文件** `sha256` 指纹（字段 `_AGENTLISP_CONTENT_SHA256`）。
+重编译前编译器比对指纹，三种结局：
+
+| 状态 | 判据 | 行为 |
+|---|---|---|
+| unmarked | 文件无已签名指纹（旧产物 / 手写文件） | 正常写（向后兼容） |
+| clean | 规范化全文一致 | 正常写 |
+| drifted | 生成后被手工改过 | **拒绝写盘，exit 3**；`--force` 可覆盖 |
+
+- 指纹覆盖**整个文件**（含尾注）。只覆盖生成段会让「末尾追加」漏检。
+- 手工逻辑不要写进产物。写在使用方自己的子类/包装里。
+
 
 # 5️⃣ Python 加载并运行（DirectRunner，零外部依赖）
 uv sync --dev

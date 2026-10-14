@@ -21,12 +21,32 @@ import argparse
 import ast
 import json
 import re
+import shutil
 import subprocess
 import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 PY_DIRS = ("runtime", "host", "python/agentlisp_runtime", "tests", "scripts", "tools")
+
+
+def _resolve_racket() -> str:
+    """解析 racket 可执行文件，**唯一一处实现**（判据 A1：同一判断只有一处实现）。
+
+    为什么不是裸 "racket"：minimal Racket 常放仓库内 `.racket/bin/racket`，不在 PATH。
+    裸调用会让 P2/P3/P4/P6 全部走 FileNotFoundError → 跳过，
+    本机因此长期看不到这几条判据的真实结论（跳过看起来像通过）。
+    找不到时仍返回 "racket"：让 subprocess 抛 FileNotFoundError，
+    由调用方按「环境缺可执行文件」记 SKIP，并给出原因（不许沉默）。
+    """
+    found = shutil.which("racket")
+    if found:
+        return found
+    bundled = ROOT / ".racket" / "bin" / "racket"
+    return str(bundled) if bundled.exists() else "racket"
+
+
+RACKET = _resolve_racket()
 
 
 # --------------------------------------------------------------------------- 工具
@@ -82,7 +102,7 @@ def _check_p2_illegal_input_fast() -> tuple[bool, str]:
         import time
 
         t0 = time.perf_counter()
-        cp = _sh(["racket", "compiler/main.rkt", "-i", str(bad), "--check-only"], timeout=30)
+        cp = _sh([RACKET, "compiler/main.rkt", "-i", str(bad), "--check-only"], timeout=30)
         dt = time.perf_counter() - t0
     finally:
         bad.unlink(missing_ok=True)
@@ -107,7 +127,7 @@ def _check_p3_error_readable() -> tuple[bool, str]:
         encoding="utf-8",
     )
     try:
-        cp = _sh(["racket", "compiler/main.rkt", "--check-only", "--json-errors", "-i", str(bad)])
+        cp = _sh([RACKET, "compiler/main.rkt", "--check-only", "--json-errors", "-i", str(bad)])
     finally:
         bad.unlink(missing_ok=True)
     try:
@@ -177,7 +197,7 @@ def _check_p4_no_silent_failure() -> tuple[bool, str]:
     # defmemory-agent 需要 (name store gc)：参数非法 → 宏在展开期报错
     bad.write_text('(defmemory-agent m "./x.md" "not-an-int")\n', encoding="utf-8")
     try:
-        cp = _sh(["racket", "compiler/main.rkt", "-i", str(bad), "--check-only"], timeout=30)
+        cp = _sh([RACKET, "compiler/main.rkt", "-i", str(bad), "--check-only"], timeout=30)
     finally:
         bad.unlink(missing_ok=True)
     if cp.returncode == 0:
@@ -236,7 +256,7 @@ def _check_p6_e2e_main_path() -> tuple[bool, str]:
     sample = ROOT / "tests" / "patterns" / "fixtures_v2" / "priority01_hc_HC.al"
     out = ROOT / ".tmp_standards_out.py"
     try:
-        cp = _sh(["racket", "compiler/main.rkt", "-i", str(sample), "-o", str(out)])
+        cp = _sh([RACKET, "compiler/main.rkt", "-i", str(sample), "-o", str(out)])
         if cp.returncode != 0:
             return _result(False, f"编译失败 rc={cp.returncode}: {cp.stderr[-200:]}")
         src = out.read_text(encoding="utf-8")

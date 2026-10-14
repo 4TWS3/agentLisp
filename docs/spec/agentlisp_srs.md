@@ -150,17 +150,31 @@ $$
 | `--input` | `-i` | `FILE.al` | ✅ | 输入 AgentLisp 源文件 |
 | `--output` | `-o` | `FILE.py` | 条件：`--check-only` 未设置 | 输出 Python BaseHarnessV2 子类模块路径 |
 | `--check-only` | 无 | 无 | 否 | 仅 parse + check，不 emit Python；成功 exit 0，失败 exit 1 或 2 |
-| `--module-name` | `-m` | 字符串 | 否 | Emit 的 Python 顶层 module 名，默认从 output 推导；用于 `python -m <module>` 验证 |
+| `--module-name` | `-m` | 字符串 | 否 | Emit 的 Python 顶层 module 名，默认从 output 推导；用于 `python -m <module>` 验证 ⚠️ **规格现有此行，但 `main.rkt` 未解析该开关（待核实）** |
 | `--json-errors` | 无 | 无 | 否 | 错误码 + 定位改为 JSON 输出到 stderr，便于 CI 收集 |
+| `--force` | `-f` | 无 | 否 | 产物漂移时仍覆盖（显式放弃保护）；见下「产物漂移闸门」 |
+| `--check-output-drift` | 无 | 无 | 否 | 只读校验 `-o` 文件是否被手工改过：clean exit 0 / drifted exit 1；不写盘 |
 | `--version` | `-V` | 无 | 否 | 打印 SRS 版本号 + 编译器版本并 exit 0 |
+
+**产物漂移闸门（2026-10-14 新增）**：产物头部内嵌**全文件** sha256（字段
+`_AGENTLISP_CONTENT_SHA256`，指纹字段自身置空后计算）。重编译前比对规范化全文：
+
+| 状态 | 判据 | 行为 |
+|---|---|---|
+| unmarked | 磁盘文件无**已签名**指纹（旧产物 / 手写文件） | 正常写（向后兼容） |
+| clean | 规范化全文一致 | 正常写 |
+| drifted | 生成后被手工改动 | **拒绝写盘**，exit 3；`--force` 可覆盖 |
+
+指纹必须覆盖**整个文件**（含尾注）。只覆盖生成段时，向产物末尾追加内容不会被发现
+（实测缺陷：追加一行后只读校验仍报 CLEAN）。判据见 `tests/test_output_drift.py`（6 条）。
 
 **IF-CLI-1 exit code 编码表**（CI 必须断言）：
 | Code | 含义 |
 |---|---|
 | 0 | 成功（--check-only 全过 / emit 完成）|
-| 1 | **编译期检查失败**（= FR-CHECK-1/2/3 触发，标准 ERR_* 错误码）|
+| 1 | **编译期检查失败**（= FR-CHECK-1/2/3 触发，标准 ERR_* 错误码）；`--check-output-drift` 检出 drifted 亦用 1 |
 | 2 | Parse 失败（= FR-PARSER-* 触发，结构化 parse error）|
-| 3 | IO 失败（文件不存在 / 无写权限 / 编码错误）|
+| 3 | IO 失败（文件不存在 / 无写权限 / 编码错误）；**拒绝覆盖已漂移产物**亦用此档 |
 | >=4 | 保留（编译器内部 panic 或未分类异常）|
 
 ### 5.2 IF-SDK-1 BaseAgentHarness Python SDK 必签名

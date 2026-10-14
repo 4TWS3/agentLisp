@@ -52,6 +52,11 @@
 
 (define check-only? #f)
 (define patterns-report? #f)
+;; drift 闸门（产物漂移检测）：
+;;   force-output?   强制覆盖已漂移产物（显式放弃保护）
+;;   check-drift?    只读校验：只报告漂移状态，不写盘（CI / 审计用）
+(define force-output? #f)
+(define check-drift? #f)
 
 (define emit-python? #t)
 (define json-errors? #f)
@@ -345,6 +350,9 @@
  (("--json-errors") "Emit compiler diagnostics as JSON array to stdout (SRS §5.1, 用于 IDE 红波浪)"
   (set! json-errors? #t))
  (("-v" "--verbose") "Verbose: print progress" (set! verbose? #t))
+ (("--force" "-f") "Overwrite output even if it was hand-edited after generation (drift)" (set! force-output? #t))
+ (("--check-output-drift") "Read-only: report whether the -o file drifted (exit 0 clean, 1 drifted); do not write"
+  (set! check-drift? #t))
  (("-V" "--version") "Print SRS + compiler version, then exit 0 (IF-CLI-1)"
   (printf "agentlispc 2.3.0 (SRS v2.3.0)\n")
   (exit/flush 0))
@@ -534,19 +542,62 @@
   ;; P-1f：优先用现代管线产物（agent->py 读的是 parse-defagent 的 hash，内容忠实）；
   ;; 旧 emitter 路径（parser.rkt 的 legacy AST）只在无现代产出时兜底。
   (define modern (reverse checked-agents))
+  ;; 口径只有一处实现：build-generated-python（留空指纹文本 + 全文件指纹签进每块头）。
+  ;; 这里不自己拼 unsigned —— 那会成为第二处实现，迟早与它分叉。
+  (define modern-code
+    (and (pair? modern)
+         ((safe-dyn COMPILER-PATH 'build-generated-python (lambda (x) #f)) modern)))
   (define code
-    (if (pair? modern)
-        (string-join
-         (for/list ([p (in-list modern)])
-           ((safe-dyn COMPILER-PATH 'agent->py (lambda (x) "# agent->py not available\n")) p))
-         "\n")
+    (if modern-code
+        modern-code
         (emit-python ast module-name)))
+
+  ;; ---- 产物漂移（drift）闸门 ----
+  ;; 三个状态（实现见 compiler/agentlisp_compiler.rkt 的 file-content-drifted?）：
+  ;;   unmarked = 无已签名指纹（旧产物 / 手写文件）→ 正常写
+  ;;   clean    = 指纹与本次生成一致              → 正常写
+  ;;   drifted  = 指纹不一致 = 生成后被手工改过    → 拒绝覆盖，exit 3
+  ;; 为什么拒绝而不是警告后照写：警告会被忽略，手工改动会无声消失。
+  ;; 为什么 exit 3：IF-CLI-1 编码表把 3 定义为 IO 失败，拒绝写入属此档；
+  ;;   1/2 已被「检查失败 / Parse 失败」占用，不可复用。
+  (define drift-status
+    (if (and output-path modern-code)
+        ((safe-dyn COMPILER-PATH 'file-content-drifted? (lambda (p c) 'unmarked))
+         output-path modern-code)
+        'unmarked))
+
+  (when (and check-drift? output-path)
+    (case drift-status
+      [(drifted)
+       (displayln (format "DRIFTED: ~a was hand-edited after generation" output-path))
+       (exit/flush 1)]
+      [(clean)
+       (displayln (format "CLEAN: ~a matches its embedded fingerprint" output-path))
+       (exit/flush 0)]
+      [else
+       (displayln (format "UNMARKED: ~a has no embedded fingerprint (old or hand-written file)" output-path))
+       (exit/flush 0)]))
+
+  (when (and (eq? drift-status 'drifted) (not force-output?))
+    (fprintf (current-error-port)
+             (string-append
+              "\nrefusing to overwrite a hand-edited artifact (exit 3): ~a\n"
+              "  该文件由编译器生成后被手工改动过（内嵌 sha256 指纹与本次生成不一致）。\n"
+              "  重编译会整文件覆盖，你的手工改动会丢失。请二选一：\n"
+              "    1. 手工逻辑搬到产物之外（子类/包装），然后 --force 覆盖一次；\n"
+              "    2. 确认要丢弃改动：--force\n")
+             output-path)
+    (exit/flush 3))
+
   (if output-path
       (begin
         (make-parent-directory* output-path)
         (display-to-file code output-path #:exists 'replace)
         (when verbose?
-          (displayln (format "==> emitted ~a bytes -> ~a" (string-length code) output-path))))
+          (displayln (format "==> emitted ~a bytes -> ~a"
+                             (string-length code) output-path)))
+        (when (eq? drift-status 'drifted)
+          (displayln (format "==> overwrote drifted artifact (--force): ~a" output-path))))
       (display code)))
 
 (exit/flush 0)
