@@ -68,6 +68,9 @@ Agent = Model + Harness
 - **KV Cache 静态前缀强对齐**：语法强制静态块在动态块之前（ERR_KV_ALIGNMENT_VIOLATION）
 - **Scoped Worker 词法作用域**：跨 Agent 工具命名冲突 ERR_CONTEXT_LEAKAGE；轨迹原地 GC（物理切片截断）
 - **三层 Markdown 记忆**（L0 原子 / L1 概念 / L2 规则）：MemoryFS 渐进式加载到 [Memory] 段 system prompt
+- **本地 Racket 依赖**：仓库自带的 Racket 是精简发行版。跑编译器测试前，先装两个包：
+  `raco pkg install --auto --batch rackunit-lib compiler-lib`。
+  `rackunit-lib` 供 `compiler/tests/*.rkt`；`compiler-lib` 供 `raco test`。
 
 ---
 

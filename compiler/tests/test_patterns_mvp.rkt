@@ -7,12 +7,16 @@
          racket/port
          racket/path
          racket/string
+         racket/runtime-path
          "../patterns.rkt")
 
-(define FIXTURES-DIR-PARTS (list (current-directory) ".." ".." "tests" "patterns" "fixtures"))
+;; 路径相对**源文件**，不相对 cwd。
+;; 旧写法 (current-directory) 加 ".." ".." 假定 cwd=compiler/tests。
+;; 从仓库根跑 racket compiler/tests/test_patterns_mvp.rkt 时路径指到仓库外，全部 error。
+(define-runtime-path FIXTURES-DIR "../../tests/patterns/fixtures")
 
 (define (fixture-path basename)
-  (apply build-path (append FIXTURES-DIR-PARTS (list basename))))
+  (build-path FIXTURES-DIR basename))
 
 (define N 200)
 

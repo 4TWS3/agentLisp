@@ -7,13 +7,14 @@
          racket/port
          racket/path
          racket/string
+         racket/runtime-path
          "../patterns_v2.rkt")
 
-(define FIXTURES-V2-DIR-PARTS
-  (list (current-directory) ".." ".." "tests" "patterns" "fixtures_v2"))
+;; 路径相对**源文件**，不相对 cwd。理由同 test_patterns_mvp.rkt。
+(define-runtime-path FIXTURES-V2-DIR "../../tests/patterns/fixtures_v2")
 
 (define (fixture-v2-path basename)
-  (apply build-path (append FIXTURES-V2-DIR-PARTS (list basename))))
+  (build-path FIXTURES-V2-DIR basename))
 
 (define N 200)
 
@@ -78,4 +79,10 @@
     (test-case (format "PATTERNS-V2 ~a HC→define-agent prefix 200 bytes SBE" cid)
       (check-true (check-prefix= cid)))))
 
-(void (run-tests patterns-v2-mvp-suite))
+;; 必须把失败数变成退出码。旧写法 (void (run-tests ...)) 恒 rc=0：
+;; 10 个 error 也报通过，门禁形同虚设（装 rackunit 后实测发现）。
+(module+ main
+  (exit (run-tests patterns-v2-mvp-suite)))
+
+(module+ test
+  (run-tests patterns-v2-mvp-suite))

@@ -92,7 +92,8 @@ schema 要 `string-list?`。只按键提升会让这个正向夹具编译失败�
 | 项 | 说明 |
 |---|---|
 | 产物形状变化 | 用 V2 宏的 `.al` 产物 PATTERNS 多出 schema 声明的键；宏展开多出 `:params`。48 个 fixture 已重生成 |
-| 未做 | US-27 的 21 条 E2E 只完成 1 条；本机无 rackunit，Racket 侧测试未跑 |
+| 未做 | US-27 的 21 条 E2E 只完成 1 条 |
+| 已补 | 装 `rackunit-lib` + `compiler-lib` 后，`raco test compiler/tests/` 23 个全绿；两个 Racket 测试的路径/退出码缺陷已修。见 `20261014_us35_commit_gate_handoff.md` |
 
 ---
 
