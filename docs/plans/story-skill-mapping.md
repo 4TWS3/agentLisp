@@ -160,7 +160,7 @@
 | 4 | 观察值键文档 | US-24 | 6 个键有用户可见说明（实测 14） | **已完成**（见 `docs/handoff/20261014_us24_observation_keys_handoff.md`） |
 | 5 | 槽位模型 | US-30 | LANDED 只收槽位非空的 kind | **已完成**（见 `docs/handoff/20261014_us30_slot_model_handoff.md`） |
 | 6 | 契约栏位机器拦 | US-33 | 栏位缺失 → 判据失败 | **已完成**（见 `docs/handoff/20261014_us33_contract_columns_handoff.md`） |
-| 7 | 21 条 E2E | US-27 | 21 条全绿 | 待做 |
+| 7 | 21 条 E2E | US-27 | 21 条全绿 | **已完成**（见 `docs/handoff/20261014_us27_e2e_handoff.md`） |
 | 8 | v2.3.1 补丁 | US-37 | 制品不含已知不可用项 | 待做 |
 
 **为什么第 1 项最紧**：E2E 红灯在 main 上。它不修，任何「已验证」的说法都不成立。

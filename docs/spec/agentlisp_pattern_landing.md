@@ -7,11 +7,11 @@
 
 | # | 代 | 模式（宏） | kind | 宏定义位置 | 注册表条目 | 夹具 |
 |---|---|---|---|---|---|---|
-| 1 | V1 | `defreflect-agent` | `reflect` | `compiler/patterns.rkt:169` | `compiler/pattern_registry.rkt:229` | 3 个（defreflect_code_refiner.al） |
-| 2 | V1 | `defrouter-agent` | `router` | `compiler/patterns.rkt:211` | `compiler/pattern_registry.rkt:231` | 3 个（defrouter_ops_gateway.al） |
-| 3 | V1 | `defchain-agent` | `chain` | `compiler/patterns.rkt:257` | `compiler/pattern_registry.rkt:233` | 3 个（defchain_doc_pipeline.al） |
-| 4 | V1 | `defparallel-agent` | `parallel` | `compiler/patterns.rkt:304` | `compiler/pattern_registry.rkt:235` | 3 个（defparallel_multi_search.al） |
-| 5 | V1 | `defplanner-agent` | `planner` | `compiler/patterns.rkt:359` | `compiler/pattern_registry.rkt:237` | 3 个（defplanner_deep_researcher.al） |
+| 1 | V1 | `defreflect-agent` | `reflect` | `compiler/patterns.rkt:202` | `compiler/pattern_registry.rkt:229` | 3 个（defreflect_code_refiner.al） |
+| 2 | V1 | `defrouter-agent` | `router` | `compiler/patterns.rkt:246` | `compiler/pattern_registry.rkt:231` | 3 个（defrouter_ops_gateway.al） |
+| 3 | V1 | `defchain-agent` | `chain` | `compiler/patterns.rkt:294` | `compiler/pattern_registry.rkt:233` | 3 个（defchain_doc_pipeline.al） |
+| 4 | V1 | `defparallel-agent` | `parallel` | `compiler/patterns.rkt:343` | `compiler/pattern_registry.rkt:235` | 3 个（defparallel_multi_search.al） |
+| 5 | V1 | `defplanner-agent` | `planner` | `compiler/patterns.rkt:400` | `compiler/pattern_registry.rkt:237` | 3 个（defplanner_deep_researcher.al） |
 | 6 | V2 | `defpriority-agent` | `priority` | `compiler/patterns_v2.rkt:122` | `compiler/pattern_registry.rkt:201` | 3 个（priority01_generic_GENERIC.al） |
 | 7 | V2 | `defdecomposition-agent` | `decomposition` | `compiler/patterns_v2.rkt:136` | `compiler/pattern_registry.rkt:203` | 3 个（decomp02_generic_GENERIC.al） |
 | 8 | V2 | `deffsm-agent` | `fsm` | `compiler/patterns_v2.rkt:150` | `compiler/pattern_registry.rkt:205` | 3 个（fsm03_generic_GENERIC.al） |

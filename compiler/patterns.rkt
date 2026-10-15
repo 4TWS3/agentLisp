@@ -19,8 +19,27 @@
 
 (begin-for-syntax
   ;; CR-42 P-3：编译期版本（GENERIC 分支在 phase 1 运行，必须定义在 begin-for-syntax 内）
-  (define (append-pattern/ct blocks kind markers)
-    (append blocks (list (list ':pattern ':kind kind ':config (list ':markers markers)))))
+  ;; US-27：加 :params——把用户 plist 里本 kind 声明过的键交给编译期提升进 :config。
+  (define (append-pattern/ct blocks kind markers params)
+    (append blocks
+            (list (list ':pattern ':kind kind
+                        ':config (list ':markers markers)
+                        ':params params))))
+
+  ;; US-27：只取 keys（冒号去掉后的符号）命中的键值对，保持输入顺序。
+  (define (plist-filter/ct rst keys)
+    (define (k->sym k)
+      (cond ((keyword? k) (string->symbol (regexp-replace #rx"^:" (keyword->string k) "")))
+            ((symbol? k) (string->symbol (regexp-replace #rx"^:" (symbol->string k) "")))
+            (else #f)))
+    (let loop ((xs rst) (out '()))
+      (cond
+        ((or (null? xs) (null? (cdr xs))) out)
+        (else
+         (define k (car xs))
+         (define s (k->sym k))
+         (loop (cddr xs)
+               (if (and s (memq s keys)) (append out (list k (cadr xs))) out))))))
 
   (define (reorder-blocks/ct blocks)
     (define order-preference
@@ -29,11 +48,12 @@
               ':context 2
               ':harness 3
               ':multiagent 4))
+    ;; US-27：剥前导冒号，返回符号，与 order-preference 的 :model 对齐。
     (define (tag-of b)
-      (define maybe-tag (and (pair? b) (car b)))
+      (define t (and (pair? b) (car b)))
       (cond
-        ((keyword? maybe-tag) maybe-tag)
-        ((symbol? maybe-tag) (string->keyword (symbol->string maybe-tag)))
+        ((keyword? t) (string->symbol (string-append ":" (keyword->string t))))
+        ((symbol? t) (string->symbol (if (regexp-match? #rx"^:" (symbol->string t)) (symbol->string t) (string-append ":" (symbol->string t)))))
         (else ':unknown)))
     (define (pref-of tag) (hash-ref order-preference tag 999))
     (sort (for/list ((b (in-list blocks))) b)
@@ -60,11 +80,13 @@
     (for-each (lambda (k) (hash-set! kw->block k ':context)) (append context-kw context-sym))
     (for-each (lambda (k) (hash-set! kw->block k ':harness)) (append harness-kw2 harness-sym))
     (for-each (lambda (k) (hash-set! kw->block k ':multiagent)) (append multiagent-kw2 multiagent-sym))
+    ;; US-27：剥前导冒号。用户的 .al 里键写作 :routes，若不剥会得到 #::routes，
+    ;; 与 kw->block 的 #:routes 不匹配 -> 整块落 :unknown -> 编译期 PARSE_GENERIC 报错。
     (define (canon-k k)
-      (cond
-        ((keyword? k) (string->keyword (keyword->string k)))
-        ((symbol? k) (string->keyword (symbol->string k)))
-        (else k)))
+      (define s (cond ((keyword? k) (keyword->string k))
+                      ((symbol? k) (symbol->string k))
+                      (else (format "~a" k))))
+      (string->keyword (if (regexp-match? #rx"^:" s) (substring s 1) s)))
     (define buckets (make-hash))
     (let loop ((xs plist))
       (cond
@@ -82,19 +104,26 @@
       (hash-ref buckets tag)))
 
   (define (ensure-blocks/ct blocks)
+    ;; US-27：标签统一成符号。plist->blocks 产出的块标签是符号 :model。
+    ;; 旧 block-tag 把它转成 #::model，与 required 的 :model 永不相等 -> 加空块 -> 块重复。
     (define required '(:model :tools :context))
-    (define (block-tag b) (cond
-                           ((and (pair? b) (keyword? (car b))) (car b))
-                           ((and (pair? b) (symbol? (car b))) (string->keyword (symbol->string (car b))))
-                           (else ':notablock)))
+    (define (block-tag b)
+      (define t (and (pair? b) (car b)))
+      (cond ((keyword? t) (string->symbol (string-append ":" (keyword->string t))))
+            ((symbol? t) (string->symbol (if (regexp-match? #rx"^:" (symbol->string t)) (symbol->string t) (string-append ":" (symbol->string t)))))
+            (else ':notablock)))
     (define existing-tags (map block-tag blocks))
     (define to-add (filter (lambda (tag) (not (memv tag existing-tags))) required))
     (define new-blocks (append blocks (map (lambda (tag) (list tag)) to-add)))
     (filter (lambda (b) (not (null? b))) new-blocks)))
 
 ;; CR-42 P-3：给块列表追加 (:pattern :kind K :config (:markers (...)))。
-(define (append-pattern blocks kind markers)
-  (append blocks (list (list ':pattern ':kind kind ':config (list ':markers markers)))))
+;; US-27：加 :params（与 /ct 版同形）。
+(define (append-pattern blocks kind markers params)
+  (append blocks
+          (list (list ':pattern ':kind kind
+                      ':config (list ':markers markers)
+                      ':params params))))
 
 (define (reorder-blocks blocks)
   (define order-preference
@@ -103,11 +132,12 @@
             ':context 2
             ':harness 3
             ':multiagent 4))
+  ;; US-27：剥前导冒号，返回符号（与 /ct 版同因）。
   (define (tag-of b)
-    (define maybe-tag (and (pair? b) (car b)))
+    (define t (and (pair? b) (car b)))
     (cond
-      ((keyword? maybe-tag) maybe-tag)
-      ((symbol? maybe-tag) (string->keyword (symbol->string maybe-tag)))
+      ((keyword? t) (string->symbol (string-append ":" (keyword->string t))))
+      ((symbol? t) (string->symbol (if (regexp-match? #rx"^:" (symbol->string t)) (symbol->string t) (string-append ":" (symbol->string t)))))
       (else ':unknown)))
   (define (pref-of tag) (hash-ref order-preference tag 999))
   (sort (for/list ((b (in-list blocks))) b)
@@ -134,11 +164,12 @@
   (for-each (lambda (k) (hash-set! kw->block k ':context)) (append context-kw context-sym))
   (for-each (lambda (k) (hash-set! kw->block k ':harness)) (append harness-kw2 harness-sym))
   (for-each (lambda (k) (hash-set! kw->block k ':multiagent)) (append multiagent-kw2 multiagent-sym))
+  ;; US-27：剥前导冒号（与 /ct 版同因）。
   (define (canon-k k)
-    (cond
-      ((keyword? k) (string->keyword (keyword->string k)))
-      ((symbol? k) (string->keyword (symbol->string k)))
-      (else k)))
+    (define s (cond ((keyword? k) (keyword->string k))
+                    ((symbol? k) (symbol->string k))
+                    (else (format "~a" k))))
+    (string->keyword (if (regexp-match? #rx"^:" s) (substring s 1) s)))
   (define buckets (make-hash))
   (let loop ((xs plist))
     (cond
@@ -156,11 +187,13 @@
     (hash-ref buckets tag)))
 
 (define (ensure-blocks blocks)
+  ;; US-27：标签统一成符号（与 /ct 版同因）。
   (define required '(:model :tools :context))
-  (define (block-tag b) (cond
-                         ((and (pair? b) (keyword? (car b))) (car b))
-                         ((and (pair? b) (symbol? (car b))) (string->keyword (symbol->string (car b))))
-                         (else ':notablock)))
+  (define (block-tag b)
+    (define t (and (pair? b) (car b)))
+    (cond ((keyword? t) (string->symbol (string-append ":" (keyword->string t))))
+          ((symbol? t) (string->symbol (if (regexp-match? #rx"^:" (symbol->string t)) (symbol->string t) (string-append ":" (symbol->string t)))))
+          (else ':notablock)))
   (define existing-tags (map block-tag blocks))
   (define to-add (filter (lambda (tag) (not (memv tag existing-tags))) required))
   (define new-blocks (append blocks (map (lambda (tag) (list tag)) to-add)))
@@ -197,14 +230,16 @@
            (:pattern :kind reflect
                      :config (:markers ("失败即进入反思—修正回路"
                                         "reviewer-agent 复核后才算完成"
-                                        "超过 :max-retries 次即中止")))))
+                                        "超过 :max-retries 次即中止"))
+                     :params (:reviewer-agent "检查代码逻辑漏洞"))))
    ((_ name* . rst*)
      (let* ((name-sym (syntax->datum #'name*))
             (rst-datum (syntax->datum #'rst*))
             (blocks (append-pattern/ct
                      (reorder-blocks/ct (ensure-blocks/ct (plist->blocks/ct rst-datum)))
                      'reflect
-                     (list "失败即进入反思—修正回路" "reviewer-agent 复核后才算完成" "超过 :max-retries 次即中止"))))
+                     (list "失败即进入反思—修正回路" "reviewer-agent 复核后才算完成" "超过 :max-retries 次即中止")
+                     (plist-filter/ct rst-datum '(reviewer-agent)))))
        (with-syntax (((blk ...) (datum->syntax #'here blocks)))
          #`(list 'define-agent '#,name-sym 'blk ...))))))
 
@@ -220,8 +255,9 @@
          (:tools (import-builtin bash))
          ;; CR-42 P-3：模式语义进 AST（模式块是 :harness 的兄弟节点）
          (:pattern :kind router
-                   :config (:markers ("按用户意图分发至正确 Worker"
-                                      "路由判定先于任何工具执行")))
+                     :config (:markers ("按用户意图分发至正确 Worker"
+                                      "路由判定先于任何工具执行"))
+                     :params (:routes ("deploy=>ops")))
          (:context :memory-policy (:markdown-fs "./memory/router.md"
                                    :layers ('L0-Abstract)
                                    :auto-append #f)
@@ -250,7 +286,8 @@
             (blocks (append-pattern/ct
                      (reorder-blocks/ct (ensure-blocks/ct (plist->blocks/ct rst-datum)))
                      'router
-                     (list "按用户意图分发至正确 Worker" "路由判定先于任何工具执行"))))
+                     (list "按用户意图分发至正确 Worker" "路由判定先于任何工具执行")
+                     (plist-filter/ct rst-datum '(routes)))))
        (with-syntax (((blk ...) (datum->syntax #'here blocks)))
          #`(list 'define-agent '#,name-sym 'blk ...))))))
 
@@ -278,7 +315,8 @@ PROMPT
            (:pattern :kind chain
                      :config (:markers ("步骤按给定顺序执行，不得跳过"
                                         "每步 :out 注入后续 :in 上下文"
-                                        "最终 Answer 汇总为 JSON")))
+                                        "最终 Answer 汇总为 JSON"))
+                     :params (:steps ("plan" "act")))
            (:context :memory-policy (:markdown-fs "./memory/doc-pipeline.md"
                                      :layers ('L0-Abstract 'L1-Overview)
                                      :auto-append #t)
@@ -297,7 +335,8 @@ PROMPT
             (blocks (append-pattern/ct
                      (reorder-blocks/ct (ensure-blocks/ct (plist->blocks/ct rst-datum)))
                      'chain
-                     (list "步骤按给定顺序执行，不得跳过" "每步 :out 注入后续 :in 上下文" "最终 Answer 汇总为 JSON"))))
+                     (list "步骤按给定顺序执行，不得跳过" "每步 :out 注入后续 :in 上下文" "最终 Answer 汇总为 JSON")
+                     (plist-filter/ct rst-datum '(steps)))))
        (with-syntax (((blk ...) (datum->syntax #'here blocks)))
          #`(list 'define-agent '#,name-sym 'blk ...))))))
 
@@ -313,9 +352,10 @@ PROMPT
          (:tools (import-builtin bash read-pdf))
          ;; CR-42 P-3：模式语义进 AST
          (:pattern :kind parallel
-                   :config (:markers ("所有分支同时拉起，不得串行"
+                     :config (:markers ("所有分支同时拉起，不得串行"
                                       "分支轮次允许在轨迹时间线交错"
-                                      "全部结束后交给 reducer 归并")))
+                                      "全部结束后交给 reducer 归并"))
+                     :params (:branches ("a" "b")))
          (:context :memory-policy (:markdown-fs "./memory/multi-search.md"
                                    :layers ('L0-Abstract)
                                    :auto-append #f)
@@ -352,7 +392,8 @@ PROMPT
             (blocks (append-pattern/ct
                      (reorder-blocks/ct (ensure-blocks/ct (plist->blocks/ct rst-datum)))
                      'parallel
-                     (list "所有分支同时拉起，不得串行" "分支轮次允许在轨迹时间线交错" "全部结束后交给 reducer 归并"))))
+                     (list "所有分支同时拉起，不得串行" "分支轮次允许在轨迹时间线交错" "全部结束后交给 reducer 归并")
+                     (plist-filter/ct rst-datum '(branches)))))
        (with-syntax (((blk ...) (datum->syntax #'here blocks)))
          #`(list 'define-agent '#,name-sym 'blk ...))))))
 
@@ -380,7 +421,8 @@ PROMPT
            (:pattern :kind planner
                      :config (:markers ("首部输出计划 JSON，步骤数 ∈ (3,5)"
                                         "按计划逐步执行"
-                                        "FIN 阶段报告完成度，unfinished 必须为空")))
+                                        "FIN 阶段报告完成度，unfinished 必须为空"))
+                     :params (:plan-size 3))
            (:context :memory-policy (:markdown-fs "./memory/deep-researcher.md"
                                      :layers ('L0-Abstract 'L1-Overview)
                                      :auto-append #t)
@@ -399,7 +441,8 @@ PROMPT
             (blocks (append-pattern/ct
                      (reorder-blocks/ct (ensure-blocks/ct (plist->blocks/ct rst-datum)))
                      'planner
-                     (list "首部输出计划 JSON，步骤数 ∈ (3,5)" "按计划逐步执行" "FIN 阶段报告完成度，unfinished 必须为空"))))
+                     (list "首部输出计划 JSON，步骤数 ∈ (3,5)" "按计划逐步执行" "FIN 阶段报告完成度，unfinished 必须为空")
+                     (plist-filter/ct rst-datum '(plan-size)))))
        (with-syntax (((blk ...) (datum->syntax #'here blocks)))
          #`(list 'define-agent '#,name-sym 'blk ...))))))
 
