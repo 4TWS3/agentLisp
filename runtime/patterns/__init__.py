@@ -85,6 +85,20 @@ LANDED: set[str] = {k for k, s in KIND_SLOTS.items() if s}
 DECLARED_ONLY: set[str] = {k for k, s in KIND_SLOTS.items() if not s}
 CONTRACTED: set[str] = set(KIND_SLOTS)
 
+# 声明层定性（US-26 / P2-1）：每个声明层 kind 必须给「为什么不落地」。
+# 判据 G2：无第三态 —— 每个 kind 要么占槽位（LANDED），要么在这里有理由（DECLARED_ONLY）。
+# 机器核对：scripts/check_slot_model.py 要求键集 == DECLARED_ONLY 且理由非空。
+DECLARED_ONLY_REASON: dict[str, str] = {
+    "router": "待 P4 编排接线（F-AMS-7 select_next；引擎目前不按 kind 选择下一动作）",
+    "chain": "待 P4 编排接线（步骤顺序由编排器驱动）",
+    "parallel": "待 P4 编排接线（分支扇出/归并由编排器驱动）",
+    "planner": "待 P4 编排接线（先出计划再执行由编排器驱动）",
+    "decomposition": "待 P4 编排接线（递归分解与 :multiagent 协调）",
+    "topic-model": "声明层：聚类结果无引擎消费点；需要端口与编排节点头",
+    "a2a": "声明层：跨 Agent 消息无引擎消费点；需要端口与编排节点头",
+    "learning": "声明层：写回技能层无引擎消费点；需要端口与回合结束钩子",
+}
+
 # 冲突分组（设计 v2 §6）：同组内只能选一个
 GROUPS: dict[str, set[str]] = {
     "编排": {"chain", "parallel", "planner", "router"},

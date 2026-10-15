@@ -12,6 +12,7 @@
 | B-04 | 故事图 US-24 写「6 个观察值键」；实测 runtime 读 14 个键名 | 文档数字 | US-24 | 判据数字偏小 | R1 完成后修正故事图数字 |
 | B-05 | 6 份契约的「期望（可观测）」≤ 80 字节（hitl/router/rag/guardrails-safety/reflect/decomposition 等），未证明行为 | 内容质量 | 机器验证报告 §4；US-33 交底 §6 | 契约只说「handler 在 + 指令进上下文」，未断言行为 | 补内容；并可加 A12 长度阈值 |
 | B-06 | V1 五宏的 GENERIC 分支不能编译：`:model-name` 未映射成 `:name`；`:tools` 产成 `(:tools :tools …)` 重复键；空 `:context` 缺 `:memory-policy` | 缺陷 | US-27 实测；交底 §5 | 非 HC 名的 V1 宏不可用 | 修 `plist->blocks` 的键映射；补 GENERIC 编译测试 |
+| B-07 | 故事图 US-26 判据「引擎消费数 13 → 21」未达 | 故事偏离 | US-26 交底 §6 | 8 个声明层仍不消费 | 待 P4-1/P4-2 编排接线后回填 |
 
 ---
 

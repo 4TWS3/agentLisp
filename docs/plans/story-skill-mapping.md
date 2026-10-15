@@ -165,6 +165,7 @@
 | 9 | 防膨胀规则 | US-31 | 新增槽位必须同时新增调用点 + 断言 | **已完成**（见 `docs/handoff/20261014_us31_anti_bloat_handoff.md`） |
 | 10 | 依赖组合校验移编译期 | US-11 | 同组两 kind / 缺依赖 → rc=1 | **已完成**（互斥；requires 图未定义，见 `docs/handoff/20261014_us11_composition_compile_time_handoff.md`） |
 | 11 | 模式异常不拖垮 Agent | US-14 | handler 抛错被捕获 + 留痕 + 测试 | **已完成**（见 `docs/handoff/20261014_us14_exception_isolation_handoff.md`） |
+| 12 | 8 个仅声明 kind 定性 | US-26 | 接线 或 降级为声明层（无第三态） | **已完成定性**（接线待 P4；见 `docs/handoff/20261014_us26_declared_only_disposition_handoff.md`） |
 
 **为什么第 1 项最紧**：E2E 红灯在 main 上。它不修，任何「已验证」的说法都不成立。
 

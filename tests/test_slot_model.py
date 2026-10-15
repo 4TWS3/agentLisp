@@ -54,6 +54,24 @@ def test_kind_slot_outside_slots_is_rejected() -> None:
     assert any("槽位不在 SLOTS" in p for p in problems), problems
 
 
+def test_missing_declared_only_reason_is_rejected() -> None:
+    """US-26 / P2-1：声明层缺定性 -> 失败（无第三态）。"""
+    mod = _mod()
+    reason = dict(mod.DECLARED_ONLY_REASON)
+    reason.pop(next(iter(reason)))
+    problems = mod.check(declared_reason=reason)
+    assert any("声明层定性不全" in p for p in problems), problems
+
+
+def test_empty_declared_only_reason_is_rejected() -> None:
+    """声明层定性为空 -> 失败。"""
+    mod = _mod()
+    reason = dict(mod.DECLARED_ONLY_REASON)
+    reason[next(iter(reason))] = "  "
+    problems = mod.check(declared_reason=reason)
+    assert any("声明层定性为空" in p for p in problems), problems
+
+
 def test_missing_call_point_substring_is_rejected() -> None:
     """槽位的调用点证据在 runtime 里找不到 -> 失败。"""
     mod = _mod()

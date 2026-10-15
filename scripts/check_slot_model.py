@@ -24,6 +24,7 @@ if str(ROOT) not in sys.path:
 from runtime.patterns import (  # noqa: E402
     CONTRACTED,
     DECLARED_ONLY,
+    DECLARED_ONLY_REASON,
     KIND_SLOTS,
     LANDED,
     PENDING_SLOTS,
@@ -69,6 +70,7 @@ def check(
     pending: set[str] | None = None,
     kind_slots: dict[str, list[str]] | None = None,
     slot_evidence: dict[str, tuple[str, ...]] | None = None,
+    declared_reason: dict[str, str] | None = None,
     contracts_dir: Path | None = None,
     runtime_source: str | None = None,
 ) -> list[str]:
@@ -82,6 +84,7 @@ def check(
     pending = PENDING_SLOTS if pending is None else pending
     kind_slots = KIND_SLOTS if kind_slots is None else kind_slots
     slot_evidence = SLOT_EVIDENCE if slot_evidence is None else slot_evidence
+    declared_reason = DECLARED_ONLY_REASON if declared_reason is None else declared_reason
     contracts_dir = CONTRACTS if contracts_dir is None else contracts_dir
     runtime_source = runtime_text() if runtime_source is None else runtime_source
 
@@ -101,6 +104,18 @@ def check(
             problems.append(kind + ": 槽位不在 SLOTS：" + str(sorted(bad)))
     if (landed & declared_only) or (landed | declared_only != contracted):
         problems.append("LANDED / DECLARED_ONLY 不构成 CONTRACTED 的划分")
+
+    # US-26 / P2-1：声明层必须有定性（无第三态）。
+    if set(declared_reason) != declared_only:
+        problems.append(
+            "声明层定性不全：缺 "
+            + str(sorted(declared_only - set(declared_reason)))
+            + "；多 "
+            + str(sorted(set(declared_reason) - declared_only))
+        )
+    for kind, reason in declared_reason.items():
+        if not str(reason).strip():
+            problems.append("声明层定性为空：" + kind)
 
     # 防膨胀（US-31）：已实现槽位必须一一有调用点证据；证据不得多余。
     implemented = set(slots) - pending
