@@ -57,44 +57,71 @@ def slot_line(slots: list[str]) -> str:
     return "| **槽位** | " + rendered + " |"
 
 
-def check() -> list[str]:
+def _derive(kind_slots: dict[str, list[str]]) -> tuple[set[str], set[str], set[str]]:
+    landed = {k for k, s in kind_slots.items() if s}
+    declared_only = {k for k, s in kind_slots.items() if not s}
+    return landed, declared_only, set(kind_slots)
+
+
+def check(
+    *,
+    slots: dict[str, str] | None = None,
+    pending: set[str] | None = None,
+    kind_slots: dict[str, list[str]] | None = None,
+    slot_evidence: dict[str, tuple[str, ...]] | None = None,
+    contracts_dir: Path | None = None,
+    runtime_source: str | None = None,
+) -> list[str]:
+    """US-31 防膨胀规则入口。参数可注入，便于守卫测试证明「能拦住」。
+
+    防膨胀规则（D3）：槽位只能由运行时调用点定义。
+    新增槽位 = 新增一个真实调用点（slot_evidence 里的子串）+ 一条断言。
+    只加槽位、不加调用点 -> 失败。禁止先加槽位再加实现。
+    """
+    slots = SLOTS if slots is None else slots
+    pending = PENDING_SLOTS if pending is None else pending
+    kind_slots = KIND_SLOTS if kind_slots is None else kind_slots
+    slot_evidence = SLOT_EVIDENCE if slot_evidence is None else slot_evidence
+    contracts_dir = CONTRACTS if contracts_dir is None else contracts_dir
+    runtime_source = runtime_text() if runtime_source is None else runtime_source
+
+    landed, declared_only, contracted = _derive(kind_slots)
     problems: list[str] = []
-    contract_kinds = {p.stem for p in CONTRACTS.glob("*.md")}
-    if contract_kinds != CONTRACTED:
+    contract_kinds = {p.stem for p in contracts_dir.glob("*.md")}
+    if contract_kinds != contracted:
         problems.append(
             "KIND_SLOTS 与契约集合不一致：有契约无 kind="
-            + str(sorted(contract_kinds - CONTRACTED))
+            + str(sorted(contract_kinds - contracted))
             + "；有 kind 无契约="
-            + str(sorted(CONTRACTED - contract_kinds))
+            + str(sorted(contracted - contract_kinds))
         )
-    for kind, slots in KIND_SLOTS.items():
-        bad = set(slots) - set(SLOTS)
+    for kind, kind_slot_list in kind_slots.items():
+        bad = set(kind_slot_list) - set(slots)
         if bad:
             problems.append(kind + ": 槽位不在 SLOTS：" + str(sorted(bad)))
-    if {k for k, s in KIND_SLOTS.items() if s} != LANDED:
-        problems.append("LANDED != 占槽位非空的 kind")
-    if {k for k, s in KIND_SLOTS.items() if not s} != DECLARED_ONLY:
-        problems.append("DECLARED_ONLY != 占槽位为空的 kind")
-    if (LANDED & DECLARED_ONLY) or (LANDED | DECLARED_ONLY != CONTRACTED):
+    if (landed & declared_only) or (landed | declared_only != contracted):
         problems.append("LANDED / DECLARED_ONLY 不构成 CONTRACTED 的划分")
 
-    implemented = set(SLOTS) - PENDING_SLOTS
-    if set(SLOT_EVIDENCE) != implemented:
+    # 防膨胀（US-31）：已实现槽位必须一一有调用点证据；证据不得多余。
+    implemented = set(slots) - pending
+    missing = sorted(implemented - set(slot_evidence))
+    extra = sorted(set(slot_evidence) - implemented)
+    if missing:
         problems.append(
-            "SLOT_EVIDENCE 未覆盖全部已实现槽位：缺 "
-            + str(sorted(implemented - set(SLOT_EVIDENCE)))
+            "防膨胀：已实现槽位缺调用点证据（新增槽位必须同时新增调用点）：" + str(missing)
         )
-    text = runtime_text()
-    for slot, evidences in SLOT_EVIDENCE.items():
+    if extra:
+        problems.append("防膨胀：调用点证据含未声明的槽位：" + str(extra))
+    for slot, evidences in slot_evidence.items():
         for ev in evidences:
-            if ev not in text:
+            if ev not in runtime_source:
                 problems.append("槽位 " + slot + " 无运行时调用点：缺子串 " + repr(ev))
 
-    for kind, slots in KIND_SLOTS.items():
-        path = CONTRACTS / (kind + ".md")
+    for kind, kind_slot_list in kind_slots.items():
+        path = contracts_dir / (kind + ".md")
         if not path.is_file():
             continue
-        want = slot_line(slots)
+        want = slot_line(kind_slot_list)
         if want not in path.read_text(encoding="utf-8"):
             problems.append(kind + ": 契约缺槽位行 " + repr(want))
     return problems
