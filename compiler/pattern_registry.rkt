@@ -15,7 +15,11 @@
          registry-validate-config
          registry-unknown-keys
          registry-emit
-         validate-pattern-block)
+         validate-pattern-block
+         ;; F-AMS-4（US-11）：编译期组合校验
+         pattern-groups
+         pattern-requires
+         composition-errors)
 
 (struct registry-entry (kind required schema emit doc)
   #:transparent)
@@ -289,4 +293,49 @@
                            (py-str (symbol->string (hash-ref cfg 'topology)))
                            (string-join (map py-str (hash-ref cfg 'workers)) ", ")))
                  "多智能体协作：topology + workers 词法隔离"))
+
+
+
+;; =============================================================================
+;; F-AMS-4（US-11）：模式组合校验（编译期）
+;;   互斥：同组只能选一个
+;;   要求：A 需要 B 在场（缺则编译期失败，不静默失活）
+;; 与 runtime/patterns/__init__.py 的 GROUPS 同源。
+;; 机器核对：tests/test_cr42_pattern_composition.py 比对两处。
+;; =============================================================================
+
+(define pattern-groups
+  '(("编排" chain parallel planner router)
+    ("状态" fsm goal-setting)
+    ("评估" evaluator decomposer)
+    ("质量" reflect exception)
+    ("安全" guardrails-safety hitl)
+    ("知识" rag topic-model learning)
+    ("资源" resource-aware exploration)
+    ("协作" a2a decomposition)))
+
+;; 要求关系：A 需要 B 在场。当前无已定义关系（空表 = 机制在位、判据空转）。
+(define pattern-requires '())
+
+(define (composition-errors kinds)
+  ;; 手写去重：避免引入 racket/list（本文件只 require racket/string racket/hash）
+  (define (uniq xs)
+    (cond [(null? xs) '()]
+          [(memq (car xs) (cdr xs)) (uniq (cdr xs))]
+          [else (cons (car xs) (uniq (cdr xs)))]))
+  (define (group-hit members) (uniq (filter (lambda (k) (memq k members)) kinds)))
+  (define conflicts
+    (for/list ([g (in-list pattern-groups)]
+               #:when (> (length (group-hit (cdr g))) 1))
+      (format "模式冲突：~a 同属「~a」组，只能选一个（F-AMS-4 / 设计 v2 §6）"
+              (string-join (map (lambda (k) (format "~a" k)) (group-hit (cdr g))) "、")
+              (car g))))
+  (define missing
+    (for/list ([r (in-list pattern-requires)]
+               #:when (and (memq (car r) kinds)
+                           (pair? (filter (lambda (d) (not (memq d kinds))) (cdr r)))))
+      (format "模式依赖缺失：~a 需要 ~a 在场（F-AMS-4）"
+              (car r)
+              (filter (lambda (d) (not (memq d kinds))) (cdr r)))))
+  (append conflicts missing))
 

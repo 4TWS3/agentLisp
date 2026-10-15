@@ -385,7 +385,13 @@
     (when (pair? unknown)
       (raise-check 'ERR_PATTERN_CONFIG
                    (format "模式 ~a 的 :config 出现未知键 ~a；允许的键见 compiler/pattern_registry.rkt"
-                           kind unknown)))))
+                           kind unknown))))
+  ;; F-AMS-4（US-11）：组合校验升到编译期（互斥 / 要求）。
+  ;; 原来是运行期 on_init 才报错（时机错）。缺依赖不得静默失活。
+  (define kinds (for/list ([p (in-list pats)]) (hash-ref p 'kind #f)))
+  (define comp (composition-errors kinds))
+  (when (pair? comp)
+    (raise-check 'ERR_PATTERN_CONFLICT (string-join comp "；"))))
 
 ;; =====================================================================
 ;; Invariant #1：ERR_KV_ALIGNMENT_VIOLATION

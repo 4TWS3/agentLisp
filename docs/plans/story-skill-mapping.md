@@ -163,6 +163,7 @@
 | 7 | 21 条 E2E | US-27 | 21 条全绿 | **已完成**（见 `docs/handoff/20261014_us27_e2e_handoff.md`） |
 | 8 | v2.3.1 补丁 | US-37 | 制品不含已知不可用项 | 待做 |
 | 9 | 防膨胀规则 | US-31 | 新增槽位必须同时新增调用点 + 断言 | **已完成**（见 `docs/handoff/20261014_us31_anti_bloat_handoff.md`） |
+| 10 | 依赖组合校验移编译期 | US-11 | 同组两 kind / 缺依赖 → rc=1 | **已完成**（互斥；requires 图未定义，见 `docs/handoff/20261014_us11_composition_compile_time_handoff.md`） |
 
 **为什么第 1 项最紧**：E2E 红灯在 main 上。它不修，任何「已验证」的说法都不成立。
 
