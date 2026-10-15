@@ -159,7 +159,7 @@
 | 3 | 口径三处对齐 | US-42 | 数字一致 + 脚本核对 | **已完成**（见 `docs/handoff/20261014_us42_pattern_tally_consistency_handoff.md`） |
 | 4 | 观察值键文档 | US-24 | 6 个键有用户可见说明（实测 14） | **已完成**（见 `docs/handoff/20261014_us24_observation_keys_handoff.md`） |
 | 5 | 槽位模型 | US-30 | LANDED 只收槽位非空的 kind | **已完成**（见 `docs/handoff/20261014_us30_slot_model_handoff.md`） |
-| 6 | 契约栏位机器拦 | US-33 | 栏位缺失 → 判据失败 | 待做 |
+| 6 | 契约栏位机器拦 | US-33 | 栏位缺失 → 判据失败 | **已完成**（见 `docs/handoff/20261014_us33_contract_columns_handoff.md`） |
 | 7 | 21 条 E2E | US-27 | 21 条全绿 | 待做 |
 | 8 | v2.3.1 补丁 | US-37 | 制品不含已知不可用项 | 待做 |
 

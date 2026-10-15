@@ -201,6 +201,46 @@ def _check_a11_landed_patterns_have_contract_and_test() -> tuple[bool, str]:
     )
 
 
+def _contract_columns_problems(text: str) -> list[str]:
+    """US-33：契约栏位齐备且非空。纯函数，便于单元测试。
+
+    必需栏位（7）：id / 槽位 / 输入 / 期望（可观测） / 反证 / 端口 / 不承诺。
+    输入栏有两种标签：**输入** 与 **输入（合法键）**，都接受。
+    """
+    import re as _re
+
+    problems: list[str] = []
+    for label in ("id", "槽位", "输入", "期望（可观测）", "反证", "端口", "不承诺"):
+        pattern = _re.compile(r"^\|\s*\*\*" + _re.escape(label) + r"[^*]*\*\*\s*\|\s*(.+)$", _re.M)
+        m = pattern.search(text)
+        if not m:
+            problems.append(f"缺栏位 {label}")
+            continue
+        content = m.group(1).strip().rstrip("|").strip()
+        if not content:
+            problems.append(f"栏位 {label} 为空")
+    return problems
+
+
+def _check_a12_contract_columns() -> tuple[bool, str]:
+    """A12 契约栏位必须齐备且有内容（US-33 / P1-4 / B5）。
+
+    背景：21 份契约曾有「六栏齐备」的人工约定，但没有机器拦。本判据把它变成机器拦：
+    栏位缺失或内容为空 → 失败。
+    """
+    contracts_dir = ROOT / "docs" / "spec" / "pattern_runtime_contracts"
+    files = sorted(contracts_dir.glob("*.md"))
+    if not files:
+        return _result(False, "契约目录为空：" + str(contracts_dir))
+    problems: list[str] = []
+    for path in files:
+        for p in _contract_columns_problems(path.read_text(encoding="utf-8")):
+            problems.append(path.stem + ": " + p)
+    if problems:
+        return _result(False, "契约栏位不齐：" + "；".join(problems))
+    return _result(True, f"{len(files)} 份契约栏位齐备且非空（id/槽位/输入/期望/反证/端口/不承诺）")
+
+
 def _check_p4_no_silent_failure() -> tuple[bool, str]:
     """P4 不许沉默：编译失败时进程不得返回 0（宏展开失败曾只打日志、仍返回 0）。"""
     bad = ROOT / ".tmp_standards_bad_macro.al"
@@ -665,6 +705,12 @@ CHECKS: list[dict] = [
         "fn": _check_a11_landed_patterns_have_contract_and_test,
     },
     {
+        "id": "A12",
+        "role": "架构",
+        "title": "契约栏位必须齐备且有内容（US-33 / P1-4 / B5）",
+        "fn": _check_a12_contract_columns,
+    },
+    {
         "id": "E3",
         "role": "工程",
         "title": "静默 except 检查（与 P5 共用）",
@@ -689,6 +735,7 @@ CLOSED_IDS = (
     "A9",
     "A10",
     "A11",
+    "A12",
     "E3",
 )
 
