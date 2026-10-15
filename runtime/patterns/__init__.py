@@ -153,16 +153,36 @@ class PatternRuntime:
             h.on_init(self.harness, [p.get("pattern") for p in self.declared])
             self.handlers.append(h)
 
+    # ---- US-14：handler 抛错不得拖垮 Agent ----
+    def _handler_error(self, kind: str, hook: str, exc: Exception) -> None:
+        """留痕，不抛出（P1-3a）。
+
+        增强类钩子（before_turn / after_turn / order / budget）：跳过该 handler，用原值。
+        安全类钩子（on_tool_call / verify）：按失败拒绝（fail-closed），不静默放行。
+        """
+        logger.exception("[Pattern] %s.%s 抛错，已捕获", kind, hook)
+        self._record(kind, hook + "-error", {"error": f"{type(exc).__name__}: {exc}"})
+
     # ---- 钩子分发（顺序 = 声明顺序，确定性）----
     def before_turn(self, ctx: dict) -> dict:
         for h in self.handlers:
-            ctx = h.before_turn(self.harness, ctx)
+            kind = getattr(h, "kind", "?")
+            try:
+                ctx = h.before_turn(self.harness, ctx)
+            except Exception as exc:  # 故意兜底
+                self._handler_error(kind, "before_turn", exc)
         return ctx
 
     def on_tool_call(self, call: dict) -> tuple[bool, str]:
         for h in self.handlers:
-            ok, why = h.on_tool_call(self.harness, call)
             kind = getattr(h, "kind", "?")
+            try:
+                ok, why = h.on_tool_call(self.harness, call)
+            except Exception as exc:  # 安全钩子：抛错按拒绝
+                self._handler_error(kind, "on_tool_call", exc)
+                why = f"模式 {kind} 的 on_tool_call 抛错，按失败拒绝（留痕）"
+                self._record(kind, "on_tool_call", {"blocked": True, "why": why, "call": call})
+                return False, why
             if not ok:
                 self._record(kind, "on_tool_call", {"blocked": True, "why": why, "call": call})
                 return False, why
@@ -192,7 +212,11 @@ class PatternRuntime:
 
     def after_turn(self, ctx: dict) -> dict:
         for h in self.handlers:
-            ctx = h.after_turn(self.harness, ctx)
+            kind = getattr(h, "kind", "?")
+            try:
+                ctx = h.after_turn(self.harness, ctx)
+            except Exception as exc:  # 故意兜底
+                self._handler_error(kind, "after_turn", exc)
         return ctx
 
     # ---- 供 handler 复用的查询 ----
@@ -201,7 +225,12 @@ class PatternRuntime:
         for h in self.handlers:
             fn = getattr(h, "order", None)
             if callable(fn):
-                return fn(candidates)
+                kind = getattr(h, "kind", "?")
+                try:
+                    return fn(candidates)
+                except Exception as exc:  # 增强钩子：跳过
+                    self._handler_error(kind, "order", exc)
+                    return list(candidates)
         return list(candidates)
 
     def retry_policy(self) -> dict:
@@ -209,10 +238,23 @@ class PatternRuntime:
         for h in self.handlers:
             fn = getattr(h, "policy", None)
             if callable(fn):
-                return fn(self.harness)
+                kind = getattr(h, "kind", "?")
+                try:
+                    return fn(self.harness)
+                except Exception as exc:  # 增强钩子：跳过
+                    self._handler_error(kind, "retry_policy", exc)
+                    return {}
         return {}
 
     def verify_observation(self, observation: dict) -> tuple[bool, str]:
+        """US-14 外壳：handler 或内部分派抛错时按失败拒绝并留痕，不拖垮 Agent。"""
+        try:
+            return self._verify_observation_impl(observation)
+        except Exception as exc:  # 安全钩子：抛错按拒绝
+            self._handler_error("?", "verify_observation", exc)
+            return False, "模式 verify_observation 抛错，按失败拒绝（留痕）"
+
+    def _verify_observation_impl(self, observation: dict) -> tuple[bool, str]:
         """M2 接线：观察值门控。声明了 rag 时，回答必须引用证据 id（契约 CT-RAG-01）。
 
         未声明相关模式 → 直接放行（向后兼容）。
@@ -283,9 +325,11 @@ class PatternRuntime:
         for h in self.handlers:
             b = getattr(h, "budget", None)
             if callable(b):
+                kind = getattr(h, "kind", "?")
                 try:
                     v = int(b())
-                except (TypeError, ValueError):
+                except Exception as exc:  # 增强钩子：跳过
+                    self._handler_error(kind, "turn_budget", exc)
                     continue
                 if v > 0:
                     return min(base, v)
