@@ -214,8 +214,9 @@
                       (hash 'hooks string-list?))
 (register-v2-pattern! 'hitl              "人在环：approval-before 声明需批准的阶段"
                       (hash 'approval-before string-list?))
+;; US-27 对齐：handler 读 backoff 为字符串枚举（none/linear/exponential），非 real。
 (register-v2-pattern! 'exception         "异常恢复：retries 与 backoff 声明重试策略"
-                      (hash 'retries positive-integer? 'backoff real?))
+                      (hash 'retries positive-integer? 'backoff string?))
 (register-v2-pattern! 'exploration      "探索发现：budget 与 convergence 声明停止条件"
                       (hash 'budget positive-integer? 'convergence real?))
 
@@ -224,8 +225,9 @@
 ;; CR-42 P-3：V1 五宏对应的 kind（patterns.rkt 的 HC/GENERIC 分支产出）
 ;; =============================================================================
 
+;; US-27 对齐：ReflectHandler 读 reviewer-agent（原 schema 写 max-retries，是另一回事）。
 (register-v2-pattern! 'reflect  "反思/自我纠错：失败进入反思—修正回路，reviewer-agent 复核"
-                      (hash 'max-retries positive-integer?))
+                      (hash 'reviewer-agent string?))
 (register-v2-pattern! 'router   "路由：先判定意图再分发到 Worker"
                       (hash 'routes string-list?))
 (register-v2-pattern! 'chain    "提示链：按给定顺序执行步骤，前一步输出注入后一步"
@@ -248,8 +250,9 @@
                       (hash 'retriever string?))
 (register-v2-pattern! 'a2a             "智能体间通信：跨 Agent 消息协议与 Agent Card"
                       (hash 'protocol string?))
+;; US-27 对齐：ReasoningHandler 读 technique（原 schema 写 strategy）。
 (register-v2-pattern! 'reasoning       "推理技术：显式推理结构（CoT / 树状探索）"
-                      (hash 'strategy string?))
+                      (hash 'technique string?))
 (register-v2-pattern! 'learning        "学习与适应：把反馈写回技能层"
                       (hash 'skill-dir string?))
 (register-v2-pattern! 'resource-aware  "资源感知：按成本/时延选择模型档位"
