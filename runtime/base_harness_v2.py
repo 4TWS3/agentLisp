@@ -1065,12 +1065,24 @@ class BaseHarnessV2:
                     messages = self.build_context()
 
                     # 2) LLM 决策：CR-16 P1-5 Provider / CircuitBreaker / Context-Leakage 层
+                    # US-29：工具 schema 必须真传给 provider。否则真模型永不出 tool_calls，
+                    # 真工具路径断（只有 MockLLMClient 能驱动 tool_calls）。
+                    _tools = None
+                    if self.tool_registry is not None:
+                        try:
+                            _tools = self.tool_registry.to_openai_schema()
+                        except Exception:
+                            # 不静默：留痕（失败必须留痕）
+                            logger.warning(
+                                "[Tools] to_openai_schema 失败，本轮不带工具", exc_info=True
+                            )
+                            _tools = None
                     try:
                         if self._llm_orchestrator is not None:
                             # 走新 orchestrator（primary 过 CircuitBreaker / forbidden_context_keys 过滤 / fallback-model）
-                            llm_out = await self._llm_orchestrator.achat(messages)
+                            llm_out = await self._llm_orchestrator.achat(messages, tools=_tools)
                         else:
-                            llm_out = await self.llm_client.achat(messages)
+                            llm_out = await self.llm_client.achat(messages, tools=_tools)
                     except Exception as exc:  # Provider 层异常统一落 trace：
                         from .llm_client import (
                             ERR_CONTEXT_LEAKAGE,

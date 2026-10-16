@@ -451,17 +451,21 @@ class OpenAIClient:
             return {"thought": content[:1000], "answer": content}
 
     async def achat(  # type: ignore[override]
-        self, messages: list[dict[str, Any]], **_kwargs: Any
+        self,
+        messages: list[dict[str, Any]],
+        tools: list[dict[str, Any]] | None = None,
+        **_kwargs: Any,
     ) -> dict[str, Any]:
         try:
             from openai import APIStatusError  # type: ignore[import-not-found]
         except Exception:  # pragma: no cover
             APIStatusError = Exception  # type: ignore[misc,assignment]
+        create_kwargs: dict[str, Any] = {"model": self.model, "messages": messages}
+        # US-29：工具 schema 必须真传给模型，否则模型永不出 tool_calls -> 真工具路径断。
+        if tools:
+            create_kwargs["tools"] = tools
         try:
-            resp = await self.client.chat.completions.create(
-                model=self.model,
-                messages=messages,
-            )
+            resp = await self.client.chat.completions.create(**create_kwargs)
         except APIStatusError as exc:
             status = int(getattr(exc, "status_code", 500))
             raise ProviderHTTPError(
@@ -523,7 +527,10 @@ class AnthropicClient:
             return {"thought": content[:1000], "answer": content}
 
     async def achat(  # type: ignore[override]
-        self, messages: list[dict[str, Any]], **_kwargs: Any
+        self,
+        messages: list[dict[str, Any]],
+        tools: list[dict[str, Any]] | None = None,
+        **_kwargs: Any,
     ) -> dict[str, Any]:
         # Anthropic SDK：messages 至少要 1 条 user；把 system role 拆到 system 参数
         system_parts: list[str] = []
@@ -543,11 +550,35 @@ class AnthropicClient:
         if not cleaned:
             cleaned = [{"role": "user", "content": "(no user message)"}]
         create_kwargs["messages"] = cleaned
+        # US-29：OpenAI 风格工具 schema -> Anthropic tools。否则模型不出 tool_use。
+        if tools:
+            create_kwargs["tools"] = [
+                {
+                    "name": t.get("function", {}).get("name", ""),
+                    "description": t.get("function", {}).get("description", ""),
+                    "input_schema": t.get("function", {}).get(
+                        "parameters", {"type": "object", "properties": {}}
+                    ),
+                }
+                for t in tools
+            ]
         msg = await self.client.messages.create(**create_kwargs)
+        tool_calls = [
+            {
+                "id": getattr(block, "id", f"tu_{i}"),
+                "type": "function",
+                "function": {
+                    "name": getattr(block, "name", ""),
+                    "arguments": getattr(block, "input", {}) or {},
+                },
+            }
+            for i, block in enumerate(msg.content)
+            if getattr(block, "type", None) == "tool_use"
+        ]
         content = "".join(
             block.text for block in msg.content if getattr(block, "type", None) == "text"
         )
-        return {"role": "assistant", "content": content, "tool_calls": None}
+        return {"role": "assistant", "content": content, "tool_calls": tool_calls or None}
 
 
 class QwenProvider:
@@ -578,17 +609,21 @@ class QwenProvider:
         )
 
     async def achat(  # type: ignore[override]
-        self, messages: list[dict[str, Any]], **_kwargs: Any
+        self,
+        messages: list[dict[str, Any]],
+        tools: list[dict[str, Any]] | None = None,
+        **_kwargs: Any,
     ) -> dict[str, Any]:
         try:
             from openai import APIStatusError  # type: ignore[import-not-found]
         except Exception:  # pragma: no cover
             APIStatusError = Exception  # type: ignore[misc,assignment]
+        create_kwargs: dict[str, Any] = {"model": self.model, "messages": messages}
+        # US-29：同 OpenAIClient，工具 schema 必须真传。
+        if tools:
+            create_kwargs["tools"] = tools
         try:
-            resp = await self.client.chat.completions.create(
-                model=self.model,
-                messages=messages,
-            )
+            resp = await self.client.chat.completions.create(**create_kwargs)
         except APIStatusError as exc:
             status = int(getattr(exc, "status_code", 500))
             raise ProviderHTTPError(

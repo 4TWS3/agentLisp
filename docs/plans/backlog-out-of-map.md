@@ -14,6 +14,7 @@
 | B-06 | V1 五宏的 GENERIC 分支不能编译：`:model-name` 未映射成 `:name`；`:tools` 产成 `(:tools :tools …)` 重复键；空 `:context` 缺 `:memory-policy` | 缺陷 | US-27 实测；交底 §5 | 非 HC 名的 V1 宏不可用 | 修 `plist->blocks` 的键映射；补 GENERIC 编译测试 |
 | B-07 | 故事图 US-26 判据「引擎消费数 13 → 21」未达 | 故事偏离 | US-26 交底 §6 | 8 个声明层仍不消费 | 待 P4-1/P4-2 编排接线后回填 |
 | B-08 | v2 CLI（`runtime/cli.py`）从未实现；pyproject 的 `agentlisp2` entry point 指向它 | 缺陷 | US-01 实测（打包 + 安装 + 跑 CLI） | 装了包 `agentlisp2` 跑不起来 | 已删 entry point；若要做 v2 CLI，单开故事 |
+| B-09 | 真 provider 不传工具 schema：模型永不出 tool_calls，只有 Mock 能驱动工具 | 缺陷（已在 US-29 修） | US-29 实测 | 真模型 + 真工具路径断，测试却全绿 | 已修 `llm_client` + `base_harness_v2`；补 `tests/test_tool_schema_passed.py` |
 
 ---
 

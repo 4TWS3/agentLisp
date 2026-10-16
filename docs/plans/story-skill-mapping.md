@@ -175,6 +175,7 @@
 | 19 | 长跑稳定有数 | US-41 | 1000 轮不退化 | **已完成**（退化比 0.927；同上） |
 | 20 | Release 工作流绿 | US-38 | 本地结构核对 | **部分**（CI 真绿待验证；见 `docs/handoff/20261014_us38_release_workflow_handoff.md`） |
 | 21 | pip install | US-01 | 本地打包安装自证 | **部分**（TestPyPI 待发；见 `docs/handoff/20261014_us01_pip_install_handoff.md`） |
+| 22 | 真实环境验收 | US-29 | 真模型 + 真工具 | **已完成**（Ollama qwen3:4b + 真 shell；见 `docs/handoff/20261014_us29_real_env_handoff.md`） |
 
 **为什么第 1 项最紧**：E2E 红灯在 main 上。它不修，任何「已验证」的说法都不成立。
 
