@@ -99,6 +99,14 @@ DECLARED_ONLY_REASON: dict[str, str] = {
     "learning": "声明层：写回技能层无引擎消费点；需要端口与回合结束钩子",
 }
 
+# 非运行期 kind（US-28 / P2-2 / B2）：注册表有，但语义由核心语法承载，
+# 不进 HANDLERS / KIND_SLOTS。显式登记，避免「注册表有、运行期无」的悬空。
+# 机器核对：tests/test_cr42_registry_closed.py 比对注册表 = 运行期 + 非运行期。
+NON_RUNTIME_KINDS: dict[str, str] = {
+    "memory": "非运行期：语义由 (:context :memory-policy …) 核心语法承载；不占模式槽位",
+    "multi-agent": "非运行期：语义由 (:multiagent :topology … :workers …) 核心语法承载；不占模式槽位",
+}
+
 # 冲突分组（设计 v2 §6）：同组内只能选一个
 GROUPS: dict[str, set[str]] = {
     "编排": {"chain", "parallel", "planner", "router"},
