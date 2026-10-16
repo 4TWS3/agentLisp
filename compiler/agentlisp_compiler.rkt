@@ -167,6 +167,20 @@
      (define tools   (hash-ref pb 'tools))
      (define harness (hash-ref pb 'harness))
      (define multi   (hash-ref pb 'multiagent))
+     (define st      (hash-ref pb 'state))
+     (define wf      (hash-ref pb 'workflow))
+     (define parsed-state (and st (parse-state st)))
+     (define state-fields
+       (if parsed-state (map (lambda (f) (hash-ref f 'name)) (hash-ref parsed-state 'fields)) '()))
+     (define state-defaulted
+       (if parsed-state
+           (for/hash ([f (in-list (hash-ref parsed-state 'fields))])
+             (values (hash-ref f 'name) (hash-ref f 'has-default)))
+           (hash)))
+     ;; F-AMS-1：:workflow（单 agent 多步骤）与 :multiagent（多 agent）互斥。
+     (when (and multi wf)
+       (raise-parse `(defagent ,name)
+                    ":workflow 与 :multiagent 互斥（F-AMS-1：单 agent 多步骤 vs 多 agent）"))
      (unless model   (raise-parse `(defagent ,name) "缺少必需的 :model 块"))
      (unless ctx     (raise-parse `(defagent ,name) "缺少必需的 :context 块"))
      (unless tools   (raise-parse `(defagent ,name) "缺少必需的 :tools 块"))
@@ -189,6 +203,8 @@
            'tools   (parse-tools tools)
            'harness (parse-harness harness)
            'multi   (and multi (parse-multi multi))
+           'state   parsed-state
+           'workflow (and wf (parse-workflow wf state-fields state-defaulted))
            'order   (hash-ref pb 'order)
            'raw form)]
     [_ (raise-parse 'parse-defagent (format "顶层必须是 (defagent NAME BLOCK…)，得到：~s" form))]))
@@ -247,35 +263,249 @@
     [_ (raise-parse ':evolution
                     ":verifier-gate 必需是 (:verifier-gate \"名称\" :min-pass-rate N :mcnemar-p-threshold N)")]))
 
+;;; ---------- F-AMS-3（US-04）：(:state :fields …) ----------
+;; 状态字段：具名 + 类型 + 可选默认值。类型枚举封闭（新增类型要改这里，测试会红）。
+(define STATE-TYPE-ENUM '("dict" "str" "int" "float" "bool" "list"))
+
+(define (parse-state form)
+  (match form
+    [`(:state . ,kvs)
+     (let ([kw (keyword-kvs kvs '(:fields))])
+       (unless (hash-has-key? kw ':fields)
+         (raise-parse ':state "缺必需 :fields"))
+       (define raw (hash-ref kw ':fields))
+       (unless (and (list? raw) (pair? raw))
+         (raise-parse ':state ":fields 必须是非空列表：((名 :type T [:default D]) …)"))
+       (hash 'fields
+             (for/list ([f (in-list raw)])
+               (unless (and (list? f) (>= (length f) 3) (symbol? (car f)))
+                 (raise-parse ':state (format "字段格式应为 (名 :type T [:default D])，得到 ~s" f)))
+               (define nm (symbol->string (car f)))
+               (define kw2 (keyword-kvs (cdr f) '(:type :default)))
+               (unless (hash-has-key? kw2 ':type)
+                 (raise-parse ':state (format "字段 ~a 缺 :type" nm)))
+               (define ty (to-str (hash-ref kw2 ':type)))
+               (unless (member ty STATE-TYPE-ENUM)
+                 (raise-parse ':state
+                              (format "字段 ~a 的 :type 枚举=~a，得到 ~a" nm STATE-TYPE-ENUM ty)))
+               (hash 'name nm 'type ty
+                     'has-default (hash-has-key? kw2 ':default)
+                     'default (if (hash-has-key? kw2 ':default) (hash-ref kw2 ':default) #f)))))]
+    [_ (raise-parse ':state "必需是 (:state :fields ((名 :type T [:default D]) …))")]))
+
+;;; ---------- F-AMS-1 / F-AMS-2（US-05 / US-07 / US-09）：(:workflow …) ----------
+(define WORKFLOW-NODE-TYPES '("agent" "computation" "evaluator"))
+(define WORKFLOW-TOPOLOGY-ENUM '("sequential" "edge" "conditional-edge" "conditional-loop"))
+
+(define (valid-handler? s)
+  (and (string? s)
+       (regexp-match? #rx"^[A-Za-z_][A-Za-z0-9_]*([.][A-Za-z_][A-Za-z0-9_]*)+$" s)))
+
+;; 节点/边的前向可达（conditional-loop 的环也算可达，但不算前向边）
+(define (wf-step edge-pairs from)
+  (for/list ([p (in-list edge-pairs)] #:when (string=? (car p) from)) (cdr p)))
+
+(define (wf-reachable entry edge-pairs)
+  (let loop ([frontier (list entry)] [seen '()])
+    (cond [(null? frontier) seen]
+          [(member (car frontier) seen) (loop (cdr frontier) seen)]
+          [else (loop (append (cdr frontier) (wf-step edge-pairs (car frontier)))
+                      (cons (car frontier) seen))])))
+
+(define (wf-reach-problems entry nodes edge-pairs)
+  (define seen (wf-reachable entry edge-pairs))
+  (for/list ([n (in-list (map (lambda (x) (hash-ref x 'name)) nodes))]
+             #:when (not (member n seen)))
+    (format "工作流节点 ~a 从入口 ~a 不可达（F-AMS-1）" n entry)))
+
+(define (wf-cycle-problems nodes edge-pairs)
+  (define color (make-hash))
+  (for ([n (in-list (map (lambda (x) (hash-ref x 'name)) nodes))]) (hash-set! color n 0))
+  (define found '())
+  (define (visit n)
+    (hash-set! color n 1)
+    (for ([m (in-list (wf-step edge-pairs n))])
+      (define c (hash-ref color m 0))
+      (cond [(= c 1)
+             (set! found (cons (format "工作流存在未声明环：~a -> ~a（F-AMS-1；环必须用 conditional-loop）" n m)
+                               found))]
+            [(= c 0) (visit m)]
+            [else (void)]))
+    (hash-set! color n 2))
+  (for ([n (in-list (map (lambda (x) (hash-ref x 'name)) nodes))])
+    (when (= (hash-ref color n 0) 0) (visit n)))
+  (reverse found))
+
+(define (parse-workflow form state-fields state-defaulted)
+  (match form
+    [`(:workflow . ,kvs)
+     (define kw (keyword-kvs kvs '(:entry :nodes :topology)))
+     (unless (hash-has-key? kw ':entry) (raise-parse ':workflow "缺必需 :entry"))
+     (unless (hash-has-key? kw ':nodes) (raise-parse ':workflow "缺必需 :nodes"))
+     (define entry (to-str (hash-ref kw ':entry)))
+     (define raw-nodes (hash-ref kw ':nodes))
+     (unless (and (list? raw-nodes) (pair? raw-nodes))
+       (raise-parse ':workflow ":nodes 必须是非空列表：((名 :type T [:handler \"m.f\"]) …)"))
+     (define nodes
+       (for/list ([n (in-list raw-nodes)])
+         (unless (and (list? n) (pair? n) (symbol? (car n)))
+           (raise-parse ':workflow (format "节点格式应为 (名 :type T …)，得到 ~s" n)))
+         (define nm (symbol->string (car n)))
+         (define kw2 (keyword-kvs (cdr n) '(:type :handler :prompt :output-fields)))
+         (unless (hash-has-key? kw2 ':type)
+           (raise-parse ':workflow (format "节点 ~a 缺 :type" nm)))
+         (define ty (to-str (hash-ref kw2 ':type)))
+         (unless (member ty WORKFLOW-NODE-TYPES)
+           (raise-parse ':workflow
+                        (format "节点 ~a 的 :type 枚举=~a，得到 ~a" nm WORKFLOW-NODE-TYPES ty)))
+         (define h (and (hash-has-key? kw2 ':handler) (to-str (hash-ref kw2 ':handler))))
+         (when (and h (not (valid-handler? h)))
+           (raise-parse ':workflow
+                        (format "节点 ~a 的 :handler 格式应为 模块.函数 或 模块.类.方法，得到 ~s" nm h)))
+         (when (and (string=? ty "computation") (not h))
+           (raise-parse ':workflow (format "computation 节点 ~a 必须给 :handler（F-AMS-2）" nm)))
+         ;; F-AMS-3：:output-fields 必须来自 :state 已声明字段
+         (define outs (map to-str (hash-ref kw2 ':output-fields '())))
+         (for ([o (in-list outs)])
+           (unless (member o state-fields)
+             (raise-parse ':workflow
+                          (format "节点 ~a 的 :output-fields 含未声明字段 ~a（F-AMS-3）" nm o))))
+         ;; F-AMS-5：:prompt 拆 :static / :dynamic。插值只准进 :dynamic。
+         (define pr (and (hash-has-key? kw2 ':prompt) (hash-ref kw2 ':prompt)))
+         (define pkw (and pr (keyword-kvs pr '(:static :dynamic))))
+         (define stat (if pkw (to-str (hash-ref pkw ':static "")) ""))
+         (define dyn (if pkw (to-str (hash-ref pkw ':dynamic "")) ""))
+         (when (regexp-match? #rx"[{][A-Za-z_][A-Za-z0-9_]*[}]" stat)
+           (raise-parse ':workflow
+                        (format "节点 ~a 的 :static 段含插值（F-AMS-5 R1：插值只能进 :dynamic）" nm)))
+         (define reads '())
+         (for ([mm (in-list (regexp-match* #rx"[{][A-Za-z_][A-Za-z0-9_]*[}]" dyn))])
+           (define f (substring mm 1 (sub1 (string-length mm))))
+           (unless (member f state-fields)
+             (raise-parse ':workflow
+                          (format "节点 ~a 的 :dynamic 引用未声明字段 ~a（F-AMS-5 R3/R4）" nm f)))
+           (set! reads (cons f reads)))
+         (hash 'name nm 'type ty 'handler h 'outputs outs
+               'static stat 'dynamic dyn 'reads (reverse reads))))
+     ;; F-AMS-3（US-10）：字段可达性。只写不读 / 无人读写 -> 警告（不失败）。
+     (define written (append* (map (lambda (n) (hash-ref n 'outputs)) nodes)))
+     (define read-any (append* (map (lambda (n) (hash-ref n 'reads)) nodes)))
+     (for ([f (in-list state-fields)])
+       (define w? (and (member f written) #t))
+       (define r? (and (member f read-any) #t))
+       (cond
+         ;; 用 eprintf 而非 log-warning：log-warning 默认不显示（需 PLTSTDERR），
+         ;; 那等于静默。警告必须真能看到。
+         [(not (or w? r?)) (eprintf "[WARN] 状态字段 ~a 无人读写（F-AMS-3）\n" f)]
+         [(and w? (not r?)) (eprintf "[WARN] 状态字段 ~a 只写不读（F-AMS-3）\n" f)]
+         [(and r? (not w?) (not (hash-ref state-defaulted f #f)))
+          (raise-parse ':workflow
+                       (format "状态字段 ~a 被读但无人写，且无 :default（F-AMS-3）" f))]))
+     (define (node-exists? nm) (ormap (lambda (n) (string=? (hash-ref n 'name) nm)) nodes))
+     (define raw-topo (hash-ref kw ':topology '()))
+     (define edges '())
+     (define loops '())
+     (for ([t (in-list raw-topo)])
+       (unless (and (list? t) (pair? t) (symbol? (car t)))
+         (raise-parse ':workflow (format "拓扑格式应为 (类型 …)，得到 ~s" t)))
+       (define ty (symbol->string (car t)))
+       (unless (member ty WORKFLOW-TOPOLOGY-ENUM)
+         (raise-parse ':workflow (format "拓扑类型枚举=~a，得到 ~a" WORKFLOW-TOPOLOGY-ENUM ty)))
+       (cond
+         [(string=? ty "sequential")
+          (unless (and (= (length t) 2) (list? (cadr t)) (pair? (cadr t)))
+            (raise-parse ':workflow "(sequential (n1 n2 …)) 需非空节点列表"))
+          (define ns (map to-str (cadr t)))
+          (for ([n (in-list ns)])
+            (unless (node-exists? n)
+              (raise-parse ':workflow (format "sequential 引用不存在的节点 ~a" n))))
+          (for ([p (in-list (for/list ([a ns] [b (cdr ns)]) (list a b)))])
+            (set! edges (cons (hash 'from (car p) 'to (cadr p) 'kind "sequential") edges)))]
+         [(string=? ty "edge")
+          (unless (= (length t) 3) (raise-parse ':workflow "(edge from to)"))
+          (define a (to-str (cadr t)))
+          (define b (to-str (caddr t)))
+          (unless (node-exists? a) (raise-parse ':workflow (format "edge 引用不存在的节点 ~a" a)))
+          (unless (node-exists? b) (raise-parse ':workflow (format "edge 引用不存在的节点 ~a" b)))
+          (set! edges (cons (hash 'from a 'to b 'kind "edge") edges))]
+         [(string=? ty "conditional-edge")
+          (define kw3 (keyword-kvs (cdr t) '(:from :to :when)))
+          (unless (and (hash-has-key? kw3 ':from) (hash-has-key? kw3 ':to))
+            (raise-parse ':workflow "(conditional-edge :from a :to b [:when \"expr\"])"))
+          (define a (to-str (hash-ref kw3 ':from)))
+          (define b (to-str (hash-ref kw3 ':to)))
+          (unless (node-exists? a)
+            (raise-parse ':workflow (format "conditional-edge 引用不存在的节点 ~a" a)))
+          (unless (node-exists? b)
+            (raise-parse ':workflow (format "conditional-edge 引用不存在的节点 ~a" b)))
+          (set! edges (cons (hash 'from a 'to b 'kind "conditional-edge") edges))]
+         [else
+          (define kw3 (keyword-kvs (cdr t) '(:nodes :while :max-rounds)))
+          (unless (hash-has-key? kw3 ':nodes) (raise-parse ':workflow "conditional-loop 缺 :nodes"))
+          (unless (hash-has-key? kw3 ':while) (raise-parse ':workflow "conditional-loop 缺 :while"))
+          (define ns (map to-str (hash-ref kw3 ':nodes)))
+          (unless (pair? ns) (raise-parse ':workflow "conditional-loop :nodes 需非空"))
+          (for ([n (in-list ns)])
+            (unless (node-exists? n)
+              (raise-parse ':workflow (format "conditional-loop 引用不存在的节点 ~a" n))))
+          (set! loops (cons (hash 'nodes ns
+                                  'while (to-str (hash-ref kw3 ':while))
+                                  'max-rounds (hash-ref kw3 ':max-rounds 0))
+                            loops))]))
+     (unless (node-exists? entry)
+       (raise-parse ':workflow (format ":entry ~a 不是已声明节点" entry)))
+     ;; 边表：前向边 + 环内边（用于可达性）
+     (define forward (map (lambda (e) (cons (hash-ref e 'from) (hash-ref e 'to))) edges))
+     (define loop-pairs
+       (append*
+        (for/list ([l (in-list loops)])
+          (define ns (hash-ref l 'nodes))
+          (append (for/list ([a ns] [b (cdr ns)]) (cons a b))
+                  (list (cons (last ns) (first ns)))))))
+     (define all-pairs (append forward loop-pairs))
+     (define structure-problems
+       (append (wf-reach-problems entry nodes all-pairs) (wf-cycle-problems nodes forward)))
+     (when (pair? structure-problems)
+       (raise-parse ':workflow (string-join structure-problems "；")))
+     (hash 'entry entry 'nodes nodes 'edges (reverse edges) 'loops (reverse loops))]
+    [_ (raise-parse ':workflow "必需是 (:workflow :entry N :nodes (…) [:topology (…)])")]))
+
 (define (partition-blocks blocks agent-name)
-  ;; CR-42：:pattern 块可多次出现（模式可组合）；:evolution 至多一次。
-  ;; 返回 hash，键：model context tools harness multiagent patterns evolution order
-  (let loop ([bs blocks] [model #f] [ctx #f] [tools #f] [harness #f] [multi #f] [pats '()] [evo #f] [order '()])
+  ;; CR-42：:pattern 可多次；:evolution 至多一次。US-04：:state 至多一次。
+  ;; US-05：:workflow 至多一次（与 :multiagent 互斥，在 parse-defagent 里拦）。
+  ;; 返回 hash，键：model context tools harness multiagent state workflow patterns evolution order
+  (let loop ([bs blocks] [model #f] [ctx #f] [tools #f] [harness #f] [multi #f] [st #f] [wf #f]
+             [pats '()] [evo #f] [order '()])
     (if (null? bs)
         (hash 'model model 'context ctx 'tools tools 'harness harness
-              'multiagent multi 'patterns (reverse pats) 'evolution evo 'order (reverse order))
+              'multiagent multi 'state st 'workflow wf 'patterns (reverse pats)
+              'evolution evo 'order (reverse order))
         (let ([b (car bs)] [rest (cdr bs)])
           (define tag (and (pair? b) (car b)))
           (cond
             [(eq? tag ':model)   (when model (raise-parse `(defagent ,agent-name) ":model 块重复"))
-                                 (loop rest b ctx tools harness multi pats evo (cons ':model order))]
+                                 (loop rest b ctx tools harness multi st wf pats evo (cons ':model order))]
             [(eq? tag ':context) (when ctx (raise-parse `(defagent ,agent-name) ":context 块重复"))
-                                 (loop rest model b tools harness multi pats evo (cons ':context order))]
+                                 (loop rest model b tools harness multi st wf pats evo (cons ':context order))]
             [(eq? tag ':tools)   (when tools (raise-parse `(defagent ,agent-name) ":tools 块重复"))
-                                 (loop rest model ctx b harness multi pats evo (cons ':tools order))]
+                                 (loop rest model ctx b harness multi st wf pats evo (cons ':tools order))]
             [(eq? tag ':harness) (when harness (raise-parse `(defagent ,agent-name) ":harness 块重复"))
-                                 (loop rest model ctx tools b multi pats evo (cons ':harness order))]
+                                 (loop rest model ctx tools b multi st wf pats evo (cons ':harness order))]
             [(eq? tag ':multiagent) (when multi (raise-parse `(defagent ,agent-name) ":multiagent 块重复"))
-                                     (loop rest model ctx tools harness b pats evo (cons ':multiagent order))]
+                                     (loop rest model ctx tools harness b st wf pats evo (cons ':multiagent order))]
+            [(eq? tag ':state)   (when st (raise-parse `(defagent ,agent-name) ":state 块重复"))
+                                 (loop rest model ctx tools harness multi b wf pats evo (cons ':state order))]
+            [(eq? tag ':workflow) (when wf (raise-parse `(defagent ,agent-name) ":workflow 块重复"))
+                                  (loop rest model ctx tools harness multi st b pats evo (cons ':workflow order))]
             [(eq? tag ':pattern)
              ;; CR-42：模式块交给注册表校验（kind/config），可多次出现
-             (loop rest model ctx tools harness multi (cons b pats) evo (cons ':pattern order))]
+             (loop rest model ctx tools harness multi st wf (cons b pats) evo (cons ':pattern order))]
             [(eq? tag ':evolution)
              ;; RSI 契约 §5.1：至多一次；不存在时为 #f
              (when evo (raise-parse `(defagent ,agent-name) ":evolution 块重复"))
-             (loop rest model ctx tools harness multi pats b (cons ':evolution order))]
+             (loop rest model ctx tools harness multi st wf pats b (cons ':evolution order))]
             [else (raise-parse `(defagent ,agent-name)
-                                (format "未知块 ~s；应为 :model/:context/:tools/:harness（可选 :multiagent/:pattern/:evolution）" tag))])))))
+                                (format "未知块 ~s；应为 :model/:context/:tools/:harness（可选 :state/:workflow/:multiagent/:pattern/:evolution）" tag))])))))
 
 ;;; ---------- parse-model (修复 MAJOR-3 temperature 范围 + PROVIDER-ENUM 值域) ----------
 (define (parse-model form)
@@ -526,6 +756,8 @@
    (emit-tools-config tools)
    (emit-patterns-dict parsed)
    (emit-evolution-dict parsed)
+   (emit-state-dict parsed)
+   (emit-workflow-dict parsed)
    (emit-harness-dict harness)
    (emit-multi-class-vars multi)
    (emit-init-footer cls-name)
@@ -567,6 +799,80 @@
                 (hash-ref (hash-ref evo 'verifier-gate) 'mcnemar-p-threshold))
         "None"))
   (format "        # RSI evolution contract (spec §5.1)\n        self.EVOLUTION: Dict[str, Any] = ~a\n\n" body))
+
+;; F-AMS-3（US-04）：产物带 STATE_FIELDS，运行期可读。没有 :state 时显式空 dict。
+(define (py-literal v)
+  (cond [(boolean? v) (if v "True" "False")]
+        [(string? v) (py-string v)]
+        [(integer? v) (number->string v)]
+        [(real? v) (number->string (exact->inexact v))]
+        [(symbol? v) (py-string (symbol->string v))]
+        [(null? v) "None"]
+        [(list? v) (string-append "[" (string-join (map py-literal v) ", ") "]")]
+        [else (py-string (to-str v))]))
+
+(define (emit-state-dict parsed)
+  (define st (hash-ref parsed 'state #f))
+  (define body
+    (if st
+        (format "{~a}"
+                (string-join
+                 (for/list ([f (in-list (hash-ref st 'fields))])
+                   (string-append
+                    (py-string (hash-ref f 'name))
+                    ": {'type': "
+                    (py-string (hash-ref f 'type))
+                    (if (hash-ref f 'has-default)
+                        (string-append ", 'default': " (py-literal (hash-ref f 'default)))
+                        "")
+                    "}"))
+                 ", "))
+        "{}"))
+  (format (string-append
+           "        # F-AMS-3 state fields (US-04)\n"
+           "        self.STATE_FIELDS: Dict[str, Any] = ~a\n\n")
+          body))
+
+;; F-AMS-1（US-05）：产物带 WORKFLOW（入口 + 节点表 + 边表 + 环表），运行期可读。
+(define (emit-workflow-dict parsed)
+  (define wf (hash-ref parsed 'workflow #f))
+  (define body
+    (if wf
+        (format "{'entry': ~a, 'nodes': [~a], 'edges': [~a], 'loops': [~a]}"
+                (py-string (hash-ref wf 'entry))
+                (string-join
+                 (for/list ([n (in-list (hash-ref wf 'nodes))])
+                   (format (string-append
+                            "{'name': ~a, 'type': ~a, 'handler': ~a, "
+                            "'static': ~a, 'dynamic': ~a, 'output_fields': [~a]}")
+                           (py-string (hash-ref n 'name))
+                           (py-string (hash-ref n 'type))
+                           (if (hash-ref n 'handler)
+                               (py-string (hash-ref n 'handler))
+                               "None")
+                           (py-string (hash-ref n 'static '""))
+                           (py-string (hash-ref n 'dynamic '""))
+                           (string-join (map py-string (hash-ref n 'outputs '())) ", ")))
+                 ", ")
+                (string-join
+                 (for/list ([ed (in-list (hash-ref wf 'edges))])
+                   (format "{'from': ~a, 'to': ~a, 'kind': ~a}"
+                           (py-string (hash-ref ed 'from))
+                           (py-string (hash-ref ed 'to))
+                           (py-string (hash-ref ed 'kind))))
+                 ", ")
+                (string-join
+                 (for/list ([l (in-list (hash-ref wf 'loops))])
+                   (format "{'nodes': [~a], 'while': ~a, 'max_rounds': ~a}"
+                           (string-join (map py-string (hash-ref l 'nodes)) ", ")
+                           (py-string (hash-ref l 'while))
+                           (hash-ref l 'max-rounds)))
+                 ", "))
+        "None"))
+  (format (string-append
+           "        # F-AMS-1 workflow graph (US-05)\n"
+           "        self.WORKFLOW: Dict[str, Any] = ~a\n\n")
+          body))
 
 (define (emit-header parsed)
   (define cls-name (string-append (pascal-case (to-str (hash-ref parsed 'name))) "Harness"))

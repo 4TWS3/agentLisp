@@ -15,6 +15,7 @@
 | B-07 | 故事图 US-26 判据「引擎消费数 13 → 21」未达 | 故事偏离 | US-26 交底 §6 | 8 个声明层仍不消费 | 待 P4-1/P4-2 编排接线后回填 |
 | B-08 | v2 CLI（`runtime/cli.py`）从未实现；pyproject 的 `agentlisp2` entry point 指向它 | 缺陷 | US-01 实测（打包 + 安装 + 跑 CLI） | 装了包 `agentlisp2` 跑不起来 | 已删 entry point；若要做 v2 CLI，单开故事 |
 | B-09 | 真 provider 不传工具 schema：模型永不出 tool_calls，只有 Mock 能驱动工具 | 缺陷（已在 US-29 修） | US-29 实测 | 真模型 + 真工具路径断，测试却全绿 | 已修 `llm_client` + `base_harness_v2`；补 `tests/test_tool_schema_passed.py` |
+| B-10 | `compiler/checker.rkt:666` 用 `log-warning`，默认不显示（需 PLTSTDERR），警告等于静默 | 缺陷 | US-08 实测（同机制） | 用户看不到该警告 | 改 `eprintf`，或让 `main.rkt` 配 logger 级别 |
 
 ---
 

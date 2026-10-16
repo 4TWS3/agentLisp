@@ -176,6 +176,12 @@
 | 20 | Release 工作流绿 | US-38 | 本地结构核对 | **部分**（CI 真绿待验证；见 `docs/handoff/20261014_us38_release_workflow_handoff.md`） |
 | 21 | pip install | US-01 | 本地打包安装自证 | **部分**（TestPyPI 待发；见 `docs/handoff/20261014_us01_pip_install_handoff.md`） |
 | 22 | 真实环境验收 | US-29 | 真模型 + 真工具 | **已完成**（Ollama qwen3:4b + 真 shell；见 `docs/handoff/20261014_us29_real_env_handoff.md`） |
+| 23 | 状态字段声明 | US-04 | `(:state :fields …)` -> `STATE_FIELDS` | **已完成** |
+| 24 | 工作流图 | US-05 | `(:workflow …)` 4 类拓扑 -> 节点与边 | **已完成** |
+| 25 | 确定性节点 | US-07 | `:handler` 格式编译期校验 | **已完成** |
+| 26 | 非法工作流编译期拒 | US-09 | 引用/入口/可达/环 -> rc=1 | **已完成**（见 `docs/handoff/20261014_us04_us05_us07_us09_workflow_handoff.md`） |
+| 27 | 节点级提示插值 | US-08 | `{field}` 只在 :dynamic；未知字段拒 | **已完成** |
+| 28 | 状态字段可达性 | US-10 | 读未声明 -> rc=1；只写不读 -> 警告 | **已完成**（见 `docs/handoff/20261014_us08_us10_interpolation_handoff.md`） |
 
 **为什么第 1 项最紧**：E2E 红灯在 main 上。它不修，任何「已验证」的说法都不成立。
 
