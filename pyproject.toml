@@ -107,7 +107,9 @@ all = [
 
 [project.scripts]
 agentlisp = "agentlisp_runtime.cli:app"
-agentlisp2 = "runtime.cli:app"
+# US-01 实测：agentlisp2 曾指向 runtime.cli:app，但 runtime/cli.py 从未存在。
+# 装了包也跑不起来 = 声称能做却做不到。已删。若要做 v2 CLI，单开故事。
+# （源码保留 python/agentlisp_runtime 的 agentlisp）
 
 [build-system]
 requires = ["hatchling>=1.21.0"]
