@@ -53,6 +53,25 @@ def test_registry_equals_runtime_plus_non_runtime() -> None:
     )
 
 
+def test_registry_count_equals_landed_plus_declared_layers() -> None:
+    """US-32：注册表数 == LANDED + 显式声明层数（无第三态）。"""
+    from runtime.patterns import DECLARED_ONLY, LANDED, NON_RUNTIME_KINDS
+
+    got = _registry_kinds()
+    want = len(LANDED) + len(DECLARED_ONLY) + len(NON_RUNTIME_KINDS)
+    assert len(got) == want, (
+        "注册表数 "
+        + str(len(got))
+        + " != LANDED("
+        + str(len(LANDED))
+        + ") + 声明层("
+        + str(len(DECLARED_ONLY))
+        + ") + 非运行期("
+        + str(len(NON_RUNTIME_KINDS))
+        + ")"
+    )
+
+
 def test_every_handler_is_a_runtime_kind() -> None:
     """有 handler 但不在 KIND_SLOTS -> 悬空。"""
     from runtime.patterns import CONTRACTED, HANDLERS

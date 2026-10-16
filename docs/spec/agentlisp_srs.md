@@ -388,6 +388,7 @@ CR41_BASELINE_PASSED_COUNT: 158
 | **STD-A10** | 架构 | 测试目录清单覆盖全部测试 | `tools/test_paths.txt` + `tools/verify_local.sh`（坑 #34） |
 | **STD-A11** | 架构 | 已登记模式必须有契约 + 运行时测试 | `runtime/patterns/__init__.py` 的 KIND_SLOTS + `docs/spec/pattern_runtime_contracts/` + `tests/patterns_runtime/` |
 | **STD-A12** | 架构 | 契约栏位必须齐备且有内容（US-33 / P1-4 / B5） | `docs/spec/pattern_runtime_contracts/*.md` 的 id/槽位/输入/期望/反证/端口/不承诺 |
+| **STD-A13** | 架构 | 模式定义不得调 LLM（US-34 / 不变式 I2） | `runtime/patterns/` 下无 LLM 客户端调用（achat / llm_client / AnthropicClient / OpenAIClient） |
 | **STD-E3** | 工程 | 静默 except 检查（与 P5 共用实现） | 同 STD-P5 |
 ### 孤儿需求核查（非孤儿 = 正文中 §3/§4/§5 章节存在该 SRS-ID 定义 + ≥1 条 pytest 用例覆盖；孤儿数=0）
 

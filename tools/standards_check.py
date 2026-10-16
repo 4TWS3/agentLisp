@@ -265,6 +265,24 @@ def _check_a12_contract_columns() -> tuple[bool, str]:
     return _result(True, f"{len(files)} 份契约栏位齐备且非空（id/槽位/输入/期望/反证/端口/不承诺）")
 
 
+def _check_a13_pattern_defs_have_no_llm_call() -> tuple[bool, str]:
+    """A13 模式定义只用声明式，不得调 LLM（US-34 / 不变式 I2 / B10）。
+
+    模式 handler 必须是确定性纯函数。调 LLM 会让模式行为不可复现。
+    """
+    hits: list[str] = []
+    patterns_dir = ROOT / "runtime" / "patterns"
+    for path in sorted(patterns_dir.glob("*.py")):
+        for i, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+            code = line.split("#", 1)[0]
+            for tok in ("achat(", "llm_client", "AnthropicClient", "OpenAIClient"):
+                if tok in code:
+                    hits.append(path.name + ":" + str(i) + " " + tok)
+    if hits:
+        return _result(False, "模式定义出现 LLM 调用：" + "；".join(hits))
+    return _result(True, "runtime/patterns/*.py 无 LLM 调用（确定性纯函数）")
+
+
 def _check_p4_no_silent_failure() -> tuple[bool, str]:
     """P4 不许沉默：编译失败时进程不得返回 0（宏展开失败曾只打日志、仍返回 0）。"""
     bad = ROOT / ".tmp_standards_bad_macro.al"
@@ -735,6 +753,12 @@ CHECKS: list[dict] = [
         "fn": _check_a12_contract_columns,
     },
     {
+        "id": "A13",
+        "role": "架构",
+        "title": "模式定义不得调 LLM（US-34 / 不变式 I2）",
+        "fn": _check_a13_pattern_defs_have_no_llm_call,
+    },
+    {
         "id": "E3",
         "role": "工程",
         "title": "静默 except 检查（与 P5 共用）",
@@ -760,6 +784,7 @@ CLOSED_IDS = (
     "A10",
     "A11",
     "A12",
+    "A13",
     "E3",
 )
 

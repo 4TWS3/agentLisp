@@ -182,6 +182,12 @@
 | 26 | 非法工作流编译期拒 | US-09 | 引用/入口/可达/环 -> rc=1 | **已完成**（见 `docs/handoff/20261014_us04_us05_us07_us09_workflow_handoff.md`） |
 | 27 | 节点级提示插值 | US-08 | `{field}` 只在 :dynamic；未知字段拒 | **已完成** |
 | 28 | 状态字段可达性 | US-10 | 读未声明 -> rc=1；只写不读 -> 警告 | **已完成**（见 `docs/handoff/20261014_us08_us10_interpolation_handoff.md`） |
+| 29 | 注册表条目无悬空 | US-32 | 注册表数 == LANDED + 声明层 | **已完成** |
+| 30 | 模式定义只用声明式 | US-34 | 全仓无 LLM 调用 | **已完成**（标准 A13；见 `docs/handoff/20261014_us32_us34_registry_llm_invariant_handoff.md`） |
+| 31 | 工具调用被拦截 | US-15 | constrain 段生效 + 留痕 | **已完成** |
+| 32 | 输出文本被校验 | US-16 | verify 段生效 | **已完成** |
+| 33 | 人工审批生效 | US-17 | 未获批不得执行 + 留痕 | **已完成** |
+| 34 | 证据引用被校验 | US-18 | 无证据 id -> 拦 + 留痕 | **已完成**（见 `docs/handoff/20261014_us15_us18_three_guards_handoff.md`） |
 
 **为什么第 1 项最紧**：E2E 红灯在 main 上。它不修，任何「已验证」的说法都不成立。
 

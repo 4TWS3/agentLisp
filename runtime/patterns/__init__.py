@@ -287,7 +287,10 @@ class PatternRuntime:
                 answer = str(observation.get("answer") or observation.get("final_answer") or "")
                 ids = observation.get("evidence_ids") or []
                 if answer or ids:
-                    return fn(answer, list(ids))
+                    ok, why = fn(answer, list(ids))
+                    # US-18：证据拦截必须留痕（此前只返回，不记录）
+                    self._record(getattr(h, "kind", "?"), "verify", {"ok": ok, "why": why})
+                    return ok, why
         # decomposer：观察值里的结构化字段必须齐全（契约 CT-DECOMPOSER-01）
         for h in self.handlers:
             fn = getattr(h, "validate_payload", None)
@@ -296,10 +299,9 @@ class PatternRuntime:
                 if isinstance(payload, dict):
                     ok, bad = fn(payload)
                     if not ok:
-                        return (
-                            False,
-                            f"decomposer：字段不齐或类型错：{bad}（契约 CT-DECOMPOSER-01）",
-                        )
+                        why = f"decomposer：字段不齐或类型错：{bad}（契约 CT-DECOMPOSER-01）"
+                        self._record(getattr(h, "kind", "?"), "verify", {"ok": False, "why": why})
+                        return (False, why)
         # evaluator：观察值带 score 时按双阈值判定（契约 CT-EVALUATOR-01）
         for h in self.handlers:
             fn = getattr(h, "evaluate", None)
@@ -309,10 +311,9 @@ class PatternRuntime:
                 except (TypeError, ValueError):
                     continue
                 if verdict != "pass":
-                    return (
-                        False,
-                        f"evaluator：score={observation['score']} → {verdict}（契约 CT-EVALUATOR-01）",
-                    )
+                    why = f"evaluator：score={observation['score']} → {verdict}（契约 CT-EVALUATOR-01）"
+                    self._record(getattr(h, "kind", "?"), "verify", {"ok": False, "why": why})
+                    return (False, why)
         # ---- M2 批 B：reflect / guardrails-safety / reasoning / goal-setting 观察门 ----
         kinds = {getattr(h, "kind", None): h for h in self.handlers}
         if isinstance(observation, dict):

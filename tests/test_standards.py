@@ -39,7 +39,7 @@ def test_registry_listed_and_closed() -> None:
     assert cp.returncode == 0, cp.stderr[-300:]
     # 条数写死是**故意的**：新增判据必须同时改这里，从而强制「登记 + 有人看过」。
     # 若只想加判据而不想改测试，说明你在绕过封闭枚举。
-    assert "共 18 条" in cp.stdout, f"注册条数异常：{cp.stdout[-300:]}"
+    assert "共 19 条" in cp.stdout, f"注册条数异常：{cp.stdout[-300:]}"
 
 
 def test_unknown_check_id_is_rejected() -> None:
