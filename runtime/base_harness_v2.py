@@ -480,6 +480,29 @@ class BaseHarnessV2:
 
         _load_patterns(self)
 
+        # US-46 / P2-3：:evolution 契约的运行时消费点。
+        # 产物写 self.EVOLUTION（无 :evolution 块时 None）。这里读取 + 校验形状，
+        # 供离线 Evolver / 审计读取，避免契约空转（实测此前全仓零引用）。
+        self.evolution: dict[str, Any] | None = self._load_evolution_contract()
+
+    def _load_evolution_contract(self) -> dict[str, Any] | None:
+        """读产物 self.EVOLUTION（RSI 规格 §5.1）。无块返回 None；形状错即抛出。"""
+        raw = getattr(self, "EVOLUTION", None)
+        if raw is None:
+            return None
+        if not isinstance(raw, dict):
+            raise ValueError("EVOLUTION 契约须为 dict，得到 " + type(raw).__name__)
+        for key in ("mutation_targets", "immutable_invariants", "verifier_gate"):
+            if key not in raw:
+                raise ValueError("EVOLUTION 契约缺键 " + key + "（规格 §5.1）")
+        logger.info(
+            "[Evolution] 契约已读取：targets=%s invariants=%s gate=%s",
+            raw.get("mutation_targets"),
+            raw.get("immutable_invariants"),
+            (raw.get("verifier_gate") or {}).get("name"),
+        )
+        return raw
+
     # ------------------------------------------------------------------
     # 对外入口：run / step
     # ------------------------------------------------------------------
