@@ -281,8 +281,15 @@ def _check_exit_ge4_panic(tmp_path: Path) -> None:
     )
 
 
+def _pkg_version() -> str:
+    from runtime import __version__
+
+    return __version__
+
+
 def _check_version_flags_and_2_0_0(tmp_path: Path) -> None:
     _ = tmp_path
+    pkg_version = _pkg_version()
     required_keywords: list[str] = [
         "-i",
         "--input",
@@ -313,17 +320,17 @@ def _check_version_flags_and_2_0_0(tmp_path: Path) -> None:
         found_version_output = False
         for vflag in ("--version", "-V"):
             cp = _racket(vflag, timeout_s=5.0)
-            if cp.returncode == 0 and "2.3.0" in (cp.stdout + cp.stderr):
+            if cp.returncode == 0 and pkg_version in (cp.stdout + cp.stderr):
                 found_version_output = True
                 break
         if not found_version_output:
             raise AssertionError(
-                "[version_v_flag path-A] racket 路径 A 但 --version / -V 未输出 '2.0.0'"
+                "[version_v_flag path-A] racket 路径 A 但 --version / -V 未输出 " + pkg_version
             )
         return
 
     three_all = "\n".join([pyproject_src, srs_src, checker_src])
-    assert "2.3.0" in three_all, (
+    assert pkg_version in three_all, (
         "[version_v_flag fallback] 三源（pyproject / SRS / checker）都未包含 "
         "'2.0.0' 版本字符串，无法证明 --version 输出语义"
     )
@@ -335,4 +342,4 @@ def _check_version_flags_and_2_0_0(tmp_path: Path) -> None:
 
 def re_match(pyproject_src: str) -> bool:
     m = re.search(r'version\s*=\s*"([^"]+)"', pyproject_src)
-    return bool(m and "2.3.0" in m.group(1))
+    return bool(m and m.group(1) == _pkg_version())

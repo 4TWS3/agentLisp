@@ -16,7 +16,7 @@
 | compiler/emitter.rkt | 369816cfb7ed03a189e315589bcd1b74666bf227f7e422dfb2ac9229722db0a9 | 未改 |
 | compiler/agentlisp_compiler.rkt | c3339da6d2db433f3d0baea00f591a6fb35d9b682512487aca0fc4d91b1990d1 | 追认：P0 两处（__future__ 位置；build_context 委托基类） |
 | .github/workflows/ci.yml | 8872af2347a15428d34ab085f67b5d6d82ffe2aa33ed8bcb5aa291b266b8cb2b | 未改 |
-| pyproject.toml | 2d1e3118ee968fea6df70b44af6ff590a74e79377ce02cf670f0896594715fb1 | 未改 |
+| pyproject.toml | fb67a34c115c30d3e0f2c63ab1e2624afc120aca2cc0f8bca87728597bae612f | 追认：US-37 版本 2.3.0 → 2.3.1（v2.3.0 已知不可用） |
 
 ---
 

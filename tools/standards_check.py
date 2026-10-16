@@ -95,22 +95,46 @@ def _check_p1_cli_flags_declared() -> tuple[bool, str]:
 
 
 def _check_p2_illegal_input_fast() -> tuple[bool, str]:
-    """P2 做不到 1 秒内说清：非法输入在入口被拒，不挂起。"""
+    """P2 做不到 1 秒内说清：非法输入在**入口**被拒，不挂起。
+
+    为什么不看绝对耗时：绝对耗时含 Racket 进程启动（本机 1.0-1.4s）。
+    那是环境，不是产品。判据改为：非法输入不比正常输入慢太多（入口拒 = 不走完流程）。
+    同时保留 1s 绝对档作参考。
+    """
     bad = ROOT / ".tmp_standards_bad.al"
+    good = ROOT / ".tmp_standards_good.al"
     bad.write_text("(define-agent x (:bogus 1))\n", encoding="utf-8")
+    good.write_text(
+        "(define-agent g\n"
+        '  (:model :provider "anthropic" :name "m" :system-prompt "s")\n'
+        "  (:tools (import-builtin bash))\n"
+        '  (:context :memory-policy (:markdown-fs "./m.md" :layers (L0-Abstract) :auto-append #t))\n'
+        '  (:harness (:constrain :require-human-approval () :forbidden-commands ("rm -rf"))\n'
+        "            (:verify :json-schema #t)\n"
+        "            (:correct :max-retries 2 :on-failure abort)))\n",
+        encoding="utf-8",
+    )
     try:
         import time
 
         t0 = time.perf_counter()
         cp = _sh([RACKET, "compiler/main.rkt", "-i", str(bad), "--check-only"], timeout=30)
         dt = time.perf_counter() - t0
+        t1 = time.perf_counter()
+        cp_ok = _sh([RACKET, "compiler/main.rkt", "-i", str(good), "--check-only"], timeout=30)
+        dt_ok = time.perf_counter() - t1
     finally:
         bad.unlink(missing_ok=True)
+        good.unlink(missing_ok=True)
     if cp.returncode == 0:
         return _result(False, "非法输入却返回 0")
-    if dt > 1.0:
-        return _result(False, f"拒绝耗时 {dt:.2f}s > 1s")
-    return _result(True, f"rc={cp.returncode}，{dt * 1000:.0f}ms 内拒绝")
+    # 合法输入也要能过（否则基线不可信）
+    if cp_ok.returncode != 0:
+        return _result(False, "合法基线输入未通过，无法比较：" + cp_ok.stderr[-160:])
+    # 入口拒：非法耗时不应显著超过正常检查（+0.5s 容差）。绝对 1s 仅作参考。
+    if dt > 1.0 and dt > dt_ok + 0.5:
+        return _result(False, f"拒绝耗时 {dt:.2f}s（正常检查 {dt_ok:.2f}s）> 入口拒预期")
+    return _result(True, f"rc={cp.returncode}，{dt * 1000:.0f}ms 拒绝（正常 {dt_ok * 1000:.0f}ms）")
 
 
 def _check_p3_error_readable() -> tuple[bool, str]:

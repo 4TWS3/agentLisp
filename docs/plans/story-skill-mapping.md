@@ -169,6 +169,7 @@
 | 13 | 2 个孤儿条目收口 | US-28 | memory / multi-agent：接线或登记为声明层 | **已完成**（登记为非运行期；见 `docs/handoff/20261014_us28_registry_closed_handoff.md`） |
 | 14 | :evolution 契约消费点 | US-46 | 运行时有可观测点读取 EVOLUTION | **已完成**（`harness.evolution`；见 `docs/handoff/20261014_us46_evolution_consumption_handoff.md`） |
 | 15 | C1 冻结文件追认 | US-39 | 追认 `agentlisp_compiler.rkt` | **已完成**（追认表 + 哈希核对；见 `docs/handoff/20261014_us39_c1_freeze_ratification_handoff.md`） |
+| 16 | v2.3.1 补丁 | US-37 | 制品不含已知不可用项 | **已完成**（版本 2.3.1；v2.3.0 标不可用；见 `docs/handoff/20261014_us37_v231_patch_handoff.md`） |
 
 **为什么第 1 项最紧**：E2E 红灯在 main 上。它不修，任何「已验证」的说法都不成立。
 
