@@ -530,6 +530,29 @@ class BaseHarnessV2:
         )
         return raw
 
+    def _write_online_trace(self) -> None:
+        """FR-EVO-3（US-48）：在线循环只写元数据，**绝不写回 .al 源码**。"""
+        if not (self.evolution and self.evolution.get("online_trace")):
+            return
+        import json
+        import os
+        from pathlib import Path
+
+        root = Path(os.environ.get("AGENTLISP_ONLINE_TRACE_DIR", "artifacts/online_trace"))
+        root.mkdir(parents=True, exist_ok=True)
+        path = root / (str(self._trace.run_id) + ".json")
+        payload = {
+            "run_id": self._trace.run_id,
+            "agent_name": self._trace.agent_name,
+            "status": self._trace.status,
+            "turns": len(self._trace.turns),
+            "final_answer": self._trace.final_answer,
+            "first_error": (self._trace.first_error.to_dict() if self._trace.first_error else None),
+            "evolution": dict(self.evolution),
+            "note": "online trace writes metadata only; source is never written",
+        }
+        path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+
     def _set_error(self, code: str, message: str, stage: str) -> None:
         """US-43：写结构化错误。首错只记一次（first_error）。"""
         self._trace.error = message
@@ -590,6 +613,7 @@ class BaseHarnessV2:
             raise
         finally:
             self._trace.finished_at = datetime.now(UTC)
+            self._write_online_trace()
             self.status_bar.on_done(
                 self._trace.run_id, self._trace.status, self._trace.final_answer, self._trace.error
             )

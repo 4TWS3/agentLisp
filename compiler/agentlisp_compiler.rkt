@@ -215,14 +215,26 @@
 (define evolution-mutation-targets '(:pattern-macros :skills :harness-retry))
 (define evolution-invariants       '(:kv-alignment :workspace-root :forbidden-commands))
 
+(define (parse-online-trace v)
+  (cond [(eq? v #t) #t]
+        [(eq? v #f) #f]
+        [else (raise-parse ':evolution (format "(:online-trace …) 必须是 #t 或 #f，得到 ~s" v))]))
+
 (define (parse-evolution blk)
   (match blk
+    ;; US-48：可选 (:online-trace #t) 作为第一个属性（FR-EVO-3）
+    [(list ':evolution (list ':online-trace flag) mt iv vg)
+     (hash 'online-trace         (parse-online-trace flag)
+           'mutation-targets     (parse-evolution-targets mt)
+           'immutable-invariants (parse-evolution-invariants iv)
+           'verifier-gate        (parse-verifier-gate vg))]
     [(list ':evolution mt iv vg)
-     (hash 'mutation-targets     (parse-evolution-targets mt)
+     (hash 'online-trace         #f
+           'mutation-targets     (parse-evolution-targets mt)
            'immutable-invariants (parse-evolution-invariants iv)
            'verifier-gate        (parse-verifier-gate vg))]
     [_ (raise-parse ':evolution
-                    "必需是 (:evolution (:mutation-targets …) (:immutable-invariants …) (:verifier-gate …))")]))
+                    "必需是 (:evolution [(:online-trace #t|#f)] (:mutation-targets …) (:immutable-invariants …) (:verifier-gate …))")]))
 
 (define (parse-evolution-targets mt)
   (match mt
@@ -785,9 +797,11 @@
   (define evo (hash-ref parsed 'evolution #f))
   (define body
     (if evo
-        (format (string-append "{'mutation_targets': [~a], 'immutable_invariants': [~a], "
+        (format (string-append "{'online_trace': ~a, 'mutation_targets': [~a], "
+                               "'immutable_invariants': [~a], "
                                "'verifier_gate': {'name': ~a, 'min_pass_rate': ~a, "
                                "'mcnemar_p_threshold': ~a}}")
+                (if (hash-ref evo 'online-trace #f) "True" "False")
                 (string-join (for/list ([t (in-list (hash-ref evo 'mutation-targets))])
                                (py-string (symbol->string t)))
                              ", ")
