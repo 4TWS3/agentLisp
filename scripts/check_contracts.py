@@ -13,6 +13,10 @@ from __future__ import annotations
 
 import importlib.util
 import sys
+
+if hasattr(sys.stdout, "reconfigure"):
+    # Windows 默认 cp1252：脚本里有中文，不重设会 UnicodeEncodeError（CI 实测）
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
