@@ -217,68 +217,121 @@
 ;;; ---------- RSI 演进契约 §5.1：(:evolution …) ----------
 ;; 值域封闭：突变目标与不可变不变量都只能取白名单内的符号。
 ;; 这样离线 Evolver 生成的 :evolution 若越界，会在编译期被拦下。
-(define evolution-mutation-targets '(:pattern-macros :skills :harness-retry))
-(define evolution-invariants       '(:kv-alignment :workspace-root :forbidden-commands))
+(define evolution-mutation-targets
+  '(:pattern-macros :prompt-patches :skills :harness-retry))
+(define evolution-invariants
+  '(:kv-alignment :workspace-root :forbidden-commands :model-provider))
 
 (define (parse-online-trace v)
   (cond [(eq? v #t) #t]
         [(eq? v #f) #f]
         [else (raise-parse ':evolution (format "(:online-trace …) 必须是 #t 或 #f，得到 ~s" v))]))
 
+;; RSI 规格把目标/不变量写成 'skills（符号），实现写成 :skills（关键字）。两种都收。
+(define (evolution-normalize-sym s)
+  (cond [(not (symbol? s)) s]
+        [(let ([str (symbol->string s)])
+           (and (> (string-length str) 0) (char=? (string-ref str 0) #\:))) s]
+        [else (string->symbol (string-append ":" (symbol->string s)))]))
+
+(define (parse-target-list ts)
+  (when (null? ts) (raise-parse ':evolution ":mutation-targets 不能为空"))
+  (for/list ([t (in-list ts)])
+    (define n (evolution-normalize-sym t))
+    (unless (memq n evolution-mutation-targets)
+      (raise-parse ':evolution
+                   (format "未知突变目标 ~s；允许：~s" t evolution-mutation-targets)))
+    n))
+
+(define (parse-invariant-list is)
+  (for/list ([i (in-list is)])
+    (define n (evolution-normalize-sym i))
+    (unless (memq n evolution-invariants)
+      (raise-parse ':evolution
+                   (format "未知不变量 ~s；允许：~s" i evolution-invariants)))
+    n))
+
+;; FR-EVO-2（US-47）：突变目标侵入不可变不变量 -> ERR_IMMUTABLE_INVARIANT_VIOLATION
+;; 在枚举校验之前比原始符号，这样错误更具体（先报侵入，不报未知不变量）。
+(define (check-invariant-overlap raw-targets raw-invariants)
+  (define norms (map evolution-normalize-sym raw-invariants))
+  (for ([t (in-list raw-targets)])
+    (define n (evolution-normalize-sym t))
+    (when (memq n norms)
+      (raise-check 'ERR_IMMUTABLE_INVARIANT_VIOLATION
+                   (format "突变目标 ~s 同时列为不可变不变量（FR-EVO-2）" t)))))
+
+(define (keyword-evolution? blk)
+  (and (pair? blk) (pair? (cdr blk)) (dsl-key? (cadr blk))))
+
+(define (evolution-prop props tag)
+  (let loop ([xs props])
+    (cond [(null? xs) #f]
+          [(and (list? (car xs)) (pair? (car xs)) (eq? (car (car xs)) tag)) (car xs)]
+          [else (loop (cdr xs))])))
+
 (define (parse-evolution blk)
-  (match blk
-    ;; US-48：可选 (:online-trace #t) 作为第一个属性（FR-EVO-3）
-    [(list ':evolution (list ':online-trace flag) mt iv vg)
-     (hash 'online-trace         (parse-online-trace flag)
-           'mutation-targets     (parse-evolution-targets mt)
-           'immutable-invariants (parse-evolution-invariants iv)
-           'verifier-gate        (parse-verifier-gate vg))]
-    [(list ':evolution mt iv vg)
-     (hash 'online-trace         #f
-           'mutation-targets     (parse-evolution-targets mt)
-           'immutable-invariants (parse-evolution-invariants iv)
-           'verifier-gate        (parse-verifier-gate vg))]
-    [_ (raise-parse ':evolution
-                    "必需是 (:evolution [(:online-trace #t|#f)] (:mutation-targets …) (:immutable-invariants …) (:verifier-gate …))")]))
-
-(define (parse-evolution-targets mt)
-  (match mt
-    [(list ':mutation-targets ts ...)
-     (when (null? ts) (raise-parse ':evolution ":mutation-targets 不能为空"))
-     (for ([t (in-list ts)])
-       (unless (memq t evolution-mutation-targets)
-         (raise-parse ':evolution
-                      (format "未知突变目标 ~s；允许：~s" t evolution-mutation-targets))))
-     ts]
-    [_ (raise-parse ':evolution "缺少 (:mutation-targets …)")]))
-
-(define (parse-evolution-invariants iv)
-  (match iv
-    [(list ':immutable-invariants is ...)
-     (for ([i (in-list is)])
-       (unless (memq i evolution-invariants)
-         (raise-parse ':evolution
-                      (format "未知不变量 ~s；允许：~s" i evolution-invariants))))
-     is]
-    [_ (raise-parse ':evolution "缺少 (:immutable-invariants …)")]))
+  (cond
+    ;; US-47：RSI 规格的 keyword 形式（§3.1 EBNF）
+    [(keyword-evolution? blk)
+     (define kw (keyword-kvs (cdr blk)
+                             '(:online-trace :offline-evolver :mutation-targets
+                               :immutable-invariants :verifier-gate)))
+     (define raw-targets (hash-ref kw ':mutation-targets '()))
+     (define raw-invariants (hash-ref kw ':immutable-invariants '()))
+     (check-invariant-overlap raw-targets raw-invariants)
+     (define targets (parse-target-list raw-targets))
+     (define invariants (parse-invariant-list raw-invariants))
+     (hash 'online-trace (if (hash-has-key? kw ':online-trace)
+                             (parse-online-trace (hash-ref kw ':online-trace))
+                             #f)
+           'offline-evolver (if (hash-has-key? kw ':offline-evolver)
+                                (to-str (hash-ref kw ':offline-evolver))
+                                "")
+           'mutation-targets targets
+           'immutable-invariants invariants
+           'verifier-gate (parse-verifier-gate (hash-ref kw ':verifier-gate #f)))]
+    [else
+     (define props (cdr blk))
+     (define ot (evolution-prop props ':online-trace))
+     (define oe (evolution-prop props ':offline-evolver))
+     (define mt (evolution-prop props ':mutation-targets))
+     (define iv (evolution-prop props ':immutable-invariants))
+     (define vg (evolution-prop props ':verifier-gate))
+     (unless (and mt iv vg)
+       (raise-parse ':evolution
+                    "必需是 (:evolution [(:online-trace #t|#f)] (:mutation-targets …) (:immutable-invariants …) (:verifier-gate …)) 或 keyword 形式"))
+     (check-invariant-overlap (cdr mt) (cdr iv))
+     (define targets (parse-target-list (cdr mt)))
+     (define invariants (parse-invariant-list (cdr iv)))
+     (hash 'online-trace (if ot (parse-online-trace (cadr ot)) #f)
+           'offline-evolver (if oe (to-str (cadr oe)) "")
+           'mutation-targets targets
+           'immutable-invariants invariants
+           'verifier-gate (parse-verifier-gate vg))]))
 
 (define (parse-verifier-gate vg)
-  ;; (:verifier-gate "t2-bench@v1.0" :min-pass-rate 0.90 :mcnemar-p-threshold 0.05)
-  (match vg
-    [(list ':verifier-gate nm k1 v1 k2 v2)
-     (unless (and (string? nm) (not (string=? nm "")))
-       (raise-parse ':evolution ":verifier-gate 的名称必须是非空字符串"))
-     (unless (eq? k1 ':min-pass-rate)
-       (raise-parse ':evolution ":verifier-gate 缺 :min-pass-rate"))
-     (unless (eq? k2 ':mcnemar-p-threshold)
-       (raise-parse ':evolution ":verifier-gate 缺 :mcnemar-p-threshold"))
-     (unless (real? v1) (raise-parse ':evolution ":min-pass-rate 必须是数"))
-     (unless (real? v2) (raise-parse ':evolution ":mcnemar-p-threshold 必须是数"))
-     (hash 'name nm
-           'min-pass-rate (exact->inexact v1)
-           'mcnemar-p-threshold (exact->inexact v2))]
-    [_ (raise-parse ':evolution
-                    ":verifier-gate 必需是 (:verifier-gate \"名称\" :min-pass-rate N :mcnemar-p-threshold N)")]))
+  ;; 两种写法：(:verifier-gate "名" :min-pass-rate N :mcnemar-p-threshold N)
+  ;;           (:verifier-gate (:suite "名") :min-pass-rate N :mcnemar-p-threshold N)
+  (define body
+    (match vg
+      [(list ':verifier-gate (list ':suite nm) k1 v1 k2 v2) (list nm k1 v1 k2 v2)]
+      [(list ':verifier-gate nm k1 v1 k2 v2) (list nm k1 v1 k2 v2)]
+      [(list ':suite nm k1 v1 k2 v2) (list nm k1 v1 k2 v2)]
+      [_ (raise-parse ':evolution
+                      ":verifier-gate 必需是 (:verifier-gate [( :suite ) \"名称\"] :min-pass-rate N :mcnemar-p-threshold N)")]))
+  (match-define (list nm k1 v1 k2 v2) body)
+  (unless (and (string? nm) (not (string=? nm "")))
+    (raise-parse ':evolution ":verifier-gate 的名称必须是非空字符串"))
+  (unless (eq? k1 ':min-pass-rate)
+    (raise-parse ':evolution ":verifier-gate 缺 :min-pass-rate"))
+  (unless (eq? k2 ':mcnemar-p-threshold)
+    (raise-parse ':evolution ":verifier-gate 缺 :mcnemar-p-threshold"))
+  (unless (real? v1) (raise-parse ':evolution ":min-pass-rate 必须是数"))
+  (unless (real? v2) (raise-parse ':evolution ":mcnemar-p-threshold 必须是数"))
+  (hash 'name nm
+        'min-pass-rate (exact->inexact v1)
+        'mcnemar-p-threshold (exact->inexact v2)))
 
 ;;; ---------- F-AMS-3（US-04）：(:state :fields …) ----------
 ;; 状态字段：具名 + 类型 + 可选默认值。类型枚举封闭（新增类型要改这里，测试会红）。
@@ -819,11 +872,13 @@
   (define evo (hash-ref parsed 'evolution #f))
   (define body
     (if evo
-        (format (string-append "{'online_trace': ~a, 'mutation_targets': [~a], "
+        (format (string-append "{'online_trace': ~a, 'offline_evolver': ~a, "
+                               "'mutation_targets': [~a], "
                                "'immutable_invariants': [~a], "
                                "'verifier_gate': {'name': ~a, 'min_pass_rate': ~a, "
                                "'mcnemar_p_threshold': ~a}}")
                 (if (hash-ref evo 'online-trace #f) "True" "False")
+                (py-string (hash-ref evo 'offline-evolver ""))
                 (string-join (for/list ([t (in-list (hash-ref evo 'mutation-targets))])
                                (py-string (symbol->string t)))
                              ", ")

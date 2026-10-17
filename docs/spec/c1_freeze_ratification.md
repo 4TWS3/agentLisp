@@ -14,7 +14,7 @@
 | compiler/checker.rkt | c205f8efd5867eb345c1ddd19cca397b6265cb868d0f6850332818321bf1aa82 | 追认：US-11 加编译期组合校验（check-patterns 调 composition-errors） |
 | compiler/parser.rkt | eaeb130d495163434ce3bdeeddf15aca930c3d51fd6bc4130a59051cb46375c2 | 未改 |
 | compiler/emitter.rkt | 369816cfb7ed03a189e315589bcd1b74666bf227f7e422dfb2ac9229722db0a9 | 未改 |
-| compiler/agentlisp_compiler.rkt | afb74d59feecacf756c006b58bf83c5a0fececb3188cc0aca3663bf33c8c3da6 | 追认：P0；US-04~10 :state/:workflow；US-48 :online-trace；US-53 :effect |
+| compiler/agentlisp_compiler.rkt | 3efeb1d9f4393167f19c8644bccfe2951936f9bd1f862f9212be5e4a7c19ae8f | 追认：P0；US-04~10 :state/:workflow；US-48 :online-trace；US-53 :effect；US-47 RSI 规格对齐 |
 | .github/workflows/ci.yml | 8872af2347a15428d34ab085f67b5d6d82ffe2aa33ed8bcb5aa291b266b8cb2b | 未改 |
 | pyproject.toml | b4096e47ebb011dcae2cd79a26d22acf92e2944d3d395022b27d31dc6dc43683 | 追认：US-37 版本 2.3.1；US-01 删坏 entry point agentlisp2（runtime.cli 不存在） |
 
