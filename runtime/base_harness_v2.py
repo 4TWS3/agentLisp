@@ -480,6 +480,11 @@ class BaseHarnessV2:
 
         _load_patterns(self)
 
+        # F-AMS-7（US-19 批 1）：有 chain/planner 时建编排器；否则 None（走原循环）。
+        from runtime.orchestrator import build_orchestrator
+
+        self.orchestrator: Any = build_orchestrator(self.patterns)
+
         # US-46 / P2-3：:evolution 契约的运行时消费点。
         # 产物写 self.EVOLUTION（无 :evolution 块时 None）。这里读取 + 校验形状，
         # 供离线 Evolver / 审计读取，避免契约空转（实测此前全仓零引用）。
@@ -1063,6 +1068,20 @@ class BaseHarnessV2:
                 while True:
                     # 1) 组装 KV 对齐上下文（每轮 retry 都要重建，因为 correct 的 feedback 会追加进 trajectory）
                     messages = self.build_context()
+
+                    # F-AMS-7（US-19 批 1）：唯一决策点。有编排器时先问它，并留痕。
+                    if self.orchestrator is not None:
+                        action = self.orchestrator.select_next(
+                            {"step_index": max(0, self.step_count - 1)}
+                        )
+                        self.patterns.record_event("orchestrator", "select_next", action.as_event())
+                        if action.kind == "finish":
+                            report = action.report
+                            turn.status = "success"
+                            turn.answer = str(report)
+                            self.trajectory.append({"role": "assistant", "content": str(report)})
+                            await self._save_checkpoint()
+                            return {"status": "success", "final_answer": str(report)}
 
                     # 2) LLM 决策：CR-16 P1-5 Provider / CircuitBreaker / Context-Leakage 层
                     # US-29：工具 schema 必须真传给 provider。否则真模型永不出 tool_calls，

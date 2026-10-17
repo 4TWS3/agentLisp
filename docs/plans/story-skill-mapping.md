@@ -192,6 +192,7 @@
 | 36 | 主题分布可观测 | US-22 | trace 含分布与命中 | **已完成** |
 | 37 | 通信日志可观测 | US-23 | trace 含握手 + msg_id | **已完成**（见 `docs/handoff/20261014_us21_us22_us23_observability_handoff.md`） |
 | 38 | defmultiagent 内聚 | US-06 | 与等价 :workflow 产物一致 | **待定**（按 D2 翻转条件退回并列；见 `docs/handoff/20261014_us06_multiagent_workflow_merge_assessment.md`） |
+| 39 | 编排调度 | US-19 | 5 个编排 kind 的 trace 含步骤与 worker 名 | **部分**（批 1 chain/planner；见 `docs/handoff/20261014_us19_orchestrator_batch1_handoff.md`） |
 
 **为什么第 1 项最紧**：E2E 红灯在 main 上。它不修，任何「已验证」的说法都不成立。
 

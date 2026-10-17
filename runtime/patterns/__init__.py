@@ -395,6 +395,10 @@ def load(harness: Any, adapters: dict | None = None) -> PatternRuntime:
                     if hasattr(h, attr):
                         setattr(h, attr, port)
     harness.patterns = rt
+    # F-AMS-7（US-19）：载入模式后重建编排器（测试里常先设 PATTERNS 再 load）。
+    from runtime.orchestrator import build_orchestrator
+
+    harness.orchestrator = build_orchestrator(rt)
     return rt
 
 
