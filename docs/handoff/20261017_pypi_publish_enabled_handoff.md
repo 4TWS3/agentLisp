@@ -24,6 +24,7 @@
 | TestPyPI trusted publisher | 用户（早前已配） | 已有 |
 | 仓库变量 \`PUBLISH_PYPI=true\` | 用户（本轮） | 已设 |
 | 环境 \`pypi\` 的 Required reviewers | **我（gh api）** | **已移除** |
+| 环境 \`pypi\` 的 Wait timer | **我（gh api）** | **5 分钟** |
 | 环境 \`testpypi\` 的 branch policy | **我（gh api）** | **已移除** |
 
 依据用户明确要求「GitHub 上的不能你自己配吗」。
