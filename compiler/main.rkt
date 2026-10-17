@@ -544,9 +544,25 @@
   (define modern (reverse checked-agents))
   ;; 口径只有一处实现：build-generated-python（留空指纹文本 + 全文件指纹签进每块头）。
   ;; 这里不自己拼 unsigned —— 那会成为第二处实现，迟早与它分叉。
+  ;;
+  ;; B-01：现代 emitter **不可用或抛错时必须非 0 退出**。
+  ;; 为什么不能静默回退 legacy：产物形状会无声改变（P0-1 实测：注册表语法写错时
+  ;; rc=0，但产物是另一份东西）。失败必须留痕。
+  (define modern-build (safe-dyn COMPILER-PATH 'build-generated-python #f))
   (define modern-code
-    (and (pair? modern)
-         ((safe-dyn COMPILER-PATH 'build-generated-python (lambda (x) #f)) modern)))
+    (cond
+      [(not (pair? modern)) #f]
+      [(not modern-build)
+       (eprintf (string-append
+                 "EMITTER MISSING: build-generated-python 未加载"
+                 "（agentlisp_compiler.rkt 载入失败？）；拒绝静默回退 legacy\n"))
+       (exit/flush 1)]
+      [else
+       (with-handlers ([exn:fail?
+                        (lambda (e)
+                          (eprintf (format "EMITTER FAILED: ~a\n" (exn-message e)))
+                          (exit/flush 1))])
+         (modern-build modern))]))
   (define code
     (if modern-code
         modern-code

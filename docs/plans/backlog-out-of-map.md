@@ -3,23 +3,24 @@
 > 用途：故事地图之外发现的额外需求/缺陷，先登记，不在本轮实施。
 > 规则（用户指示 2026-10-14）：除 user-story-map.md 外的需求，暂时不做。
 > 处置：等地图的 R1–R3 全部完成后再评审。
+> **2026-10-17 更新：53 条故事已全部完成，本表进入逐个消化阶段。状态列见下。**
 
-| # | 项 | 类别 | 来源 | 影响 | 建议 |
-|---|---|---|---|---|---|
-| B-01 | `compiler/main.rkt` 的 `safe-dyn` 吞掉现代 emitter 异常，静默回退 legacy emitter | 缺陷 | P0-1 实测（误改注册表语法时 rc=0 但产物变形） | 违反「失败必须留痕」；产物形状无声改变 | 现代 emitter 抛错时非 0 退出并打印原因 |
-| B-02 | 提交门禁每次跑全量 pytest（约 3 分钟） | 效率 | US-35 | 提交变慢；可能诱使 `--no-verify` | 增量测试 / 按变更路径选测；不改变「红线必须拦」 |
-| B-03 | `git commit --no-verify` 可绕过门禁 | 已知边界 | US-35 | 门禁非强制 | 不修。git 固有出口；靠 CI 兜底 |
-| B-04 | 故事图 US-24 写「6 个观察值键」；实测 runtime 读 14 个键名 | 文档数字 | US-24 | 判据数字偏小 | R1 完成后修正故事图数字 |
-| B-05 | 6 份契约的「期望（可观测）」≤ 80 字节（hitl/router/rag/guardrails-safety/reflect/decomposition 等），未证明行为 | 内容质量 | 机器验证报告 §4；US-33 交底 §6 | 契约只说「handler 在 + 指令进上下文」，未断言行为 | 补内容；并可加 A12 长度阈值 |
-| B-06 | V1 五宏的 GENERIC 分支不能编译：`:model-name` 未映射成 `:name`；`:tools` 产成 `(:tools :tools …)` 重复键；空 `:context` 缺 `:memory-policy` | 缺陷 | US-27 实测；交底 §5 | 非 HC 名的 V1 宏不可用 | 修 `plist->blocks` 的键映射；补 GENERIC 编译测试 |
-| B-07 | 故事图 US-26 判据「引擎消费数 13 → 21」未达 | 故事偏离 | US-26 交底 §6 | 8 个声明层仍不消费 | 待 P4-1/P4-2 编排接线后回填 |
-| B-08 | v2 CLI（`runtime/cli.py`）从未实现；pyproject 的 `agentlisp2` entry point 指向它 | 缺陷 | US-01 实测（打包 + 安装 + 跑 CLI） | 装了包 `agentlisp2` 跑不起来 | 已删 entry point；若要做 v2 CLI，单开故事 |
-| B-09 | 真 provider 不传工具 schema：模型永不出 tool_calls，只有 Mock 能驱动工具 | 缺陷（已在 US-29 修） | US-29 实测 | 真模型 + 真工具路径断，测试却全绿 | 已修 `llm_client` + `base_harness_v2`；补 `tests/test_tool_schema_passed.py` |
-| B-10 | `compiler/checker.rkt:666` 用 `log-warning`，默认不显示（需 PLTSTDERR），警告等于静默 | 缺陷 | US-08 实测（同机制） | 用户看不到该警告 | 改 `eprintf`，或让 `main.rkt` 配 logger 级别 |
+| # | 项 | 类别 | 来源 | 影响 | 建议 | 状态 |
+|---|---|---|---|---|---|---|
+| B-01 | `compiler/main.rkt` 的 `safe-dyn` 吞掉现代 emitter 异常，静默回退 legacy emitter | 缺陷 | P0-1 实测（误改注册表语法时 rc=0 但产物变形） | 违反「失败必须留痕」；产物形状无声改变 | 现代 emitter 抛错时非 0 退出并打印原因 | **已修**（2026-10-17）：不可用/抛错 → rc=1 + `EMITTER MISSING`；`tests/test_emitter_failure_is_loud.py` |
+| B-02 | 提交门禁每次跑全量 pytest（约 4 分钟） | 效率 | US-35 | 提交变慢；可能诱使 `--no-verify` | 增量测试 / 按变更路径选测；不改变「红线必须拦」 | **待做** |
+| B-03 | `git commit --no-verify` 可绕过门禁 | 已知边界 | US-35 | 门禁非强制 | 不修。git 固有出口；靠 CI 兜底 | **不修**（有意） |
+| B-04 | 故事图 US-24 写「6 个观察值键」；实测 runtime 读 14 个键名 | 文档数字 | US-24 | 判据数字偏小 | R1 完成后修正故事图数字 | **已记录**：US-24 交底 §4 给了实测值；故事图原文未改（判据归属用户） |
+| B-05 | 6 份契约的「期望（可观测）」≤ 80 字节，未证明行为 | 内容质量 | 机器验证报告 §4；US-33 交底 §6 | 契约只说「handler 在 + 指令进上下文」，未断言行为 | 补内容；并可加 A12 长度阈值 | **待做** |
+| B-06 | V1 五宏的 GENERIC 分支不能编译 | 缺陷 | US-27 实测；交底 §5 | 非 HC 名的 V1 宏不可用 | 修 `plist->blocks` 的键映射；补 GENERIC 编译测试 | **待做** |
+| B-07 | 故事图 US-26 判据「引擎消费数 13 → 21」未达 | 故事偏离 | US-26 交底 §6 | 8 个声明层仍不消费 | 待 P4-1/P4-2 编排接线后回填 | **待做**（设计层接线） |
+| B-08 | v2 CLI（`runtime/cli.py`）从未实现；pyproject 的 `agentlisp2` entry point 指向它 | 缺陷 | US-01 实测 | 装了包 `agentlisp2` 跑不起来 | 已删 entry point；若要做 v2 CLI，单开故事 | **已修**（删 entry point） |
+| B-09 | 真 provider 不传工具 schema | 缺陷 | US-29 实测 | 真模型 + 真工具路径断 | 已修 `llm_client` + `base_harness_v2`；补测试 | **已修** |
+| B-10 | `compiler/checker.rkt:666` 用 `log-warning`，默认不显示 | 缺陷 | US-08 实测 | 用户看不到该警告 | 改 `eprintf`，或让 `main.rkt` 配 logger 级别 | **已修**（2026-10-17）：改 eprintf |
 
 ---
 
 ## 说明
 
 - 本表**不是**承诺。没列入的项，默认不做。
-- 每项只记「是什么、哪来的、影响、建议」。不写实现步骤（写步骤就等于开工）。
+- 每项只记「是什么、哪来的、影响、建议、状态」。

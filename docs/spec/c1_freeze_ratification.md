@@ -11,7 +11,7 @@
 
 | 文件 | sha256 | 状态 |
 |---|---|---|
-| compiler/checker.rkt | c205f8efd5867eb345c1ddd19cca397b6265cb868d0f6850332818321bf1aa82 | 追认：US-11 加编译期组合校验（check-patterns 调 composition-errors） |
+| compiler/checker.rkt | 6334c66428dfe540e04e9be27e095a0d20747303c6855d678f5861b33bce663d | 追认：US-11 组合校验；B-10 警告改 eprintf（log-warning 默认不可见） |
 | compiler/parser.rkt | eaeb130d495163434ce3bdeeddf15aca930c3d51fd6bc4130a59051cb46375c2 | 未改 |
 | compiler/emitter.rkt | 369816cfb7ed03a189e315589bcd1b74666bf227f7e422dfb2ac9229722db0a9 | 未改 |
 | compiler/agentlisp_compiler.rkt | c2c86f98b6c1be9d2fe43885d960ab9aa7fbbe8b211d50a81961a40d2f8475b3 | 追认：P0；US-04~10；US-48；US-53；US-47；US-06；清理死函数 emit-multi-class-vars |

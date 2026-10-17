@@ -663,5 +663,6 @@
   (define custom (hash-ref (hash-ref (hash-ref parsed 'context) 'status_bar) 'custom (hash)))
   (for ([k (in-list '("step_count" "current_branch" "test_status" "time_tracker" "todo_list"))])
     (when (hash-has-key? custom k)
-      (log-warning "[WARN] status_bar.custom 覆盖保留键 ~a（可能被默认值覆盖）" k)))
+      ;; 用 eprintf 而非 log-warning：log-warning 默认不显示（需 PLTSTDERR），等于静默（B-10）。
+      (eprintf "[WARN] status_bar.custom 覆盖保留键 ~a（可能被默认值覆盖）\n" k)))
   parsed)
