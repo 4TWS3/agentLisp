@@ -1130,8 +1130,13 @@ class BaseHarnessV2:
 
                     # F-AMS-7（US-19 批 1）：唯一决策点。有编排器时先问它，并留痕。
                     if self.orchestrator is not None:
+                        _intent = ""
+                        for _m in self.trajectory:
+                            if _m.get("role") == "user":
+                                _intent = str(_m.get("content") or "")
+                                break
                         action = self.orchestrator.select_next(
-                            {"step_index": max(0, self.step_count - 1)}
+                            {"step_index": max(0, self.step_count - 1), "intent": _intent}
                         )
                         self.patterns.record_event("orchestrator", "select_next", action.as_event())
                         if action.kind == "finish":
