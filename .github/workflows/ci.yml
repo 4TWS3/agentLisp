@@ -289,6 +289,65 @@ jobs:
           retention-days: 30
         if: always()
 
+  infra-e2e:
+    name: Infra E2E (redis + jaeger + temporal)
+    # 为什么单开 job：test_infra_docker_e2e 需要 redis:6379 / jaeger:4317 / temporal:7233。
+    # 放在 GitHub 上跑，比每台机器本地拉三个容器可靠（本地 Docker 起不起随缘）。
+    needs: [python-quality]
+    runs-on: ubuntu-latest
+    services:
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 20
+      jaeger:
+        image: jaegertracing/all-in-one:latest
+        ports:
+          - 4317:4317
+          - 16686:16686
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: false
+
+      - name: Install dependencies
+        run: uv sync --extra dev --extra all
+
+      - name: Start Temporal dev server
+        run: |
+          set -euo pipefail
+          docker run -d --name temporal -p 7233:7233 \
+            temporalio/temporal:latest server start-dev --ip 0.0.0.0
+          for i in $(seq 1 90); do
+            if (exec 3<>/dev/tcp/127.0.0.1/7233) 2>/dev/null; then
+              echo "temporal 就绪（第 ${i} 次探测）"; exit 0
+            fi
+            sleep 2
+          done
+          echo "temporal 90 次探测仍未就绪"; docker logs temporal | tail -40; exit 1
+
+      - name: Run infra E2E
+        env:
+          AGENTLISP_DOCKER_INFRA: "true"
+          PYTHONPATH: ${{ github.workspace }}
+        run: |
+          set -euo pipefail
+          uv run pytest host/tests/test_infra_docker_e2e.py -q
+
   perf-bench:
     name: Performance Bench (NFR-PERF-1b + NFR-PERF-2)
     runs-on: ubuntu-latest

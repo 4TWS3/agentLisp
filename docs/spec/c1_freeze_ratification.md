@@ -15,7 +15,7 @@
 | compiler/parser.rkt | eaeb130d495163434ce3bdeeddf15aca930c3d51fd6bc4130a59051cb46375c2 | 未改 |
 | compiler/emitter.rkt | 369816cfb7ed03a189e315589bcd1b74666bf227f7e422dfb2ac9229722db0a9 | 未改 |
 | compiler/agentlisp_compiler.rkt | c2c86f98b6c1be9d2fe43885d960ab9aa7fbbe8b211d50a81961a40d2f8475b3 | 追认：P0；US-04~10；US-48；US-53；US-47；US-06；清理死函数 emit-multi-class-vars |
-| .github/workflows/ci.yml | 8872af2347a15428d34ab085f67b5d6d82ffe2aa33ed8bcb5aa291b266b8cb2b | 未改 |
+| .github/workflows/ci.yml | 4d6df5207a2ea7d433c4917bf5a8fc6093626e8ea8399c51740dc1b4ef845f75 | 追认：新增 infra-e2e job（redis/jaeger/temporal 真容器） |
 | pyproject.toml | 5d2042bc362477bf6c2c183cc7dcc1c50180c2b52bea2869142696d58b82ed9a | 追认：US-37 版本；US-01 删坏 entry point；v2.3.2 版本号 |
 
 ---
