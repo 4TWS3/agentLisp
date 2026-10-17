@@ -175,7 +175,7 @@
 | 19 | 长跑稳定有数 | US-41 | 1000 轮不退化 | **已完成**（退化比 0.927；同上） |
 | 20 | Release 工作流绿 | US-38 | Release 工作流绿 | **已完成**（真跑 7/7 job；run 39033945361；见 `docs/handoff/20261017_us38_release_ci_green_handoff.md`） |
 | 21 | pip install | US-01 | 本地打包安装自证 | **部分**（TestPyPI 待发；见 `docs/handoff/20261014_us01_pip_install_handoff.md`） |
-| 21b | 独立开发容器 | US-03 | 容器内可编译并运行 Agent | **阻塞**（镜像 amd64 / 本机 arm64；见 `docs/handoff/20261017_us03_container_blocked_handoff.md`） |
+| 21b | 独立开发容器 | US-03 | 容器内可编译并运行 Agent | **已完成**（arm64 容器；见 `docs/handoff/20261017_us03_container_blocked_handoff.md`） |
 | 22 | 真实环境验收 | US-29 | 真模型 + 真工具 | **已完成**（Ollama qwen3:4b + 真 shell；见 `docs/handoff/20261014_us29_real_env_handoff.md`） |
 | 23 | 状态字段声明 | US-04 | `(:state :fields …)` -> `STATE_FIELDS` | **已完成** |
 | 24 | 工作流图 | US-05 | `(:workflow …)` 4 类拓扑 -> 节点与边 | **已完成** |
