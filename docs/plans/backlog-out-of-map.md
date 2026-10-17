@@ -12,7 +12,7 @@
 | B-03 | `git commit --no-verify` 可绕过门禁 | 已知边界 | US-35 | 门禁非强制 | 不修。git 固有出口；靠 CI 兜底 | **不修**（有意） |
 | B-04 | 故事图 US-24 写「6 个观察值键」；实测 runtime 读 14 个键名 | 文档数字 | US-24 | 判据数字偏小 | R1 完成后修正故事图数字 | **已记录**：US-24 交底 §4 给了实测值；故事图原文未改（判据归属用户） |
 | B-05 | 6 份契约的「期望（可观测）」≤ 80 字节，未证明行为 | 内容质量 | 机器验证报告 §4；US-33 交底 §6 | 契约只说「handler 在 + 指令进上下文」，未断言行为 | 补内容；并可加 A12 长度阈值 | **待做** |
-| B-06 | V1 五宏的 GENERIC 分支不能编译 | 缺陷 | US-27 实测；交底 §5 | 非 HC 名的 V1 宏不可用 | 修 `plist->blocks` 的键映射；补 GENERIC 编译测试 | **待做** |
+| B-06 | V1 五宏的 GENERIC 分支不能编译 | 缺陷 | US-27 实测；交底 §5 | 非 HC 名的 V1 宏不可用 | 修 `plist->blocks` 的键映射；补 GENERIC 编译测试 | **已修**（2026-10-17）：块头去重、:model-name→:name、缺块给默认、pattern 键不进块；`tests/test_v1_generic_macros.py` |
 | B-07 | 故事图 US-26 判据「引擎消费数 13 → 21」未达 | 故事偏离 | US-26 交底 §6 | 8 个声明层仍不消费 | 待 P4-1/P4-2 编排接线后回填 | **待做**（设计层接线） |
 | B-08 | v2 CLI（`runtime/cli.py`）从未实现；pyproject 的 `agentlisp2` entry point 指向它 | 缺陷 | US-01 实测 | 装了包 `agentlisp2` 跑不起来 | 已删 entry point；若要做 v2 CLI，单开故事 | **已修**（删 entry point） |
 | B-09 | 真 provider 不传工具 schema | 缺陷 | US-29 实测 | 真模型 + 真工具路径断 | 已修 `llm_client` + `base_harness_v2`；补测试 | **已修** |

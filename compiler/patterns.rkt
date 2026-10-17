@@ -88,16 +88,38 @@
                       (else (format "~a" k))))
       (string->keyword (if (regexp-match? #rx"^:" s) (substring s 1) s)))
     (define buckets (make-hash))
+    ;; B-06：块头键（:tools/:harness/:context/...）+ 列表值 = 整块内容。
+    ;; 不这样处理会产出 (:tools :tools (import-builtin bash))，下游看到重复键。
+    (define block-heads '(#:model #:tools #:context #:harness #:multiagent))
+    ;; B-06：这些键由 append-pattern 收进 (:pattern :params ...)，不进块。
+    (define pattern-keys '(#:routes #:steps #:branches #:reducer #:planner-prompt))
+    (define (block-items ck v)
+    ;; B-06：块头键的值怎么摊进块，按块形状定：
+    ;;   :tools      一个 clause        -> (tag v)
+    ;;   :harness    clause 列表        -> (tag . v)
+    ;;   :context    plist（:k v ...）  -> (tag . v)
+    (cond
+      [(eq? ck '#:tools) (list v)]
+      [(eq? ck '#:harness) (if (and (list? v) (pair? v) (list? (car v))) v (list v))]
+      [(eq? ck '#:context) (if (and (list? v) (pair? v) (keyword? (car v))) v (list v))]
+      [(list? v) v]
+      [else (list v)]))
+    (define (add! tag items)
+      (hash-update! buckets tag (lambda (old) (append old items)) (lambda () (list tag))))
     (let loop ((xs plist))
       (cond
         ((null? xs) (void))
         ((null? (cdr xs)) (void))
         (else
-         (let ((k (car xs)) (v (cadr xs)))
+         (let* ((k (car xs)) (v (cadr xs)) (ck (canon-k k)))
            (define tag (cond
-                        ((hash-has-key? kw->block (canon-k k)) (hash-ref kw->block (canon-k k)))
+                        ((hash-has-key? kw->block ck) (hash-ref kw->block ck))
                         (else ':unknown)))
-           (hash-update! buckets tag (lambda (old) (append old (list k v))) (lambda () (list tag)))
+           (cond
+             ((memv ck pattern-keys) (void))
+             ((and (memv ck block-heads) (list? v)) (add! tag (block-items ck v)))
+             ;; B-06：:model-name 下游只认 :name。
+             (else (add! tag (if (eq? ck '#:model-name) (list ':name v) (list k v)))))
            (loop (cddr xs))))))
     (for/list ((tag (in-list '(:model :tools :context :harness :multiagent :unknown)))
                #:when (hash-has-key? buckets tag))
@@ -106,7 +128,8 @@
   (define (ensure-blocks/ct blocks)
     ;; US-27：标签统一成符号。plist->blocks 产出的块标签是符号 :model。
     ;; 旧 block-tag 把它转成 #::model，与 required 的 :model 永不相等 -> 加空块 -> 块重复。
-    (define required '(:model :tools :context))
+    ;; B-06：:harness 也是必需块（缺了 PARSE_GENERIC 直接失败）。
+    (define required '(:model :tools :context :harness))
     (define (block-tag b)
       (define t (and (pair? b) (car b)))
       (cond ((keyword? t) (string->symbol (string-append ":" (keyword->string t))))
@@ -114,8 +137,37 @@
             (else ':notablock)))
     (define existing-tags (map block-tag blocks))
     (define to-add (filter (lambda (tag) (not (memv tag existing-tags))) required))
-    (define new-blocks (append blocks (map (lambda (tag) (list tag)) to-add)))
-    (filter (lambda (b) (not (null? b))) new-blocks)))
+    ;; B-06：缺块时给可用默认，不给空块（空块会让 PARSE_GENERIC 报「缺必需 :provider」）。
+    ;; 默认值与 HC 分支一致，用户显式给了就用用户的。
+    (define (default-block tag)
+      (cond
+        [(eq? tag ':model)
+         '(:model :provider "openai" :name "gpt-5.6" :temperature 0.0
+                  :system-prompt "通用的任务执行 Agent。")]
+        [(eq? tag ':tools) '(:tools (import-builtin bash))]
+        [(eq? tag ':harness)
+         '(:harness (:constrain :require-human-approval () :forbidden-commands ("rm -rf"))
+                    (:verify :json-schema #t :linter-check #f :test-runner "")
+                    (:correct :max-retries 2 :circuit-breaker 3 :on-failure 'abort))]
+        [(eq? tag ':context)
+         '(:context :memory-policy (:markdown-fs "./memory/default.md"
+                                    :layers (L0-Abstract) :auto-append #f))]
+        [else (list tag)]))
+    (define (ensure-model b)
+      ;; B-06：用户只写 :model-name 时也要有 provider（下游必需）。
+      (if (eq? (block-tag b) ':model)
+          (let* ([b1 (if (memv ':provider b) b (append b (list ':provider "openai")))]
+                 [b2 (if (memv ':name b1) b1 (append b1 (list ':name "gpt-5.6")))])
+            (if (memv ':system-prompt b2) b2 (append b2 (list ':system-prompt "通用的任务执行 Agent。"))))
+          b))
+    (define (ensure-context b)
+      (if (and (eq? (block-tag b) ':context) (not (memv ':memory-policy b)))
+          (append b (list ':memory-policy
+                          '(:markdown-fs "./memory/default.md"
+                            :layers (L0-Abstract) :auto-append #f)))
+          b))
+    (define new-blocks (append blocks (map default-block to-add)))
+    (filter (lambda (b) (not (null? b))) (map ensure-context (map ensure-model new-blocks)))))
 
 ;; CR-42 P-3：给块列表追加 (:pattern :kind K :config (:markers (...)))。
 ;; US-27：加 :params（与 /ct 版同形）。
@@ -171,16 +223,37 @@
                     (else (format "~a" k))))
     (string->keyword (if (regexp-match? #rx"^:" s) (substring s 1) s)))
   (define buckets (make-hash))
+  ;; B-06：块头键 + 列表值 = 整块内容（与 /ct 版同因）。
+(define (block-items ck v)
+    ;; B-06：块头键的值怎么摊进块，按块形状定：
+    ;;   :tools      一个 clause        -> (tag v)
+    ;;   :harness    clause 列表        -> (tag . v)
+    ;;   :context    plist（:k v ...）  -> (tag . v)
+    (cond
+      [(eq? ck '#:tools) (list v)]
+      [(eq? ck '#:harness) (if (and (list? v) (pair? v) (list? (car v))) v (list v))]
+      [(eq? ck '#:context) (if (and (list? v) (pair? v) (keyword? (car v))) v (list v))]
+      [(list? v) v]
+      [else (list v)]))
+  (define block-heads '(#:model #:tools #:context #:harness #:multiagent))
+  ;; B-06：这些键由 append-pattern 收进 (:pattern :params ...)，不进块。
+  (define pattern-keys '(#:routes #:steps #:branches #:reducer #:planner-prompt))
+  (define (add! tag items)
+    (hash-update! buckets tag (lambda (old) (append old items)) (lambda () (list tag))))
   (let loop ((xs plist))
     (cond
       ((null? xs) (void))
       ((null? (cdr xs)) (void))
       (else
-       (let ((k (car xs)) (v (cadr xs)))
+       (let* ((k (car xs)) (v (cadr xs)) (ck (canon-k k)))
          (define tag (cond
-                      ((hash-has-key? kw->block (canon-k k)) (hash-ref kw->block (canon-k k)))
+                      ((hash-has-key? kw->block ck) (hash-ref kw->block ck))
                       (else ':unknown)))
-         (hash-update! buckets tag (lambda (old) (append old (list k v))) (lambda () (list tag)))
+         (cond
+           ((memv ck pattern-keys) (void))
+           ((and (memv ck block-heads) (list? v)) (add! tag (block-items ck v)))
+           ;; B-06：:model-name 下游只认 :name。
+           (else (add! tag (if (eq? ck '#:model-name) (list ':name v) (list k v)))))
          (loop (cddr xs))))))
   (for/list ((tag (in-list '(:model :tools :context :harness :multiagent :unknown)))
              #:when (hash-has-key? buckets tag))
@@ -188,7 +261,8 @@
 
 (define (ensure-blocks blocks)
   ;; US-27：标签统一成符号（与 /ct 版同因）。
-  (define required '(:model :tools :context))
+  ;; B-06：:harness 也是必需块（与 /ct 版同因）。
+  (define required '(:model :tools :context :harness))
   (define (block-tag b)
     (define t (and (pair? b) (car b)))
     (cond ((keyword? t) (string->symbol (string-append ":" (keyword->string t))))
@@ -196,8 +270,36 @@
           (else ':notablock)))
   (define existing-tags (map block-tag blocks))
   (define to-add (filter (lambda (tag) (not (memv tag existing-tags))) required))
-  (define new-blocks (append blocks (map (lambda (tag) (list tag)) to-add)))
-  (filter (lambda (b) (not (null? b))) new-blocks))
+  ;; B-06：缺块时给可用默认（与 /ct 版同因）。
+  (define (default-block tag)
+    (cond
+      [(eq? tag ':model)
+       '(:model :provider "openai" :name "gpt-5.6" :temperature 0.0
+                :system-prompt "通用的任务执行 Agent。")]
+      [(eq? tag ':tools) '(:tools (import-builtin bash))]
+      [(eq? tag ':harness)
+       '(:harness (:constrain :require-human-approval () :forbidden-commands ("rm -rf"))
+                  (:verify :json-schema #t :linter-check #f :test-runner "")
+                  (:correct :max-retries 2 :circuit-breaker 3 :on-failure 'abort))]
+      [(eq? tag ':context)
+       '(:context :memory-policy (:markdown-fs "./memory/default.md"
+                                  :layers (L0-Abstract) :auto-append #f))]
+      [else (list tag)]))
+  ;; B-06：用户只写 :model-name 时也要有 provider（下游必需）。
+  (define (ensure-model b)
+    (if (eq? (block-tag b) ':model)
+        (let* ([b1 (if (memv ':provider b) b (append b (list ':provider "openai")))]
+               [b2 (if (memv ':name b1) b1 (append b1 (list ':name "gpt-5.6")))])
+          (if (memv ':system-prompt b2) b2 (append b2 (list ':system-prompt "通用的任务执行 Agent。"))))
+        b))
+  (define (ensure-context b)
+    (if (and (eq? (block-tag b) ':context) (not (memv ':memory-policy b)))
+        (append b (list ':memory-policy
+                        '(:markdown-fs "./memory/default.md"
+                          :layers (L0-Abstract) :auto-append #f)))
+        b))
+  (define new-blocks (append blocks (map default-block to-add)))
+  (filter (lambda (b) (not (null? b))) (map ensure-context (map ensure-model new-blocks))))
 
 (define-syntax (defreflect-agent stx)
   (syntax-case stx ()
