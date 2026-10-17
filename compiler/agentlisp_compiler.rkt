@@ -204,7 +204,12 @@
            'harness (parse-harness harness)
            'multi   (and multi (parse-multi multi))
            'state   parsed-state
-           'workflow (and wf (parse-workflow wf state-fields state-defaulted))
+           'workflow (and wf (parse-workflow wf state-fields state-defaulted
+                                              (and (pair? (filter (lambda (p)
+                                                                    (equal? (format "~a" (hash-ref p 'kind))
+                                                                            "parallel"))
+                                                                  parsed-patterns))
+                                                   #t)))
            'order   (hash-ref pb 'order)
            'raw form)]
     [_ (raise-parse 'parse-defagent (format "顶层必须是 (defagent NAME BLOCK…)，得到：~s" form))]))
@@ -348,7 +353,9 @@
     (when (= (hash-ref color n 0) 0) (visit n)))
   (reverse found))
 
-(define (parse-workflow form state-fields state-defaulted)
+(define WORKFLOW-EFFECT-ENUM '("pure" "revertible" "non_revertible"))
+
+(define (parse-workflow form state-fields state-defaulted has-parallel)
   (match form
     [`(:workflow . ,kvs)
      (define kw (keyword-kvs kvs '(:entry :nodes :topology)))
@@ -363,7 +370,7 @@
          (unless (and (list? n) (pair? n) (symbol? (car n)))
            (raise-parse ':workflow (format "节点格式应为 (名 :type T …)，得到 ~s" n)))
          (define nm (symbol->string (car n)))
-         (define kw2 (keyword-kvs (cdr n) '(:type :handler :prompt :output-fields)))
+         (define kw2 (keyword-kvs (cdr n) '(:type :handler :prompt :output-fields :effect)))
          (unless (hash-has-key? kw2 ':type)
            (raise-parse ':workflow (format "节点 ~a 缺 :type" nm)))
          (define ty (to-str (hash-ref kw2 ':type)))
@@ -397,8 +404,23 @@
              (raise-parse ':workflow
                           (format "节点 ~a 的 :dynamic 引用未声明字段 ~a（F-AMS-5 R3/R4）" nm f)))
            (set! reads (cons f reads)))
+         ;; F-AMS-8（US-53）：效应等级。默认 pure。
+         (define eff (to-str (hash-ref kw2 ':effect "pure")))
+         (unless (member eff WORKFLOW-EFFECT-ENUM)
+           (raise-parse ':workflow
+                        (format "节点 ~a 的 :effect 枚举=~a，得到 ~a"
+                                nm WORKFLOW-EFFECT-ENUM eff)))
          (hash 'name nm 'type ty 'handler h 'outputs outs
-               'static stat 'dynamic dyn 'reads (reverse reads))))
+               'static stat 'dynamic dyn 'reads (reverse reads) 'effect eff)))
+     ;; F-AMS-8：non_revertible 在并发（parallel）中必须串行 -> 编译期拦
+     (when has-parallel
+       (define nr (for/list ([n (in-list nodes)]
+                             #:when (string=? (hash-ref n 'effect) "non_revertible"))
+                    (hash-ref n 'name)))
+       (when (pair? nr)
+         (raise-parse ':workflow
+                      (format "non_revertible 节点 ~a 不得与 :pattern parallel 并发（F-AMS-8：必须串行）"
+                              nr))))
      ;; F-AMS-3（US-10）：字段可达性。只写不读 / 无人读写 -> 警告（不失败）。
      (define written (append* (map (lambda (n) (hash-ref n 'outputs)) nodes)))
      (define read-any (append* (map (lambda (n) (hash-ref n 'reads)) nodes)))
@@ -858,7 +880,8 @@
                  (for/list ([n (in-list (hash-ref wf 'nodes))])
                    (format (string-append
                             "{'name': ~a, 'type': ~a, 'handler': ~a, "
-                            "'static': ~a, 'dynamic': ~a, 'output_fields': [~a]}")
+                            "'static': ~a, 'dynamic': ~a, 'output_fields': [~a], "
+                            "'effect': ~a}")
                            (py-string (hash-ref n 'name))
                            (py-string (hash-ref n 'type))
                            (if (hash-ref n 'handler)
@@ -866,7 +889,8 @@
                                "None")
                            (py-string (hash-ref n 'static '""))
                            (py-string (hash-ref n 'dynamic '""))
-                           (string-join (map py-string (hash-ref n 'outputs '())) ", ")))
+                           (string-join (map py-string (hash-ref n 'outputs '())) ", ")
+                           (py-string (hash-ref n 'effect 'pure))))
                  ", ")
                 (string-join
                  (for/list ([ed (in-list (hash-ref wf 'edges))])

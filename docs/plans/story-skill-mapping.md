@@ -197,6 +197,7 @@
 | 41 | 真实数据集可跑 | US-44 | --suite 出非合成 p 值 | **已完成**（p=0.04122683，n=20） |
 | 42 | 评测判据有落点 | US-45 | scripts/bench/tests/ 含 FR-EVO-4 | **已完成**（见 `docs/handoff/20261014_us43_us44_us45_trace_and_bench_handoff.md`） |
 | 43 | 在线循环只读 | US-48 | 断言产物未被写 | **已完成**（见 `docs/handoff/20261014_us48_online_trace_readonly_handoff.md`） |
+| 44 | 节点声明效应等级 | US-53 | :effect；non_revertible 串行 | **已完成**（见 `docs/handoff/20261014_us53_effect_declaration_handoff.md`） |
 
 **为什么第 1 项最紧**：E2E 红灯在 main 上。它不修，任何「已验证」的说法都不成立。
 
