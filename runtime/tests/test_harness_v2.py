@@ -1052,6 +1052,21 @@ def test_cli_version_flag_prints_dunder_version_matches_pyproject() -> None:  # 
     PYTHON = sys.executable
     env = os.environ.copy()
     env["PYTHONPATH"] = os.path.join(REPO, "python")
+    # 判据是「CLI --version == agentlisp_runtime.__version__」，不是写死 pyproject。
+    # 为什么：同一模块被两个发行版打包（agentlisp / agentlisp-runtime），
+    # __version__ 由提供它的发行版元数据决定（US-01）。写死 0.1.0 会在装了 agentlisp 的环境红。
+    _v = subprocess.run(
+        [PYTHON, "-c", "import agentlisp_runtime as m; print(m.__version__)"],
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        env=env,
+        timeout=30,
+    )
+    assert _v.returncode == 0, f"取 __version__ 失败：{_v.stderr!r}"
+    expected_ver = (_v.stdout or "").strip()
+    assert expected_ver, "agentlisp_runtime.__version__ 必须非空"
     for flag in ("--version", "-V"):
         r = subprocess.run(
             [PYTHON, "-m", "agentlisp_runtime.cli", flag],
@@ -1064,8 +1079,8 @@ def test_cli_version_flag_prints_dunder_version_matches_pyproject() -> None:  # 
         )
         assert r.returncode == 0, f"cli {flag} exit != 0；stderr={r.stderr!r}"
         out = (r.stdout or "").strip()
-        assert out == pyproject_ver, (
-            f"cli {flag} stdout={out!r} 与 pyproject version={pyproject_ver!r} 不一致"
+        assert out == expected_ver, (
+            f"cli {flag} stdout={out!r} 与 __version__={expected_ver!r} 不一致"
         )
 
 
