@@ -58,6 +58,11 @@ def test_normal_compile_succeeds(tmp_path: Path) -> None:
 def test_missing_modern_emitter_fails_loudly(tmp_path: Path) -> None:
     comp = tmp_path / "compiler"
     shutil.copytree(ROOT / "compiler", comp)
+    # 必须连 compiled/ 一起删。原因（2026-10-17 CI 实测）：
+    # main.rkt 被 raco 编译成 compiled/main_rkt.zo 后，define-runtime-path 里记的是
+    # **构建时的绝对路径**。于是从 .zo 加载时，它去原仓库加载 agentlisp_compiler.rkt，
+    # 而不是临时副本 → 源码删了也能跑，rc=0，测试在 CI 红、本机绿。
+    shutil.rmtree(comp / "compiled", ignore_errors=True)
     (comp / "agentlisp_compiler.rkt").unlink()
     (tmp_path / "x.al").write_text(MINIMAL, encoding="utf-8")
     cp = _run(comp, tmp_path)
