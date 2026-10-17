@@ -5,7 +5,7 @@
 | 栏 | 内容 |
 |---|---|
 | **id** | CT-ROUTER-01 |
-| **槽位** | 无（declaration-only） |
+| **槽位** | `orchestrate` |
 | **输入（合法键）** | :routes（intent=>worker） |
 | **期望（可观测）** | rr = h.patterns.api("router")；assert rr.route("deploy") == "ops"；try:
         rr.route("nope")

@@ -2,7 +2,7 @@
 
 > 重新生成：`python3 scripts/pattern_landing_report.py`（判据：rc=0 表示 21/21 齐全）。
 > 口径：21 = V1 5 个 + V2 16 个，与注册表 21 个模式 kind 一一对应（注册表共 23 = 21 + memory + multi-agent）。
-> 运行时口径（唯一真源 runtime/patterns/__init__.py）：契约 21 / 落地 13 / 声明层 8。核对脚本 scripts/check_pattern_consistency.py。
+> 运行时口径（唯一真源 runtime/patterns/__init__.py）：契约 21 / 落地 18 / 声明层 3。核对脚本 scripts/check_pattern_consistency.py。
 > 每行的「位置」是 `文件:行号`，可直接跳转核对。
 
 | # | 代 | 模式（宏） | kind | 宏定义位置 | 注册表条目 | 夹具 |

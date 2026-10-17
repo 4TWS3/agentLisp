@@ -47,10 +47,10 @@ def _run(pattern: dict, user_input: str = "go") -> BaseHarnessV2:
 def test_router_spawns_the_mapped_worker() -> None:
     h = _run({"pattern": "router", "routes": ["deploy=>ops", "ask=>support"]}, "deploy")
     evs = h.patterns.events_for("orchestrator")
-    spawns = [e["detail"] for e in evs if e["detail"]["action"] == "spawn"]
+    spawns = [e["detail"] for e in evs if e["detail"].get("action") == "spawn"]
     assert spawns, evs
     assert spawns[0]["worker"] == "ops", "trace 里应有 worker 名"
-    finishes = [e["detail"] for e in evs if e["detail"]["action"] == "finish"]
+    finishes = [e["detail"] for e in evs if e["detail"].get("action") == "finish"]
     assert finishes and finishes[-1]["report"]["worker"] == "ops"
 
 
@@ -69,10 +69,10 @@ def test_router_unknown_intent_is_a_clear_error() -> None:
 def test_decomposition_recurses_to_max_depth() -> None:
     h = _run({"pattern": "decomposition", "max-depth": 2})
     evs = h.patterns.events_for("orchestrator")
-    spawns = [e["detail"] for e in evs if e["detail"]["action"] == "spawn"]
+    spawns = [e["detail"] for e in evs if e["detail"].get("action") == "spawn"]
     assert len(spawns) == 2, evs
     assert spawns[0]["worker"] == "subtask-0" and spawns[1]["worker"] == "subtask-1"
-    finishes = [e["detail"] for e in evs if e["detail"]["action"] == "finish"]
+    finishes = [e["detail"] for e in evs if e["detail"].get("action") == "finish"]
     assert finishes and finishes[-1]["report"]["depth"] == 2
     assert len(finishes[-1]["report"]["tree"]) == 2, "层级应等于 max-depth"
 
@@ -80,7 +80,7 @@ def test_decomposition_recurses_to_max_depth() -> None:
 def test_parallel_fans_out_branches_and_reports_fan_in() -> None:
     h = _run({"pattern": "parallel", "branches": ["a", "b"]})
     evs = h.patterns.events_for("orchestrator")
-    fanouts = [e["detail"] for e in evs if e["detail"]["action"] == "fanout"]
+    fanouts = [e["detail"] for e in evs if e["detail"].get("action") == "fanout"]
     assert fanouts and fanouts[0]["branches"] == ["a", "b"]
-    finishes = [e["detail"] for e in evs if e["detail"]["action"] == "finish"]
+    finishes = [e["detail"] for e in evs if e["detail"].get("action") == "finish"]
     assert finishes and finishes[-1]["report"]["fan_in"] == ["a", "b"]

@@ -5,7 +5,7 @@
 | 栏 | 内容 |
 |---|---|
 | **id** | CT-PARALLEL-01 |
-| **槽位** | 无（declaration-only） |
+| **槽位** | `orchestrate` |
 | **输入（合法键）** | :branches |
 | **期望（可观测）** | pp = h.patterns.api("parallel")；assert pp.fan_in([1, 2]) == [1, 2]；assert pp.branches() == ["a", "b"]；且 build_context() 含 [pattern:parallel] 指令 |
 | **反证** | 去掉 :pattern → handlers 为空、无指令、api(kind) 抛 KeyError |

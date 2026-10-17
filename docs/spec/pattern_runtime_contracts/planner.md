@@ -5,7 +5,7 @@
 | 栏 | 内容 |
 |---|---|
 | **id** | CT-PLANNER-01 |
-| **槽位** | 无（declaration-only） |
+| **槽位** | `orchestrate` |
 | **输入（合法键）** | :plan-size |
 | **期望（可观测）** | pl = h.patterns.api("planner")；assert pl.plan_size() == 3；assert pl.completion(1, 4) == 0.25；且 build_context() 含 [pattern:planner] 指令 |
 | **反证** | 去掉 :pattern → handlers 为空、无指令、api(kind) 抛 KeyError |

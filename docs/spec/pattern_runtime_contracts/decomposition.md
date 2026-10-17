@@ -5,7 +5,7 @@
 | 栏 | 内容 |
 |---|---|
 | **id** | CT-DECOMPOSITION-01 |
-| **槽位** | 无（declaration-only） |
+| **槽位** | `orchestrate` |
 | **输入（合法键）** | :max-depth |
 | **期望（可观测）** | dd = h.patterns.api("decomposition")；assert dd.children("t", 2) == ["t.1", "t.2"]；try:
         dd.children("t", 3)

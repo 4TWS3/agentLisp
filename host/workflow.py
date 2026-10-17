@@ -24,7 +24,7 @@ from pathlib import Path
 from typing import Any
 
 from runtime.base_harness import BaseHarness, ExecutionTrace
-from runtime.errors import FeatureNotInstalledError
+from runtime.errors import DurableExecutionUnavailableError, FeatureNotInstalledError
 
 
 @dataclass
@@ -395,13 +395,18 @@ class TemporalRunner(WorkflowRunner):
         return self._client
 
     async def submit(self, req: WorkflowRequest) -> str:  # pragma: no cover
-        raise NotImplementedError(
-            "TemporalRunner.submit skeleton: wire Harness.run_async into a Temporal workflow "
-            "once your durable workflow/activities are defined."
+        raise DurableExecutionUnavailableError(
+            "Temporal 持久化执行尚未实现（本仓库只有骨架）。"
+            "含义：进程重启后运行中的任务会丢。"
+            "现在请用 DirectRunner；需要持久化时先实现 Temporal workflow/activity。"
         )
 
     async def wait(self, run_id: str, timeout: float = 300.0) -> ExecutionTrace:  # pragma: no cover
-        raise NotImplementedError("TemporalRunner.wait skeleton")
+        raise DurableExecutionUnavailableError(
+            "Temporal 持久化执行尚未实现（本仓库只有骨架）。"
+            "含义：进程重启后运行中的任务会丢。"
+            "现在请用 DirectRunner；需要持久化时先实现 Temporal workflow/activity。"
+        )
 
 
 def default_runner(prefer_temporal: bool | None = None) -> WorkflowRunner:
@@ -411,10 +416,11 @@ def default_runner(prefer_temporal: bool | None = None) -> WorkflowRunner:
         else (os.getenv("AGENTLISP_RUNNER", "direct").lower() == "temporal")
     )
     if want:
-        try:
-            return TemporalRunner()
-        except FeatureNotInstalledError:
-            logging.getLogger(__name__).debug("swallowed exception", exc_info=True)
+        # 降级可以，静默降级不行：Temporal 不可用或仍是骨架时，明确告知并退回 DirectRunner。
+        logging.getLogger(__name__).warning(
+            "请求了 Temporal 长任务执行，但本仓库的 Temporal 只有骨架（submit/wait 未实现），"
+            "或 temporalio 未安装：已退回 DirectRunner（进程重启后任务会丢）。"
+        )
     return DirectRunner()
 
 

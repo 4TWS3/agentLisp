@@ -960,6 +960,46 @@ class BaseHarnessV2:
     #   - 退出（正常或异常）：自动 GC 恢复 snapshot，父级 trajectory 永远不可见 worker 内部中间步骤
     # ------------------------------------------------------------------
 
+    async def _run_subagent(self, worker: str, task: str) -> dict[str, Any]:
+        """真跑一个子 Agent：同配置、同 LLM、同工具，但独立 trajectory。
+
+        为什么新建实例而不是 scoped_worker：scoped_worker 是「栈式切换父级 trajectory」，
+        并发时会互相踩。真并发必须各用各的实例（SRS FR-MAGT-1）。
+        """
+        child = type(self)(
+            dict(self.model_config),
+            dict(self.context_config),
+            dict(self.tools_config),
+            dict(self.harness_config),
+            llm_client=self.llm_client,
+            tool_registry=self.tool_registry,
+            max_turns=self.max_turns,
+            react_mode=self.react_mode,
+        )
+        # 子 Agent 不再自己编排，避免无限递归。
+        child.orchestrator = None
+        child.PATTERNS = []
+        child.model_config["system_prompt"] = (
+            str(self.model_config.get("system_prompt", ""))
+            + f"\n\n你现在是子 Agent「{worker}」，只做被指派的子任务。"
+        )
+        try:
+            trace = await child.run(task or "完成分配给你的子任务。")
+        except Exception as exc:  # 子 Agent 失败不拖垮父级，但要留痕
+            logger.warning("[Orchestrator] 子 Agent %s 失败", worker, exc_info=True)
+            return {"worker": worker, "answer": "", "error": str(exc)}
+        return {"worker": worker, "answer": str(getattr(trace, "final_answer", "") or "")}
+
+    async def _run_orchestrated_children(self, action: Any) -> list[dict[str, Any]]:
+        """执行编排动作拉起的孩子：spawn 一个，fanout 并发多个。"""
+        if action.kind == "spawn":
+            return [await self._run_subagent(action.worker or "worker", action.task or "")]
+        return list(
+            await asyncio.gather(
+                *[self._run_subagent(b, action.task or "") for b in action.branches]
+            )
+        )
+
     @contextlib.asynccontextmanager
     async def scoped_worker(
         self,
@@ -1146,6 +1186,18 @@ class BaseHarnessV2:
                             self.trajectory.append({"role": "assistant", "content": str(report)})
                             await self._save_checkpoint()
                             return {"status": "success", "final_answer": str(report)}
+                        if action.kind in ("spawn", "fanout"):
+                            # US-19 批 2/3：真拉起子 Agent（fanout 并发），把结果喂回父级。
+                            _children = await self._run_orchestrated_children(action)
+                            self.patterns.record_event(
+                                "orchestrator", "children_done", {"results": _children}
+                            )
+                            self.trajectory.append(
+                                {
+                                    "role": "user",
+                                    "content": "子 Agent 结果：" + str(_children),
+                                }
+                            )
 
                     # 2) LLM 决策：CR-16 P1-5 Provider / CircuitBreaker / Context-Leakage 层
                     # US-29：工具 schema 必须真传给 provider。否则真模型永不出 tool_calls，

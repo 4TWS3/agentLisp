@@ -5,7 +5,7 @@
 | 栏 | 内容 |
 |---|---|
 | **id** | CT-CHAIN-01 |
-| **槽位** | 无（declaration-only） |
+| **槽位** | `orchestrate` |
 | **输入（合法键）** | :steps |
 | **期望（可观测）** | cc = h.patterns.api("chain")；assert cc.steps() == ["plan", "act"]；assert cc.next_step(1) == "act" and cc.next_step(2) is None；且 build_context() 含 [pattern:chain] 指令 |
 | **反证** | 去掉 :pattern → handlers 为空、无指令、api(kind) 抛 KeyError |

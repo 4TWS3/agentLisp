@@ -2,7 +2,7 @@
 
 每条：显式 (:pattern :kind K :config ...) 块 -> 编译 -> 子进程跑 -> 断行为。
 契约来源：docs/spec/pattern_runtime_contracts/<kind>.md。
-落地 13 个断言引擎真调用的行为；声明层 8 个断言 handler 的纯函数。
+落地 18 个断言引擎真调用的行为；声明层 3 个断言 handler 的纯函数。
 """
 
 from __future__ import annotations

@@ -48,6 +48,7 @@ SLOT_EVIDENCE: dict[str, tuple[str, ...]] = {
     "evaluate": ('fn(float(observation["score"]))',),
     "order": ("patterns.order(",),
     "budget": ("patterns.retries_cap(", "patterns.turn_budget("),
+    "orchestrate": ("orchestrator.select_next(",),
 }
 
 

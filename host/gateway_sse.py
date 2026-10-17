@@ -29,6 +29,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import os
 import shutil
 import subprocess
 import tempfile
@@ -447,7 +448,32 @@ def _sse_format(evt: dict[str, Any]) -> str:
     return f"event: {kind}\ndata: {data}\n\n"
 
 
-def create_app(registry: GatewayRegistry | None = None) -> Any:
+class GatewayAuthNotConfiguredError(RuntimeError):
+    """网关未配置鉴权 token。
+
+    为什么失败而不是放行：网关能驱动 Agent 执行工具。无鉴权对外开放 = 任何人可执行任意命令。
+    本机开发要放行，显式设 AGENTLISP_GATEWAY_ALLOW_ANONYMOUS=1。
+    """
+
+
+def resolve_gateway_token(token: str | None = None) -> str | None:
+    """解析网关 token。返回 None 表示显式匿名模式（仅本机开发）。"""
+    tok = (token or os.environ.get("AGENTLISP_GATEWAY_TOKEN", "")).strip()
+    if tok:
+        return tok
+    if os.environ.get("AGENTLISP_GATEWAY_ALLOW_ANONYMOUS") == "1":
+        logging.getLogger(__name__).warning(
+            "网关未配置 AGENTLISP_GATEWAY_TOKEN，且 AGENTLISP_GATEWAY_ALLOW_ANONYMOUS=1："
+            "对匿名开放，只能用于本机开发。"
+        )
+        return None
+    raise GatewayAuthNotConfiguredError(
+        "网关要求鉴权：请设置 AGENTLISP_GATEWAY_TOKEN；"
+        "本机开发可设 AGENTLISP_GATEWAY_ALLOW_ANONYMOUS=1 显式放行。"
+    )
+
+
+def create_app(registry: GatewayRegistry | None = None, token: str | None = None) -> Any:
     """Lazy FastAPI app builder. Import-level NEVER raises; only accessing routes does.
 
     对应 BDD step `_step_gateway_routes` 里 `from host.gateway_sse import create_app; test_context["gateway_app"] = create_app()`。
@@ -456,7 +482,7 @@ def create_app(registry: GatewayRegistry | None = None) -> Any:
         raise FeatureNotInstalledError("FastAPI gateway", "web")
     try:
         from fastapi import Body, FastAPI, HTTPException
-        from fastapi.responses import StreamingResponse
+        from fastapi.responses import JSONResponse, StreamingResponse
     except ImportError as exc:  # pragma: no cover
         raise FeatureNotInstalledError("FastAPI gateway", "web") from exc
 
@@ -467,6 +493,21 @@ def create_app(registry: GatewayRegistry | None = None) -> Any:
         version="2.3.2",
         description="对齐 SRS §5.3 IF-API-1 的 FastAPI SSE/HITL/Checker 网关。",
     )
+
+    # ---- 鉴权（P0-1）：/v1/* 一律要求 Bearer token；/health 与文档保持开放 ----
+    _token = resolve_gateway_token(token)
+    _open_paths = {"/health", "/docs", "/redoc", "/openapi.json"}
+
+    @app.middleware("http")
+    async def _auth_middleware(request: Any, call_next: Any) -> Any:
+        if _token is None or request.url.path in _open_paths:
+            return await call_next(request)
+        if request.headers.get("authorization", "") != f"Bearer {_token}":
+            return JSONResponse(
+                {"detail": "unauthorized：缺少或错误的 Authorization: Bearer <token>"},
+                status_code=401,
+            )
+        return await call_next(request)
 
     @app.get(
         "/health", tags=["meta"], summary="IF-API-1 心跳探针（永不抛 FeatureNotInstalledError）"

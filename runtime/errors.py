@@ -25,6 +25,14 @@ class FeatureNotInstalledError(AgentLispError):
         super().__init__(msg)
 
 
+class DurableExecutionUnavailableError(AgentLispError):
+    """持久化执行不可用（Temporal 只有骨架）。
+
+    为什么单独一类：它和「依赖没装」不同 —— 依赖装了也不能用。
+    调用方需要能区分「 degraded 但不丢数据」和「一重启就丢」。
+    """
+
+
 class HarnessError(AgentLispError):
     pass
 

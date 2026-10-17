@@ -24,7 +24,7 @@ logger = logging.getLogger(__name__)
 
 # ---- 槽位模型（F-AMS-6 / 决策 D3）：口径唯一真源 ----
 # 口径短语（README / 本注释 / docs/spec/agentlisp_pattern_landing.md 三处逐字一致）：
-#   契约 21 / 落地 13 / 声明层 8
+#   契约 21 / 落地 18 / 声明层 3
 #
 #   SLOTS         = 行为槽位。防膨胀规则（D3）：槽位只能由运行时的**真实调用点**定义。
 #   KIND_SLOTS    = 每个 kind 占用的槽位。空 = declaration-only（声明层）。
@@ -50,10 +50,10 @@ SLOTS: dict[str, str] = {
     "evaluate": "verify_observation 的 evaluator 分派 -> handler.evaluate",
     "order": "BaseHarnessV2.build_context -> PatternRuntime.order",
     "budget": "retries_cap + turn_budget",
-    "orchestrate": "待实现（F-AMS-7 select_next）",
+    "orchestrate": "BaseHarnessV2 每轮 -> Orchestrator.select_next（runtime/orchestrator.py，US-19）",
 }
 
-PENDING_SLOTS: set[str] = {"orchestrate"}
+PENDING_SLOTS: set[str] = set()
 
 # 每个 kind 占用的槽位。只算「引擎按 kind 分派、且改变引擎行为」的调用点。
 KIND_SLOTS: dict[str, list[str]] = {
@@ -70,14 +70,15 @@ KIND_SLOTS: dict[str, list[str]] = {
     "guardrails-safety": ["verify"],
     "reasoning": ["verify"],
     "goal-setting": ["verify"],
+    # ---- 编排类（US-19 接线后已落地）：引擎按 kind 走 Orchestrator.select_next ----
+    "chain": ["orchestrate"],
+    "decomposition": ["orchestrate"],
+    "parallel": ["orchestrate"],
+    "planner": ["orchestrate"],
+    "router": ["orchestrate"],
     # ---- 声明层（declaration-only）：handler 在，但引擎不调其行为 ----
     "a2a": [],
-    "chain": [],
-    "decomposition": [],
     "learning": [],
-    "parallel": [],
-    "planner": [],
-    "router": [],
     "topic-model": [],
 }
 
@@ -89,11 +90,6 @@ CONTRACTED: set[str] = set(KIND_SLOTS)
 # 判据 G2：无第三态 —— 每个 kind 要么占槽位（LANDED），要么在这里有理由（DECLARED_ONLY）。
 # 机器核对：scripts/check_slot_model.py 要求键集 == DECLARED_ONLY 且理由非空。
 DECLARED_ONLY_REASON: dict[str, str] = {
-    "router": "待 P4 编排接线（F-AMS-7 select_next；引擎目前不按 kind 选择下一动作）",
-    "chain": "待 P4 编排接线（步骤顺序由编排器驱动）",
-    "parallel": "待 P4 编排接线（分支扇出/归并由编排器驱动）",
-    "planner": "待 P4 编排接线（先出计划再执行由编排器驱动）",
-    "decomposition": "待 P4 编排接线（递归分解与 :multiagent 协调）",
     "topic-model": "声明层：聚类结果无引擎消费点；需要端口与编排节点头",
     "a2a": "声明层：跨 Agent 消息无引擎消费点；需要端口与编排节点头",
     "learning": "声明层：写回技能层无引擎消费点；需要端口与回合结束钩子",

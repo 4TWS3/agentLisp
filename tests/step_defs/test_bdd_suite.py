@@ -587,11 +587,15 @@ def _step_otel_jaeger(test_context: dict[str, Any]) -> None:
 _register_all_given_variants("运行时连接到了 Jaeger OTLP 4317 采集器", _step_otel_jaeger)
 
 
+_GATEWAY_TEST_TOKEN = "test-token-bdd"
+
+
 def _step_gateway_routes(test_context: dict[str, Any]) -> None:
     try:
         from host.gateway_sse import create_app  # type: ignore
 
-        test_context["gateway_app"] = create_app()
+        # 网关现在要求鉴权（P0-1）；BDD 用固定测试 token，不走匿名模式。
+        test_context["gateway_app"] = create_app(token=_GATEWAY_TEST_TOKEN)
     except Exception:
         test_context["gateway_app"] = None
 
@@ -1143,7 +1147,11 @@ def _when_http_stream(test_context: dict[str, Any], url: str) -> None:
 
     async def _call() -> dict[str, Any]:
         transport = ASGITransport(app=app)  # type: ignore[call-arg]
-        async with AsyncClient(transport=transport, base_url="http://testserver") as c:
+        async with AsyncClient(
+            transport=transport,
+            base_url="http://testserver",
+            headers={"Authorization": f"Bearer {_GATEWAY_TEST_TOKEN}"},
+        ) as c:
             r = await c.get(url)
             lines = (r.text or "").splitlines()
             return {
