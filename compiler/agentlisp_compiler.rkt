@@ -1239,23 +1239,6 @@ EOS
           (number->string (hash-ref co 'circuit_breaker))
           (hash-ref co 'on_failure)))
 
-(define (emit-multi-class-vars multi)
-  (if (not multi)
-      "        _multi_topology = None\n        _multi_workers = []\n\n"
-      (let ([top (hash-ref multi 'topology)]
-            [ws (for/list ([w (in-list (hash-ref multi 'workers))])
-                  (format "{'name': ~s, 'model_provider': ~s, 'on_failure': ~s}"
-                          (hash-ref w 'name)
-                          (hash-ref (hash-ref w 'model) 'provider)
-                          (hash-ref (hash-ref (hash-ref w 'harness) 'correct) 'on_failure)))])
-        (format #<<EOS
-        _multi_topology = ~v
-        _multi_workers = [~a]
-
-EOS
-                top
-                (string-join ws ", ")))))
-
 (define (emit-init-footer cls-name)
   (format #<<EOS
         super().__init__(

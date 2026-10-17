@@ -14,7 +14,7 @@
 | compiler/checker.rkt | c205f8efd5867eb345c1ddd19cca397b6265cb868d0f6850332818321bf1aa82 | 追认：US-11 加编译期组合校验（check-patterns 调 composition-errors） |
 | compiler/parser.rkt | eaeb130d495163434ce3bdeeddf15aca930c3d51fd6bc4130a59051cb46375c2 | 未改 |
 | compiler/emitter.rkt | 369816cfb7ed03a189e315589bcd1b74666bf227f7e422dfb2ac9229722db0a9 | 未改 |
-| compiler/agentlisp_compiler.rkt | 143fe75b54536bfc3876478af615921ba639fcddd85e4d935ce28af83e9c922f | 追认：P0；US-04~10 :state/:workflow；US-48 :online-trace；US-53 :effect；US-47 规格对齐；US-06 D2 内聚（subagent） |
+| compiler/agentlisp_compiler.rkt | c2c86f98b6c1be9d2fe43885d960ab9aa7fbbe8b211d50a81961a40d2f8475b3 | 追认：P0；US-04~10；US-48；US-53；US-47；US-06；清理死函数 emit-multi-class-vars |
 | .github/workflows/ci.yml | 8872af2347a15428d34ab085f67b5d6d82ffe2aa33ed8bcb5aa291b266b8cb2b | 未改 |
 | pyproject.toml | 5d2042bc362477bf6c2c183cc7dcc1c50180c2b52bea2869142696d58b82ed9a | 追认：US-37 版本；US-01 删坏 entry point；v2.3.2 版本号 |
 
