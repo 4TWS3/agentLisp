@@ -354,7 +354,7 @@
  (("--check-output-drift") "Read-only: report whether the -o file drifted (exit 0 clean, 1 drifted); do not write"
   (set! check-drift? #t))
  (("-V" "--version") "Print SRS + compiler version, then exit 0 (IF-CLI-1)"
-  (printf "agentlispc 2.3.1 (SRS v2.3.0)\n")
+  (printf "agentlispc 2.3.2 (SRS v2.3.0)\n")
   (exit/flush 0))
  (("--dump-expanded-sexp") "Dump post-pattern-expansion s-expressions, then exit"
   (set! dump-expanded-sexp? #t))

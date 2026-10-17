@@ -16,7 +16,7 @@
 | compiler/emitter.rkt | 369816cfb7ed03a189e315589bcd1b74666bf227f7e422dfb2ac9229722db0a9 | 未改 |
 | compiler/agentlisp_compiler.rkt | 143fe75b54536bfc3876478af615921ba639fcddd85e4d935ce28af83e9c922f | 追认：P0；US-04~10 :state/:workflow；US-48 :online-trace；US-53 :effect；US-47 规格对齐；US-06 D2 内聚（subagent） |
 | .github/workflows/ci.yml | 8872af2347a15428d34ab085f67b5d6d82ffe2aa33ed8bcb5aa291b266b8cb2b | 未改 |
-| pyproject.toml | b4096e47ebb011dcae2cd79a26d22acf92e2944d3d395022b27d31dc6dc43683 | 追认：US-37 版本 2.3.1；US-01 删坏 entry point agentlisp2（runtime.cli 不存在） |
+| pyproject.toml | 5d2042bc362477bf6c2c183cc7dcc1c50180c2b52bea2869142696d58b82ed9a | 追认：US-37 版本；US-01 删坏 entry point；v2.3.2 版本号 |
 
 ---
 

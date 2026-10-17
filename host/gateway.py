@@ -42,7 +42,7 @@ class Gateway:
 
             app = FastAPI(
                 title="AgentLisp Gateway",
-                version="2.3.1",
+                version="2.3.2",
                 description="HTTP/SSE gateway for AgentLisp v2 compiled harnesses",
             )
 
