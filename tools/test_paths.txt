@@ -3,3 +3,4 @@ python/tests
 tests
 host/tests
 scripts/tests
+scripts/bench/tests

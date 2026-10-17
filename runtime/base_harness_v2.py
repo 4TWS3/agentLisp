@@ -91,6 +91,26 @@ class ReActTurnV2:
         return d
 
 
+@dataclass(frozen=True)
+class StructuredError:
+    """结构化错误（US-43）：让证据链能定位首错。"""
+
+    code: str
+    message: str
+    stage: str | None = None
+    turn_index: int | None = None
+    hint: str | None = None
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "code": self.code,
+            "message": self.message,
+            "stage": self.stage,
+            "turn_index": self.turn_index,
+            "hint": self.hint,
+        }
+
+
 @dataclass
 class ExecutionTraceV2:
     run_id: str
@@ -101,6 +121,7 @@ class ExecutionTraceV2:
     final_answer: str | None = None
     status: str = "pending"  # pending / running / success / failed / blocked / human_required
     error: str | None = None
+    first_error: StructuredError | None = None  # US-43：首错（结构化）
 
     @property
     def duration_ms(self) -> int:
@@ -119,6 +140,7 @@ class ExecutionTraceV2:
             "turns": [t.to_dict() for t in self.turns],
             "final_answer": self.final_answer,
             "error": self.error,
+            "first_error": self.first_error.to_dict() if self.first_error else None,
         }
 
 
@@ -508,6 +530,17 @@ class BaseHarnessV2:
         )
         return raw
 
+    def _set_error(self, code: str, message: str, stage: str) -> None:
+        """US-43：写结构化错误。首错只记一次（first_error）。"""
+        self._trace.error = message
+        if self._trace.first_error is None:
+            self._trace.first_error = StructuredError(
+                code=code,
+                message=message,
+                stage=stage,
+                turn_index=max(0, len(self._trace.turns) - 1),
+            )
+
     # ------------------------------------------------------------------
     # 对外入口：run / step
     # ------------------------------------------------------------------
@@ -530,13 +563,15 @@ class BaseHarnessV2:
             loop_result = await self._react_loop(user_input)
             if loop_result.get("status") == "blocked":
                 self._trace.status = "blocked"
-                self._trace.error = loop_result.get("reason")
+                self._set_error("BLOCKED", str(loop_result.get("reason") or ""), "constrain")
                 self.is_terminated = True
                 return self._trace
             if loop_result.get("status") == "failed":
                 self._trace.status = "failed"
-                self._trace.error = (
-                    loop_result.get("error") or loop_result.get("feedback") or "failed"
+                self._set_error(
+                    "FAILED",
+                    str(loop_result.get("error") or loop_result.get("feedback") or "failed"),
+                    "loop",
                 )
                 self.is_terminated = True
                 return self._trace
@@ -550,7 +585,7 @@ class BaseHarnessV2:
             return self._trace
         except Exception as exc:
             self._trace.status = "failed"
-            self._trace.error = f"{type(exc).__name__}: {exc}"
+            self._set_error(type(exc).__name__, str(exc), "exception")
             self.is_terminated = True
             raise
         finally:

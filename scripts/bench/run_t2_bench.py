@@ -66,6 +66,18 @@ MCNEMAR_SIGNIFICANCE_CHI2_CUTOFF: float = 3.841
 MCNEMAR_P_CUTOFF: float = 0.05
 FIX_RATE_CUTOFF: float = 0.90
 RUBRIC_MEAN_CUTOFF: float = 0.80
+
+
+def evolver_gate(
+    pass_rate: float, mcnemar_p_value: float, min_pass_rate: float = FIX_RATE_CUTOFF
+) -> bool:
+    """FR-EVO-4（US-45）：补丁评估门槛。
+
+    两条同时满足才算通过：pass_rate >= min_pass_rate 且 mcnemar_p_value < 0.05。
+    """
+    return bool(pass_rate >= min_pass_rate and mcnemar_p_value < MCNEMAR_P_CUTOFF)
+
+
 DEFAULT_DATASET_DOI: str = "t2-bench@v1.0"
 
 
@@ -648,6 +660,12 @@ def _build_argparser() -> argparse.ArgumentParser:
     )
     ap.add_argument(
         "--dataset", default=DEFAULT_DATASET_DOI, help="数据集 DOI/Tag，默认 t2-bench@v1.0"
+    )
+    ap.add_argument(
+        "--suite",
+        dest="dataset",
+        default=argparse.SUPPRESS,
+        help="--dataset 的别名（US-44 判据用 --suite t2-bench@v1.0）",
     )
     ap.add_argument(
         "--dataset-dir",
