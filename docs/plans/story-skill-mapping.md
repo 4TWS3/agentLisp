@@ -173,7 +173,7 @@
 | 17 | 21 份契约机器校验 | US-12 | 六栏齐备 + 被测试引用，有脚本可跑 | **已完成**（一键报告；见 `docs/handoff/20261014_us12_contracts_machine_check_handoff.md`） |
 | 18 | 接入开销有数 | US-40 | 每轮 handler < 1 ms | **已完成**（实测 0.0037 ms；见 `docs/handoff/20261014_us40_us41_perf_handoff.md`） |
 | 19 | 长跑稳定有数 | US-41 | 1000 轮不退化 | **已完成**（退化比 0.927；同上） |
-| 20 | Release 工作流绿 | US-38 | 本地结构核对 | **部分**（CI 真绿待验证；见 `docs/handoff/20261014_us38_release_workflow_handoff.md`） |
+| 20 | Release 工作流绿 | US-38 | Release 工作流绿 | **已完成**（真跑 7/7 job；run 39033945361；见 `docs/handoff/20261017_us38_release_ci_green_handoff.md`） |
 | 21 | pip install | US-01 | 本地打包安装自证 | **部分**（TestPyPI 待发；见 `docs/handoff/20261014_us01_pip_install_handoff.md`） |
 | 22 | 真实环境验收 | US-29 | 真模型 + 真工具 | **已完成**（Ollama qwen3:4b + 真 shell；见 `docs/handoff/20261014_us29_real_env_handoff.md`） |
 | 23 | 状态字段声明 | US-04 | `(:state :fields …)` -> `STATE_FIELDS` | **已完成** |
