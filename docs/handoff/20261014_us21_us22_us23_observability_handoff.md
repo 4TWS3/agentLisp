@@ -30,3 +30,9 @@
 | 观测三条 | pytest tests/patterns_runtime/test_observability_b3.py | 3 passed |
 | 模式全集 | pytest tests/patterns_runtime/ | 314 passed |
 | 判据 | python3 tools/standards_check.py | 19 通过 / 0 失败 |
+
+---
+
+## 4. 未做
+
+无（本故事判据范围内的项已全部交付）。

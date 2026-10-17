@@ -51,3 +51,9 @@
 
 PyPI 支持 **yank**：\`https://pypi.org/manage/project/agentlisp/releases/\` → 对应版本 → Yank。
 Yank 后 \`pip install agentlisp==2.3.2\` 仍可用（已装的人不受影响），但新解析不会再选它。
+
+---
+
+## 6. 未做
+
+无（本故事判据范围内的项已全部交付）。

@@ -43,3 +43,9 @@ US-34 新增标准 **A13**。
 | 注册表 | pytest tests/test_cr42_registry_closed.py | 4 passed |
 | A13 | python3 tools/standards_check.py | 19 通过 / 0 失败 |
 | 登记 | pytest tests/test_standards.py | 3 passed |
+
+---
+
+## 5. 未做
+
+无（本故事判据范围内的项已全部交付）。

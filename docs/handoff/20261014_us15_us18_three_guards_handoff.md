@@ -36,3 +36,9 @@
 | 三护栏 | pytest tests/patterns_runtime/test_three_guards_e2e.py | 5 passed |
 | 模式全集 | pytest tests/patterns_runtime/ | 311 passed |
 | 判据 | python3 tools/standards_check.py | 19 通过 / 0 失败 |
+
+---
+
+## 5. 未做
+
+无（本故事判据范围内的项已全部交付）。

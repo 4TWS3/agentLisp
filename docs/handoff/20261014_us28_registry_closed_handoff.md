@@ -39,3 +39,9 @@
 |---|---|---|
 | 注册表闭合 | `pytest tests/test_cr42_registry_closed.py -q --no-cov` | 3 passed |
 | 判据 | `python3 tools/standards_check.py` | 18 通过 / 0 失败 |
+
+---
+
+## 5. 未做
+
+无（本故事判据范围内的项已全部交付）。
