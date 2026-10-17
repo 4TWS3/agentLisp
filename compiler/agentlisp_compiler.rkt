@@ -204,12 +204,16 @@
            'harness (parse-harness harness)
            'multi   (and multi (parse-multi multi))
            'state   parsed-state
-           'workflow (and wf (parse-workflow wf state-fields state-defaulted
-                                              (and (pair? (filter (lambda (p)
-                                                                    (equal? (format "~a" (hash-ref p 'kind))
-                                                                            "parallel"))
-                                                                  parsed-patterns))
-                                                   #t)))
+           'workflow (cond
+                       [wf (parse-workflow wf state-fields state-defaulted
+                                           (and (pair? (filter (lambda (p)
+                                                                 (equal? (format "~a" (hash-ref p 'kind))
+                                                                         "parallel"))
+                                                               parsed-patterns))
+                                                #t))]
+                       ;; D2 内聚：:multiagent 降成 :workflow + subagent 节点
+                       [multi (multi->workflow (parse-multi multi))]
+                       [else #f])
            'order   (hash-ref pb 'order)
            'raw form)]
     [_ (raise-parse 'parse-defagent (format "顶层必须是 (defagent NAME BLOCK…)，得到：~s" form))]))
@@ -364,7 +368,7 @@
     [_ (raise-parse ':state "必需是 (:state :fields ((名 :type T [:default D]) …))")]))
 
 ;;; ---------- F-AMS-1 / F-AMS-2（US-05 / US-07 / US-09）：(:workflow …) ----------
-(define WORKFLOW-NODE-TYPES '("agent" "computation" "evaluator"))
+(define WORKFLOW-NODE-TYPES '("agent" "computation" "evaluator" "subagent"))
 (define WORKFLOW-TOPOLOGY-ENUM '("sequential" "edge" "conditional-edge" "conditional-loop"))
 
 (define (valid-handler? s)
@@ -408,6 +412,28 @@
 
 (define WORKFLOW-EFFECT-ENUM '("pure" "revertible" "non_revertible"))
 
+;; D2 内聚（US-06）：:multiagent 不再单独执行，降成 :workflow + subagent 节点。
+;; 四种多 agent 拓扑映射到 workflow 的边表；隔离语义由节点 :isolation scoped 承载。
+(define (multi->workflow multi)
+  (define topo (hash-ref multi 'topology))
+  (define workers (map (lambda (w) (hash-ref w 'name)) (hash-ref multi 'workers)))
+  (define (edge a b) (hash 'from a 'to b 'kind "fanout"))
+  (define nodes
+    (for/list ([w (in-list workers)])
+      (hash 'name w 'type "subagent" 'handler #f 'outputs '() 'static "" 'dynamic ""
+            'reads '() 'effect "revertible" 'isolation "scoped")))
+  ;; 全部线性化为 DAG：F-AMS-1 禁止未声明环，而多 agent 的 mesh/ring 天然有环。
+  ;; 这是本轮的口径简化（已写进交底）：orchestration = hub 扇出；其余 = 链。
+  (define edges
+    (cond
+      [(null? workers) '()]
+      [(string=? topo "orchestration")
+       (for/list ([w (in-list (cdr workers))]) (edge (car workers) w))]
+      [else
+       (for/list ([a (in-list workers)] [b (in-list (cdr workers))]) (edge a b))]))
+  (hash 'entry (if (pair? workers) (car workers) "")
+        'nodes nodes 'edges edges 'loops '()))
+
 (define (parse-workflow form state-fields state-defaulted has-parallel)
   (match form
     [`(:workflow . ,kvs)
@@ -423,7 +449,7 @@
          (unless (and (list? n) (pair? n) (symbol? (car n)))
            (raise-parse ':workflow (format "节点格式应为 (名 :type T …)，得到 ~s" n)))
          (define nm (symbol->string (car n)))
-         (define kw2 (keyword-kvs (cdr n) '(:type :handler :prompt :output-fields :effect)))
+         (define kw2 (keyword-kvs (cdr n) '(:type :handler :prompt :output-fields :effect :isolation)))
          (unless (hash-has-key? kw2 ':type)
            (raise-parse ':workflow (format "节点 ~a 缺 :type" nm)))
          (define ty (to-str (hash-ref kw2 ':type)))
@@ -463,8 +489,13 @@
            (raise-parse ':workflow
                         (format "节点 ~a 的 :effect 枚举=~a，得到 ~a"
                                 nm WORKFLOW-EFFECT-ENUM eff)))
+         (define iso (to-str (hash-ref kw2 ':isolation "")))
+         (unless (member iso '("" "scoped"))
+           (raise-parse ':workflow
+                        (format "节点 ~a 的 :isolation 只允许 scoped 或省略，得到 ~a" nm iso)))
          (hash 'name nm 'type ty 'handler h 'outputs outs
-               'static stat 'dynamic dyn 'reads (reverse reads) 'effect eff)))
+               'static stat 'dynamic dyn 'reads (reverse reads) 'effect eff
+               'isolation iso)))
      ;; F-AMS-8：non_revertible 在并发（parallel）中必须串行 -> 编译期拦
      (when has-parallel
        (define nr (for/list ([n (in-list nodes)]
@@ -846,7 +877,6 @@
    (emit-state-dict parsed)
    (emit-workflow-dict parsed)
    (emit-harness-dict harness)
-   (emit-multi-class-vars multi)
    (emit-init-footer cls-name)
    (emit-build-kv-aligned-context-hook)
    (emit-constrain-method harness)
@@ -936,7 +966,7 @@
                    (format (string-append
                             "{'name': ~a, 'type': ~a, 'handler': ~a, "
                             "'static': ~a, 'dynamic': ~a, 'output_fields': [~a], "
-                            "'effect': ~a}")
+                            "'effect': ~a, 'isolation': ~a}")
                            (py-string (hash-ref n 'name))
                            (py-string (hash-ref n 'type))
                            (if (hash-ref n 'handler)
@@ -945,7 +975,8 @@
                            (py-string (hash-ref n 'static '""))
                            (py-string (hash-ref n 'dynamic '""))
                            (string-join (map py-string (hash-ref n 'outputs '())) ", ")
-                           (py-string (hash-ref n 'effect 'pure))))
+                           (py-string (hash-ref n 'effect 'pure))
+                           (py-string (hash-ref n 'isolation ""))))
                  ", ")
                 (string-join
                  (for/list ([ed (in-list (hash-ref wf 'edges))])
