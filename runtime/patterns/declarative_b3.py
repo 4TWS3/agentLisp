@@ -17,9 +17,17 @@ class _B3:
 
     def __init__(self, spec: dict) -> None:
         self.spec = spec
+        self.harness: Any = None
 
     def on_init(self, harness: Any, others: list[str]) -> None:
+        self.harness = harness
         self.validate()
+
+    def _record(self, hook: str, detail: dict) -> None:
+        """观测留痕（US-21/22/23）。无运行时则跳过（单元单测场景）。"""
+        rt = getattr(self.harness, "patterns", None)
+        if rt is not None:
+            rt.record_event(self.kind, hook, detail)
 
     def validate(self) -> None:
         return None
@@ -68,6 +76,15 @@ class TopicModelHandler(_B3):
         out: dict[str, list[str]] = {f"T{i}": [] for i in range(buckets)}
         for it in items:
             out[f"T{zlib.crc32(it.encode('utf-8')) % buckets}"].append(it)
+        # US-22：主题分布与命中结果进 trace
+        self._record(
+            "topics",
+            {
+                "buckets": buckets,
+                "distribution": {t: len(v) for t, v in out.items()},
+                "hits": out,
+            },
+        )
         return out
 
 
@@ -92,7 +109,17 @@ class A2aHandler(_B3):
     def send(self, to_agent: str, payload: dict) -> dict:
         if "card" not in payload:
             raise ValueError("a2a：payload 必须含 card（Agent Card 标识，契约 CT-A2A-01）")
-        return self.bus.send(to_agent, payload)
+        res = self.bus.send(to_agent, payload)
+        # US-23：握手状态与 msg_id 进 trace
+        self._record(
+            "send",
+            {
+                "to": to_agent,
+                "handshake": "ok" if res.get("delivered") else "failed",
+                "msg_id": res.get("echo") or payload.get("id"),
+            },
+        )
+        return res
 
 
 class LearningHandler(_B3):
@@ -115,6 +142,8 @@ class LearningHandler(_B3):
     def write_back(self, feedback: dict) -> str:
         key = f"{self.skill_dir()}::{feedback.get('id', 'unknown')}"
         self.store.put(key, feedback)
+        # US-21：学习条目写回留痕（写到产物之外，产物指纹不变）
+        self._record("write_back", {"key": key, "skill_dir": self.skill_dir()})
         return key
 
     def recall(self, key: str) -> Any:

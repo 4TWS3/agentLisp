@@ -232,6 +232,10 @@ class PatternRuntime:
     def events_for(self, kind: str) -> list[dict]:
         return [e for e in self.events if e["kind"] == kind]
 
+    def record_event(self, kind: str, hook: str, detail: dict) -> None:
+        """公共留痕入口（handler 用；US-21/22/23 观测）。"""
+        self._record(kind, hook, detail)
+
     def after_turn(self, ctx: dict) -> dict:
         for h in self.handlers:
             kind = getattr(h, "kind", "?")
