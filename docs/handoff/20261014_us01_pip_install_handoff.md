@@ -33,7 +33,19 @@
 
 ---
 
-## 4. 未做
+## 4. 未做（2026-10-17 更新：已全部消除）
+
+- ~~TestPyPI 上传~~ → **已完成**：PyPI 2.3.2 已发布，实测可装。
+- 实测（2026-10-17，隔离 venv）：
+  ```
+  pip install agentlisp==2.3.2      -> rc=0
+  import agentlisp_runtime          -> 2.3.2
+  import runtime / import host      -> OK
+  agentlisp --version               -> 2.3.2
+  python -m agentlisp_runtime.cli   -> 2.3.2
+  ```
+
+## 5. 原未做
 
 - TestPyPI 上传（需凭据）。
 - sdist 未验证。
