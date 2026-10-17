@@ -49,6 +49,21 @@ racket-minimal-8.12-x86_64-linux-${DEBIAN_VERSION}.sh   # DEBIAN_VERSION=bookwor
 | 用官方 arm64 安装包 | Racket 8.12 **没有** Linux aarch64 安装包 |
 | 模拟 amd64 | Racket VM 在模拟下 Aborted |
 | 从源码编译 Racket | 30-60 分钟，且未验证 |
+| **apt 装 Debian 的 racket（8.7）** | **容器内 `apt-get update` 连不上 `deb.debian.org`**（实测 Connection failed），装不了 |
+
+### 4.1 最新实测（2026-10-17 第二轮）
+
+```
+arch: aarch64
+E: Failed to fetch http://deb.debian.org/debian/dists/bookworm/main/binary-arm64/Packages  Connection failed [IP: 146.75.46.132 80]
+E: Unable to locate package racket
+```
+
+容器能拉 Docker Hub 镜像，但**到 Debian 源（80 端口）不通**。所以 Debian 源这条路也断了。
+
+**两个独立的阻塞**：
+1. Racket 官方无 Linux arm64 安装包；
+2. 本机容器访问 Debian 源失败。
 
 ---
 
