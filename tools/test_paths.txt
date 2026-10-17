@@ -4,3 +4,4 @@ tests
 host/tests
 scripts/tests
 scripts/bench/tests
+scripts/evolver/tests

@@ -199,6 +199,10 @@
 | 43 | 在线循环只读 | US-48 | 断言产物未被写 | **已完成**（见 `docs/handoff/20261014_us48_online_trace_readonly_handoff.md`） |
 | 44 | 节点声明效应等级 | US-53 | :effect；non_revertible 串行 | **已完成**（见 `docs/handoff/20261014_us53_effect_declaration_handoff.md`） |
 | 45 | RSI 规格与实现一致 | US-47 | 六处不符逐条修正 | **已完成**（见 `docs/handoff/20261014_us47_rsi_spec_alignment_handoff.md`） |
+| 46 | 离线提案 | US-49 | 失败轨迹 -> 结构化提案 | **已完成**（骨架） |
+| 47 | Worktree 隔离 | US-50 | 验证后清理 | **已完成**（骨架） |
+| 48 | 双集 + McNemar | US-51 | p<0.05 且通过率达标 | **已完成**（骨架） |
+| 49 | 自动 PR + 人工批准 | US-52 | 无批准不得合并 | **已完成**（骨架；见 `docs/handoff/20261014_us49_us52_evolver_skeleton_handoff.md`） |
 
 **为什么第 1 项最紧**：E2E 红灯在 main 上。它不修，任何「已验证」的说法都不成立。
 
