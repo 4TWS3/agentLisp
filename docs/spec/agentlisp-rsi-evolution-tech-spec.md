@@ -173,6 +173,18 @@ VerifierGateSpec  ::= "(" ":suite" String ":min-pass-rate" Float ":mcnemar-p-thr
 | 执行点 | `scripts/evolver/cycle.py` 的 `resolve_patch_path`：落在禁区内直接返回 `rejected-protected-path` |
 | 为什么 | 多个 agent 共用一个仓库时，「某个 agent 改模式宏」会波及其他 agent。规格原文没写这条隔离。 |
 
+**工作区约束（同上，2026-10-18 补）**：
+
+进化循环的 `--repo` 必须指向**该 agent 自己的库**。
+
+| 判据 | 处理 |
+|---|---|
+| 仓库同时有 `compiler/agentlisp_compiler.rkt` 且 pyproject `name = "agentlisp"` | 判定为共享编译器仓 → `rejected-shared-repo` |
+| 其他 | 正常执行 |
+| 演示需要 | `--allow-shared-repo` 显式放行（会写进结果 JSON） |
+
+理由：拿共享仓当工作区，一个 agent 的进化会改动全体。这不是"自我进化"，是改公共代码。
+
 ### 3.3 源码范例 (`repair_agent_rsi.al`)
 
 ```lisp

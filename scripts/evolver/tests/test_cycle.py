@@ -104,6 +104,30 @@ def test_merged_with_approval_and_worktree_cleaned(repo: Path, traces: Path) -> 
     assert not Path(out["worktree"]).exists(), "worktree 必须清理（FR-EVO-5）"
 
 
+def test_shared_repo_is_rejected(tmp_path: Path) -> None:
+    """工作区是 agentLisp 共享仓 -> 拒绝（进化补丁必须落在 agent 自己的库）。"""
+    r = tmp_path / "shared"
+    (r / "compiler").mkdir(parents=True)
+    (r / "compiler" / "agentlisp_compiler.rkt").write_text("; x", encoding="utf-8")
+    (r / "pyproject.toml").write_text('name = "agentlisp"\n', encoding="utf-8")
+    d = tmp_path / "tr"
+    d.mkdir()
+    out = run_evolution_cycle(repo=r, agent_src="a.al", trace_dir=d)
+    assert out["status"] == "rejected-shared-repo"
+    assert "agentLisp" in out["reason"]
+
+
+def test_shared_repo_can_be_overridden_for_demo(tmp_path: Path) -> None:
+    r = tmp_path / "shared"
+    (r / "compiler").mkdir(parents=True)
+    (r / "compiler" / "agentlisp_compiler.rkt").write_text("; x", encoding="utf-8")
+    (r / "pyproject.toml").write_text('name = "agentlisp"\n', encoding="utf-8")
+    d = tmp_path / "tr"
+    d.mkdir()
+    out = run_evolution_cycle(repo=r, agent_src="a.al", trace_dir=d, allow_shared_repo=True)
+    assert out["status"] == "no-failures", out
+
+
 def test_patch_into_shared_compiler_is_rejected(repo: Path, traces: Path, monkeypatch) -> None:
     """pattern-macros 只允许在该 agent 的私有副本里改，不许动共享编译器。"""
     import scripts.evolver.cycle as cyc

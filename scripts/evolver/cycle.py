@@ -41,6 +41,26 @@ TARGET_DIRS: dict[str, str] = {
 }
 
 
+def is_shared_agentlisp_repo(repo: str | Path) -> bool:
+    """判断这个仓库是不是 agentLisp 共享编译器本体。
+
+    判据：同时存在 compiler/agentlisp_compiler.rkt 与 pyproject 里 name = "agentlisp"。
+    为什么单独查：进化补丁要落在**该 agent 自己的库**里；
+    拿共享仓当工作区，等于让一个 agent 的进化改动全体。
+    """
+    r = Path(repo)
+    pj = r / "pyproject.toml"
+    if not (r / "compiler" / "agentlisp_compiler.rkt").is_file():
+        return False
+    if not pj.is_file():
+        return True
+    return 'name = "agentlisp"' in pj.read_text(encoding="utf-8")
+
+
+class SharedRepoError(RuntimeError):
+    """工作区指向共享编译器仓库。"""
+
+
 class ProtectedPathError(RuntimeError):
     """补丁想改共享编译器。必须拒绝：那不是这个 agent 的私有物。"""
 
@@ -100,12 +120,21 @@ def run_evolution_cycle(
     merge_gate: MergeGate | None = None,
     approver: str | None = None,
     patch_rel_dir: str = "skills",
+    allow_shared_repo: bool = False,
 ) -> dict[str, Any]:
     """跑一轮。返回每一步的结果，便于审计。
 
     参数都可注入：`bench` 注入假基准即可在没有数据集/模型时测编排；
     `approver` 为空表示「等人批」，不会自动合并。
     """
+    # 进化补丁必须落在该 agent 自己的库。共享仓一律拒绝（--allow-shared-repo 可显式放行，用于演示）。
+    if is_shared_agentlisp_repo(repo) and not allow_shared_repo:
+        return {
+            "status": "rejected-shared-repo",
+            "reason": "工作区是 agentLisp 共享编译器仓库；进化补丁必须落在该 agent 自己的库。"
+            "演示可用 --allow-shared-repo 显式放行。",
+        }
+
     traces = analyze_failure_traces(trace_dir)
     if not traces:
         return {"status": "no-failures", "trace_dir": str(trace_dir)}
@@ -300,6 +329,11 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="用真 agent 评测（需 DEEPSEEK_API_KEY）；默认用 t2 dry-run",
     )
+    ap.add_argument(
+        "--allow-shared-repo",
+        action="store_true",
+        help="允许工作区是 agentLisp 共享仓（仅演示用；正常必须用 agent 自己的库）",
+    )
     args = ap.parse_args(argv)
 
     out = run_evolution_cycle(
@@ -308,6 +342,7 @@ def main(argv: list[str] | None = None) -> int:
         trace_dir=args.traces,
         bench=_agent_eval_bench if args.agent_eval else _default_bench,
         approver=args.approver or None,
+        allow_shared_repo=args.allow_shared_repo,
     )
     import json
 
