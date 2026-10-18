@@ -104,6 +104,49 @@ def test_merged_with_approval_and_worktree_cleaned(repo: Path, traces: Path) -> 
     assert not Path(out["worktree"]).exists(), "worktree 必须清理（FR-EVO-5）"
 
 
+def test_patch_into_shared_compiler_is_rejected(repo: Path, traces: Path, monkeypatch) -> None:
+    """pattern-macros 只允许在该 agent 的私有副本里改，不许动共享编译器。"""
+    import scripts.evolver.cycle as cyc
+    from scripts.evolver.proposal import MutationProposal
+
+    def _bad(_trace):
+        return MutationProposal(
+            proposal_id="patch_x",
+            target="pattern-macros",
+            diff_content="(define-syntax (defbroken stx) stx)",
+            evidence_trace_id="run1",
+            target_path="compiler/patterns.rkt",
+        )
+
+    monkeypatch.setattr(cyc, "generate_mutation_proposal", _bad)
+    out = run_evolution_cycle(
+        repo=repo, agent_src="agent.al", trace_dir=traces, bench=_bench_pass, approver="alice"
+    )
+    assert out["status"] == "rejected-protected-path"
+    assert "compiler/" in out["error"]
+
+
+def test_pattern_macros_defaults_to_private_dir(repo: Path, traces: Path, monkeypatch) -> None:
+    """默认落盘在 patterns/（agent 私有），不是 compiler/。"""
+    import scripts.evolver.cycle as cyc
+    from scripts.evolver.proposal import MutationProposal
+
+    monkeypatch.setattr(
+        cyc,
+        "generate_mutation_proposal",
+        lambda _t: MutationProposal(
+            proposal_id="patch_y",
+            target="pattern-macros",
+            diff_content="x",
+            evidence_trace_id="run1",
+        ),
+    )
+    out = run_evolution_cycle(
+        repo=repo, agent_src="agent.al", trace_dir=traces, bench=_bench_pass, approver="alice"
+    )
+    assert out["patch_path"].startswith("patterns/"), out
+
+
 def test_proposal_targets_come_from_first_error_stage(repo: Path, traces: Path) -> None:
     out = run_evolution_cycle(
         repo=repo, agent_src="agent.al", trace_dir=traces, bench=_bench_pass, approver="a"

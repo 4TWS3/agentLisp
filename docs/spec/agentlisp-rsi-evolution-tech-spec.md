@@ -162,6 +162,17 @@ VerifierGateSpec  ::= "(" ":suite" String ":min-pass-rate" Float ":mcnemar-p-thr
 
 注意：侵入禁区触发编译错误。
 
+**补充约束（2026-10-18，实现时发现规格漏写）**：
+
+`pattern-macros` 允许被进化，但**只允许改该 agent 的私有副本**，不许改共享编译器。
+
+| 项 | 规则 |
+|---|---|
+| 允许 | `patterns/<proposal_id>.md`（该 agent 项目内） |
+| 禁止 | `compiler/`、`.github/`、`docs/spec/`（全体共用） |
+| 执行点 | `scripts/evolver/cycle.py` 的 `resolve_patch_path`：落在禁区内直接返回 `rejected-protected-path` |
+| 为什么 | 多个 agent 共用一个仓库时，「某个 agent 改模式宏」会波及其他 agent。规格原文没写这条隔离。 |
+
 ### 3.3 源码范例 (`repair_agent_rsi.al`)
 
 ```lisp

@@ -18,6 +18,10 @@ class MutationProposal:
     evidence_trace_id: str
     rationale: str = ""
     first_error: dict[str, Any] = field(default_factory=dict)
+    # 补丁落盘的相对路径（相对 agent 项目根）。空 = 用 target 的默认路径。
+    # 为什么要有：pattern-macros 这类目标必须落在 agent 自己的目录，
+    # 不能落进共享编译器（否则一个 agent 的进化会改掉所有 agent 的行为）。
+    target_path: str = ""
 
 
 def analyze_failure_traces(trace_dir: str | Path) -> list[dict[str, Any]]:

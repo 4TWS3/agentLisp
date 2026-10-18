@@ -28,6 +28,40 @@ from .proposal import (
 )
 from .worktree import GitWorktree, git_env
 
+# 共享编译器：任何 agent 的进化补丁都不许改（否则一个 agent 的进化会改掉所有 agent 的行为）。
+# 与 C1 冻结表同源：compiler/ 下的文件是全体共用的。
+PROTECTED_PREFIXES: tuple[str, ...] = ("compiler/", ".github/", "docs/spec/")
+
+# target -> 默认落盘目录（相对 agent 项目根）
+TARGET_DIRS: dict[str, str] = {
+    "skills": "skills",
+    "prompt-patches": "prompts",
+    "harness-retry": "harness",
+    "pattern-macros": "patterns",  # agent 私有的模式宏目录，不是 compiler/
+}
+
+
+class ProtectedPathError(RuntimeError):
+    """补丁想改共享编译器。必须拒绝：那不是这个 agent 的私有物。"""
+
+
+def resolve_patch_path(proposal: MutationProposal) -> str:
+    """算出补丁落盘路径，并拦住落在共享编译器里的提案。"""
+    rel = proposal.target_path or (
+        TARGET_DIRS.get(proposal.target, "skills") + "/" + proposal.proposal_id + ".md"
+    )
+    norm = rel.replace("\\", "/").lstrip("./")
+    for pre in PROTECTED_PREFIXES:
+        if norm.startswith(pre):
+            raise ProtectedPathError(
+                f"补丁路径 {rel!r} 落在共享编译器 {pre!r} 内。"
+                "pattern-macros 只允许改该 agent 的私有副本（"
+                + TARGET_DIRS["pattern-macros"]
+                + "/）。"
+            )
+    return norm
+
+
 BenchFn = Callable[[Path, str, str], dict[str, Any]]
 """签名：(worktree 目录, 补丁文本, agent 源路径) -> {"new": (pass_rate, p), "holdout": (pass_rate, p)}"""
 
@@ -87,9 +121,16 @@ def run_evolution_cycle(
 
     with GitWorktree(repo, name=proposal.proposal_id) as wt:
         result["worktree"] = str(wt)
-        patch_file = wt / patch_rel_dir / (proposal.proposal_id + ".md")
+        try:
+            rel = resolve_patch_path(proposal)
+        except ProtectedPathError as exc:
+            result["status"] = "rejected-protected-path"
+            result["error"] = str(exc)
+            return result
+        patch_file = wt / rel
         patch_file.parent.mkdir(parents=True, exist_ok=True)
         patch_file.write_text(proposal.diff_content, encoding="utf-8")
+        result["patch_path"] = rel
 
         static = _static_check(wt, agent_src)
         result["static_check"] = static
