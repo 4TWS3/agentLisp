@@ -419,13 +419,25 @@ class OpenAIClient:
 
     name: ProviderName = "openai"
 
-    def __init__(self, model: str = "gpt-4o", api_key: str | None = None) -> None:
+    def __init__(
+        self,
+        model: str = "gpt-4o",
+        api_key: str | None = None,
+        base_url: str | None = None,
+    ) -> None:
         try:
             from openai import AsyncOpenAI  # type: ignore[import-not-found]
         except ImportError as exc:  # pragma: no cover
             raise FeatureNotInstalledError("OpenAI", "llm") from exc
         self.model = model
-        self.client = AsyncOpenAI(api_key=api_key or os.getenv("OPENAI_API_KEY"))
+        # base_url 显式给优先；否则沿用 SDK 读的 OPENAI_BASE_URL。
+        # 为什么要参数：Ollama / DeepSeek / llama.cpp 都是 OpenAI 兼容端点，
+        # 只靠全局环境变量没法在同一进程里切模型。
+        _url = base_url or os.getenv("OPENAI_BASE_URL") or None
+        self.client = AsyncOpenAI(
+            api_key=api_key or os.getenv("OPENAI_API_KEY"),
+            **({"base_url": _url} if _url else {}),
+        )
 
     async def next(
         self,

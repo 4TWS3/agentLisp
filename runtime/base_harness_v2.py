@@ -35,6 +35,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import gc
+import json
 import logging
 import pathlib
 import re
@@ -1313,7 +1314,19 @@ class BaseHarnessV2:
                     tc = tool_calls[0]
                     fn = tc["function"]
                     tool_name = fn["name"]
-                    action_input: dict[str, Any] = fn.get("arguments") or {}
+                    # arguments 可能是 dict（已解析）或 JSON 字符串（OpenAI 原始形状）。
+                    # 两种都收：自定义 client 直接回原始形状时，不解析会在 constrain 处炸
+                    # （AttributeError: 'str' object has no attribute 'get'）。
+                    _raw_args = fn.get("arguments")
+                    if isinstance(_raw_args, str):
+                        try:
+                            action_input: dict[str, Any] = json.loads(_raw_args or "{}")
+                        except json.JSONDecodeError:
+                            action_input = {"raw": _raw_args}
+                    elif isinstance(_raw_args, dict):
+                        action_input = dict(_raw_args)
+                    else:
+                        action_input = {}
                     tool_call = {"tool_name": tool_name, "args": action_input}
 
                     turn.action = tool_name
@@ -1420,11 +1433,13 @@ class BaseHarnessV2:
                     # 成功分支
                     turn.observation = observation
                     turn.status = "success"
-                    stdout_for_traj = (
-                        observation
-                        if isinstance(observation, (dict, list))
-                        else observation.get("stdout")
-                    )
+                    # 工具消息的 content 必须是字符串：OpenAI 兼容端点（含 Ollama）传 dict 会 400
+                    # （实测：invalid message content type: map[string]interface {}）。
+                    # 所以 dict/list 一律序列化成 JSON 文本。
+                    if isinstance(observation, (dict, list)):
+                        stdout_for_traj = json.dumps(observation, ensure_ascii=False)
+                    else:
+                        stdout_for_traj = str(observation.get("stdout", ""))
                     self.trajectory.append(
                         {"role": "tool", "name": tool_name, "content": stdout_for_traj}
                     )
