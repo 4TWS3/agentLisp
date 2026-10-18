@@ -1318,7 +1318,12 @@ class BaseHarnessV2:
                         turn.thought = answer or None
                         turn.answer = answer
                         turn.status = "success"
-                        self.trajectory.append({"role": "assistant", "content": answer})
+                        _asst_plain: dict[str, Any] = {"role": "assistant", "content": answer}
+                        # thinking 模式（如 DeepSeek reasoner）要求把 reasoning_content 原样回传，
+                        # 否则下一轮 400（实测：RSI 第一轮就撞上）。
+                        if assistant_msg.get("reasoning_content"):
+                            _asst_plain["reasoning_content"] = assistant_msg["reasoning_content"]
+                        self.trajectory.append(_asst_plain)
                         self.status_bar.on_step(self._trace.run_id, turn.index, "answer", answer)
                         await self._save_checkpoint()
                         return {"status": "success", "final_answer": answer}
@@ -1343,22 +1348,23 @@ class BaseHarnessV2:
                     # assistant(tool_calls) 消息。此前两者都缺 → DeepSeek 422
                     # missing field `tool_call_id`。
                     _tc_id = str(tc.get("id") or "call_0")
-                    self.trajectory.append(
-                        {
-                            "role": "assistant",
-                            "content": content,
-                            "tool_calls": [
-                                {
-                                    "id": _tc_id,
-                                    "type": "function",
-                                    "function": {
-                                        "name": tool_name,
-                                        "arguments": json.dumps(action_input, ensure_ascii=False),
-                                    },
-                                }
-                            ],
-                        }
-                    )
+                    _asst_with_calls: dict[str, Any] = {
+                        "role": "assistant",
+                        "content": content,
+                        "tool_calls": [
+                            {
+                                "id": _tc_id,
+                                "type": "function",
+                                "function": {
+                                    "name": tool_name,
+                                    "arguments": json.dumps(action_input, ensure_ascii=False),
+                                },
+                            }
+                        ],
+                    }
+                    if assistant_msg.get("reasoning_content"):
+                        _asst_with_calls["reasoning_content"] = assistant_msg["reasoning_content"]
+                    self.trajectory.append(_asst_with_calls)
                     tool_call = {"tool_name": tool_name, "args": action_input}
 
                     turn.action = tool_name

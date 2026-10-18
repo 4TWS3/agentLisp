@@ -61,11 +61,11 @@ def traces(tmp_path: Path) -> Path:
     return d
 
 
-def _bench_pass(_wt: Path) -> dict:
+def _bench_pass(_wt: Path, _patch: str = "", _src: str = "") -> dict:
     return {"new": (0.95, 0.01), "holdout": (0.94, 0.02)}
 
 
-def _bench_fail(_wt: Path) -> dict:
+def _bench_fail(_wt: Path, _patch: str = "", _src: str = "") -> dict:
     return {"new": (0.50, 0.40), "holdout": (0.50, 0.40)}
 
 

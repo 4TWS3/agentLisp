@@ -51,6 +51,54 @@ class _Tools:
         return {"exit_code": 0, "stdout": "hi", "stderr": ""}
 
 
+class _ThinkingLLM:
+    """模拟 thinking 模式：第一条带 reasoning_content，后续必须能读到它。"""
+
+    def __init__(self) -> None:
+        self.calls: list[list[dict[str, Any]]] = []
+
+    async def achat(
+        self, messages: list[dict[str, Any]], tools: Any = None, **kwargs: Any
+    ) -> dict[str, Any]:
+        self.calls.append([dict(m) for m in messages])
+        if len(self.calls) == 1:
+            return {
+                "role": "assistant",
+                "content": None,
+                "reasoning_content": "先想一下：应该跑 echo",
+                "tool_calls": [
+                    {
+                        "id": "1",
+                        "type": "function",
+                        "function": {"name": "bash", "arguments": json.dumps({"cmd": "echo hi"})},
+                    }
+                ],
+            }
+        return {"role": "assistant", "content": "done"}
+
+
+def test_reasoning_content_is_passed_back() -> None:
+    """thinking 模式要求把 reasoning_content 原样回传，否则下一轮 400（实测）。"""
+    llm = _ThinkingLLM()
+    h = BaseHarnessV2(
+        {"system_prompt": "run bash"},
+        {},
+        {},
+        {
+            "constrain": {"require_human_approval": ["bash"], "forbidden_commands": ["rm -rf"]},
+            "verify": {},
+            "correct": {"max_retries": 1},
+        },
+        llm_client=llm,
+        tool_registry=_Tools(),
+        max_turns=3,
+    )
+    asyncio.run(h.run("run echo hi"))
+    asst = [m for m in llm.calls[1] if m.get("role") == "assistant" and m.get("tool_calls")]
+    assert asst, f"第二轮必须带上第一轮的 assistant 消息：{llm.calls[1]}"
+    assert asst[0].get("reasoning_content") == "先想一下：应该跑 echo"
+
+
 def test_tool_message_content_is_json_string() -> None:
     llm = _ScriptedLLM()
     h = BaseHarnessV2(
