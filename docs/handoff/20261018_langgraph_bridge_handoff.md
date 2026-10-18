@@ -128,6 +128,42 @@ DEEPSEEK_API_KEY=... python3 examples/tianji_slice/run_pipeline.py
 
 ---
 
+## 5.4 全能力实测（2026-10-18）
+
+`examples/tianji_slice` 现在一个 `.al` 同时用到：
+
+| 能力 | 在切片里的位置 |
+|---|---|
+| `:workflow` 节点图 | facts → draft → review → report |
+| `:handler`（computation） | `metrics.facts` |
+| subagent 按名路由 | `draft` → `writer` harness |
+| conditional-loop | draft/review 不过就重写（max 3） |
+| `:state :reducer append` | `sections` 累积通过的草稿 |
+| `:prompt :static/:dynamic` 插值 | draft 节点把 `{facts}` 喂给子 Agent |
+
+实测输出（DeepSeek v4-flash）：
+
+```
+=== 事实 ===
+{"months": 6, "revenue_trend_pct": 15.0, "net_margin_last_pct": -1.4, "runway_months": null}
+
+=== 草稿 ===
+近 6 个月营收从 120,000 增至 138,000，增长 15%…净利率由 20.0% 回落至 -1.4%…
+（注：8.9 个月系 160,000÷18,000 的算术推算，非给定口径）
+
+=== 评审 ===
+ok: True | reason: 通过 | 累积 sections: 1
+
+=== 结论 ===
+营收增 15% 至 138,000，净利率却由 20.0% 降至 -1.4%，呈增收不增利。
+```
+
+**踩到的两个坑（已修）**：
+1. 子 Agent 若传类而不是工厂，桥会 `cls()` → 用上 MockLLMClient，输出 "OK, done."
+2. 少了 `(edge draft review)` 时 review 不可达 → 循环整段被跳过，且不报错
+
+---
+
 ## 6. 未做
 
 | 项 | 说明 |

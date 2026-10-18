@@ -64,9 +64,8 @@ def _make_subagent(node: dict[str, Any], agents: dict[str, Any]) -> NodeFn:
             f"subagent 节点 {node['name']!r} 指向 agent {agent_name!r}，"
             f"但 agents 里没有它；已注册 {sorted(agents)}"
         )
-    task = (node.get("static") or node.get("dynamic") or "").strip() or (
-        f"完成子任务：{node['name']}"
-    )
+    static = str(node.get("static") or "")
+    dynamic = str(node.get("dynamic") or "")
 
     async def run(state: dict[str, Any]) -> dict[str, Any]:
         import json
@@ -76,6 +75,16 @@ def _make_subagent(node: dict[str, Any], agents: dict[str, Any]) -> NodeFn:
             for k, v in state.items()
             if k not in {"messages", "chapters"} and not k.startswith("_")
         }
+        # :dynamic 段里的 {字段} 用当前 state 展开（F-AMS-5 的插值）
+        import re as _re
+
+        def _sub(m: Any) -> str:
+            key = str(m.group(1))
+            v = state.get(key)
+            return json.dumps(v, ensure_ascii=False) if isinstance(v, (dict, list)) else str(v)
+
+        dyn = _re.sub(r"\{([A-Za-z_][A-Za-z0-9_]*)\}", _sub, dynamic)
+        task = (static + ("\n\n" + dyn if dyn else "")).strip() or f"完成子任务：{node['name']}"
         h = cls()
         trace = await h.run(task + "\n\n当前已知：\n" + json.dumps(payload, ensure_ascii=False))
         answer = str(getattr(trace, "final_answer", "") or "")

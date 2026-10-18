@@ -38,5 +38,10 @@ def compute(_state: dict | None = None) -> dict:
     }
 
 
+def facts(state: dict | None = None) -> dict:
+    """节点入口：返回 {"facts": {...}}，与 :output-fields (facts) 对齐。"""
+    return {"facts": compute(state)}
+
+
 if __name__ == "__main__":
     print(json.dumps(compute(), ensure_ascii=False, indent=2))
