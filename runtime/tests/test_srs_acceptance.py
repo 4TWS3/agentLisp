@@ -73,8 +73,8 @@ SAMPLE_HARNESS_KWARGS: dict[str, Any] = dict(
         compression=None,
     ),
     tools_config=dict(
-        tools_schema="Builtins: ['echo', 'bash']\nCustom tools: 2",
-        import_builtins=["echo", "bash"],
+        tools_schema="Builtins: ['bash']\nCustom tools: 2",
+        import_builtins=["bash"],
         mcp_servers=[],
         define_tools=[],
     ),

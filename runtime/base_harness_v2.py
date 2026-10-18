@@ -451,6 +451,13 @@ class BaseHarnessV2:
         self._circuit_breaker = llm_circuit_breaker
 
         self.llm_client: LLMClientProtocol = llm_client or MockLLMClient()  # Fix Issue #1
+        # 工具开箱可用：没显式注入 registry 时，按 tools_config.import_builtins 自动建。
+        # 为什么要自动：DSL 写了 (:tools (import-builtin bash))，跑起来却没有工具，
+        # 就是「说的和做的不一致」。声明了但没实现的工具 → 构造时直接报错，不静默。
+        if tool_registry is None:
+            from .builtin_tools import BuiltinToolRegistry
+
+            tool_registry = BuiltinToolRegistry.from_config(self.tools_config)
         self.tool_registry: ToolRegistryProtocol | None = tool_registry
         self.checkpoint_store: CheckpointStoreProtocol = (
             checkpoint_store or _MemoryCheckpointStore()
