@@ -91,6 +91,26 @@ DEEPSEEK_API_KEY=... python3 examples/tianji_slice/run_pipeline.py
 
 ---
 
+## 5.2 多 agent 编排（subagent 节点，2026-10-18 补）
+
+```lisp
+(:workflow :entry a
+  :nodes ((a :type subagent :handler "tianji"   :output-fields (judge))
+          (b :type subagent :handler "yaoguang" :output-fields (report)))
+  :topology ((edge a b)))
+```
+
+| 项 | 说明 |
+|---|---|
+| `:handler` 语义 | subagent 节点是 **agent 注册名**（如 `tianji`），不是模块路径 |
+| 编译期 | 按节点类型分别校验：subagent 走 `[A-Za-z_][A-Za-z0-9_-]*`，其它仍要 `模块.函数` |
+| 运行时 | `build_graph(..., agents={"tianji": TianjiHarness})`；节点会 new 一个 harness 跑一轮 |
+| 输入 | 节点把 state（去掉 messages/chapters）JSON 化作为输入上下文 |
+| 输出 | 按 `:output-fields` 落字段 |
+| 缺 agent | 报错并列出已注册的名字 |
+
+---
+
 ## 6. 未做
 
 | 项 | 说明 |

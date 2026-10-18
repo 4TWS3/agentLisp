@@ -476,9 +476,19 @@
            (raise-parse ':workflow
                         (format "节点 ~a 的 :type 枚举=~a，得到 ~a" nm WORKFLOW-NODE-TYPES ty)))
          (define h (and (hash-has-key? kw2 ':handler) (to-str (hash-ref kw2 ':handler))))
-         (when (and h (not (valid-handler? h)))
+         ;; subagent 节点的 :handler 是「agent 注册名」（如 tianji），不是模块路径：
+         ;; 多 agent 编排要按名字路由到不同的 harness 类。
+         (define (valid-agent-name? s)
+           (and (string? s) (regexp-match? #rx"^[A-Za-z_][A-Za-z0-9_-]*$" s)))
+         (when (and h
+                    (not (if (string=? ty "subagent")
+                             (valid-agent-name? h)
+                             (valid-handler? h))))
            (raise-parse ':workflow
-                        (format "节点 ~a 的 :handler 格式应为 模块.函数 或 模块.类.方法，得到 ~s" nm h)))
+                        (format (if (string=? ty "subagent")
+                                    "subagent 节点 ~a 的 :handler 应为 agent 注册名，得到 ~s"
+                                    "节点 ~a 的 :handler 格式应为 模块.函数 或 模块.类.方法，得到 ~s")
+                                nm h)))
          (when (and (string=? ty "computation") (not h))
            (raise-parse ':workflow (format "computation 节点 ~a 必须给 :handler（F-AMS-2）" nm)))
          ;; F-AMS-3：:output-fields 必须来自 :state 已声明字段

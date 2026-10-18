@@ -92,6 +92,57 @@ def test_async_node_is_awaited() -> None:
     assert asyncio.run(app.ainvoke({})) == {"x": 1, "y": 2}
 
 
+def test_subagent_nodes_route_to_named_agents() -> None:
+    """多 agent 编排：subagent 节点按 :handler 里的 agent 名路由到不同 harness。"""
+    calls: list[str] = []
+
+    class _FakeHarness:
+        def __init__(self, name: str) -> None:
+            self.name = name
+
+        async def run(self, _prompt: str):
+            calls.append(self.name)
+
+            class _T:
+                final_answer = f"{self.name} 的产出"
+
+            return _T()
+
+    wf = {
+        "entry": "a",
+        "nodes": [
+            {"name": "a", "type": "subagent", "handler": "tianji", "output_fields": ["judge"]},
+            {"name": "b", "type": "subagent", "handler": "yaoguang", "output_fields": ["report"]},
+        ],
+        "edges": [{"from": "a", "to": "b", "kind": "edge"}],
+    }
+    import asyncio
+
+    app = build_graph(
+        wf,
+        {},
+        agents={
+            "tianji": lambda: _FakeHarness("tianji"),
+            "yaoguang": lambda: _FakeHarness("yaoguang"),
+        },
+    )
+    out = asyncio.run(app.ainvoke({}))
+    assert calls == ["tianji", "yaoguang"], calls
+    assert out["judge"] == "tianji 的产出"
+    assert out["report"] == "yaoguang 的产出"
+
+
+def test_subagent_with_unknown_agent_is_loud() -> None:
+    wf = {
+        "entry": "a",
+        "nodes": [{"name": "a", "type": "subagent", "handler": "nope", "output_fields": []}],
+        "edges": [],
+    }
+    with pytest.raises(WorkflowBridgeError) as exc:
+        build_graph(wf, {}, agents={"tianji": object})
+    assert "nope" in str(exc.value)
+
+
 def test_missing_implementation_names_the_node() -> None:
     app_nodes = _wf(("a", "computation"), ("b", "agent"), edges=[("a", "b")])
     with pytest.raises(WorkflowBridgeError) as exc:

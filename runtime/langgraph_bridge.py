@@ -55,13 +55,49 @@ def _import_handler(path: str) -> NodeFn:
     raise WorkflowBridgeError(f"无法解析 :handler {path!r}（模块导不进来或属性不存在）")
 
 
-def _resolve(node: dict[str, Any], handlers: dict[str, NodeFn]) -> NodeFn:
+def _make_subagent(node: dict[str, Any], agents: dict[str, Any]) -> NodeFn:
+    """subagent 节点：按 :handler 里的 agent 注册名，起对应 harness 跑一轮。"""
+    agent_name = node.get("handler") or node["name"]
+    cls = agents.get(agent_name)
+    if cls is None:
+        raise WorkflowBridgeError(
+            f"subagent 节点 {node['name']!r} 指向 agent {agent_name!r}，"
+            f"但 agents 里没有它；已注册 {sorted(agents)}"
+        )
+    task = (node.get("static") or node.get("dynamic") or "").strip() or (
+        f"完成子任务：{node['name']}"
+    )
+
+    async def run(state: dict[str, Any]) -> dict[str, Any]:
+        import json
+
+        payload = {
+            k: v
+            for k, v in state.items()
+            if k not in {"messages", "chapters"} and not k.startswith("_")
+        }
+        h = cls()
+        trace = await h.run(task + "\n\n当前已知：\n" + json.dumps(payload, ensure_ascii=False))
+        answer = str(getattr(trace, "final_answer", "") or "")
+        outs = list(node.get("output_fields") or [])
+        return {k: answer for k in outs} if outs else {"result": answer}
+
+    return run
+
+
+def _resolve(
+    node: dict[str, Any],
+    handlers: dict[str, NodeFn],
+    agents: dict[str, Any] | None = None,
+) -> NodeFn:
     name = node["name"]
     if name in handlers:
         return handlers[name]
     handler = node.get("handler")
     if handler and handler in handlers:
         return handlers[handler]
+    if node.get("type") == "subagent":
+        return _make_subagent(node, agents or {})
     if handler:
         return _import_handler(handler)
     raise WorkflowBridgeError(
@@ -74,8 +110,9 @@ def _node_fn(
     node: dict[str, Any],
     handlers: dict[str, NodeFn],
     reducers: dict[str, Callable[[Any, Any], Any]] | None = None,
+    agents: dict[str, Any] | None = None,
 ) -> Callable[..., Any]:
-    impl = _resolve(node, handlers)
+    impl = _resolve(node, handlers, agents)
     name = node["name"]
     outputs = list(node.get("output_fields") or [])
     field_reducers = reducers or {}
@@ -124,6 +161,7 @@ def build_graph(
     state_schema: Any = None,
     checkpointer: Any = None,
     state_fields: dict[str, Any] | None = None,
+    agents: dict[str, Any] | None = None,
 ) -> Any:
     """按 WORKFLOW 建 LangGraph 应用。
 
@@ -158,7 +196,7 @@ def build_graph(
 
     g = StateGraph(state_schema if state_schema is not None else dict)
     for n in nodes:
-        g.add_node(n["name"], _node_fn(n, handlers, field_reducers))
+        g.add_node(n["name"], _node_fn(n, handlers, field_reducers, agents))
 
     edges = workflow.get("edges") or []
     plain = [e for e in edges if e.get("kind", "edge") == "edge"]
