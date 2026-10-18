@@ -106,6 +106,30 @@ def _resolve(
     )
 
 
+def _with_round_counter(fn: Callable[..., Any], key: str) -> Callable[..., Any]:
+    """给 loop 的首个节点套一层计数，供 max_rounds 判定。"""
+
+    async def run(state: dict[str, Any]) -> dict[str, Any]:
+        n = int(state.get(key, 0)) + 1
+        result = fn({**state, key: n})
+        if inspect.isawaitable(result):
+            result = await result
+        return {**result, key: n}
+
+    return run
+
+
+def _loop_predicate(pred: Callable[[dict[str, Any]], Any], key: str, max_rounds: int):
+    """把 :while 判定包装成 LangGraph 的条件边函数（again / done）。"""
+
+    def route(state: dict[str, Any]) -> str:
+        if max_rounds and int(state.get(key, 0)) >= max_rounds:
+            return "done"
+        return "again" if pred(state) else "done"
+
+    return route
+
+
 def _node_fn(
     node: dict[str, Any],
     handlers: dict[str, NodeFn],
@@ -194,19 +218,66 @@ def build_graph(
                 )
             field_reducers[fname] = REDUCERS[red]
 
-    g = StateGraph(state_schema if state_schema is not None else dict)
-    for n in nodes:
-        g.add_node(n["name"], _node_fn(n, handlers, field_reducers, agents))
-
     edges = workflow.get("edges") or []
     plain = [e for e in edges if e.get("kind", "edge") == "edge"]
     conditional = [e for e in edges if e.get("kind") == "conditional-edge"]
+    loops = workflow.get("loops") or []
+
+    # ---- conditional-loop：编译器给出 (nodes, while, max_rounds)，桥负责接成条件边 ----
+    # 语义：跑完 loop 的最后一个节点后，问 "<首个节点>__while" 要不要再跑一轮。
+    loop_plans: list[dict[str, Any]] = []
+    skip_from: set[str] = set()
+    for lp in loops:
+        ns = [str(x) for x in (lp.get("nodes") or [])]
+        if not ns:
+            raise WorkflowBridgeError("conditional-loop 的 :nodes 为空")
+        for x in ns:
+            if x not in known:
+                raise WorkflowBridgeError(f"conditional-loop 引用不存在的节点 {x!r}")
+        first, last = ns[0], ns[-1]
+        pred = handlers.get(first + "__while") or handlers.get(str(lp.get("while", "")))
+        if pred is None:
+            raise WorkflowBridgeError(
+                f"conditional-loop（{first}→{last}）缺判定函数："
+                f"请提供 handlers['{first}__while'] 或 handlers[{lp.get('while')!r}]"
+            )
+        nxt = next((e["to"] for e in plain if e["from"] == last), None)
+        loop_plans.append(
+            {
+                "first": first,
+                "last": last,
+                "pred": pred,
+                "next": nxt,
+                "max_rounds": int(lp.get("max_rounds") or 0),
+                "key": "_loop_rounds_" + first,
+            }
+        )
+        skip_from.add(last)
+
+    g = StateGraph(state_schema if state_schema is not None else dict)
+    wrap_first = {p["first"]: p for p in loop_plans}
+    for n in nodes:
+        fn = _node_fn(n, handlers, field_reducers, agents)
+        plan = wrap_first.get(n["name"])
+        if plan is not None:
+            fn = _with_round_counter(fn, plan["key"])
+        g.add_node(n["name"], fn)
 
     for e in plain:
         for end in (e["from"], e["to"]):
             if end not in known:
                 raise WorkflowBridgeError(f"边引用了不存在的节点 {end!r}")
+        if e["from"] in skip_from:
+            # 这一条被 conditional-loop 接管（again / done 二选一）
+            continue
         g.add_edge(e["from"], e["to"])
+
+    for plan in loop_plans:
+        g.add_conditional_edges(
+            plan["last"],
+            _loop_predicate(plan["pred"], plan["key"], plan["max_rounds"]),
+            {"again": plan["first"], "done": plan["next"] or "__end__"},
+        )
 
     # 条件边：同一源的多条条件边共用一个路由函数 handlers["<源>__route"]
     by_src: dict[str, list[str]] = {}

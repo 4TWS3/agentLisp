@@ -111,6 +111,23 @@ DEEPSEEK_API_KEY=... python3 examples/tianji_slice/run_pipeline.py
 
 ---
 
+## 5.3 conditional-loop（2026-10-18 补）
+
+```lisp
+(:topology ((edge write check)
+            (conditional-loop :nodes (write check) :while "need_retry" :max-rounds 3)
+            (edge check publish)))
+```
+
+| 项 | 说明 |
+|---|---|
+| 判定函数 | `handlers["<首个节点>__while"]`（或 `handlers[:while 的值]`）；缺了报错点名 |
+| 语义 | 跑完 loop 最后一个节点后问判定：真 → 回首个节点；假 → 走原出边（无出边则 END） |
+| max_rounds | 到顶直接 done，不看判定；计数由桥给首个节点套的包装器维护 |
+| 边冲突 | loop 最后一个节点的**普通出边被接管**，不会同时存在普通边与条件边 |
+
+---
+
 ## 6. 未做
 
 | 项 | 说明 |

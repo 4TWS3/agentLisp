@@ -92,6 +92,86 @@ def test_async_node_is_awaited() -> None:
     assert asyncio.run(app.ainvoke({})) == {"x": 1, "y": 2}
 
 
+def test_conditional_loop_repeats_until_predicate_says_done() -> None:
+    """conditional-loop：跑完最后一个节点后问 <首个>__while 要不要再来一轮。"""
+    import asyncio
+
+    runs: list[str] = []
+    wf = {
+        "entry": "write",
+        "nodes": [
+            {"name": "write", "type": "agent", "handler": None, "output_fields": ["draft"]},
+            {"name": "check", "type": "evaluator", "handler": None, "output_fields": ["ok"]},
+            {"name": "publish", "type": "agent", "handler": None, "output_fields": ["final"]},
+        ],
+        "edges": [
+            {"from": "write", "to": "check", "kind": "edge"},
+            {"from": "check", "to": "publish", "kind": "edge"},
+        ],
+        "loops": [{"nodes": ["write", "check"], "while": "need_retry", "max_rounds": 0}],
+    }
+    app = build_graph(
+        wf,
+        {
+            "write": lambda s: (runs.append("write"), {"draft": "v"})[1],
+            "check": lambda s: (runs.append("check"), {"ok": True})[1],
+            "publish": lambda s: (runs.append("publish"), {"final": "done"})[1],
+            # 前两轮判定「还要改」，第三轮通过
+            "write__while": lambda s: len([r for r in runs if r == "write"]) < 3,
+        },
+    )
+    out = asyncio.run(app.ainvoke({}))
+    assert runs == ["write", "check", "write", "check", "write", "check", "publish"], runs
+    assert out["final"] == "done"
+
+
+def test_conditional_loop_respects_max_rounds() -> None:
+    """max_rounds 到顶就 done，不看判定函数。"""
+    import asyncio
+
+    runs: list[str] = []
+    wf = {
+        "entry": "w",
+        "nodes": [
+            {"name": "w", "type": "agent", "handler": None, "output_fields": ["n"]},
+            {"name": "c", "type": "evaluator", "handler": None, "output_fields": []},
+            {"name": "z", "type": "agent", "handler": None, "output_fields": []},
+        ],
+        "edges": [
+            {"from": "w", "to": "c", "kind": "edge"},
+            {"from": "c", "to": "z", "kind": "edge"},
+        ],
+        "loops": [{"nodes": ["w", "c"], "while": "always", "max_rounds": 2}],
+    }
+    app = build_graph(
+        wf,
+        {
+            "w": lambda s: (runs.append("w"), {"n": 1})[1],
+            "c": lambda s: (runs.append("c"), {})[1],
+            "z": lambda s: (runs.append("z"), {})[1],
+            "w__while": lambda s: True,  # 永远想再来一轮
+        },
+    )
+    asyncio.run(app.ainvoke({}))
+    assert runs.count("w") == 2, runs
+    assert runs[-1] == "z"
+
+
+def test_conditional_loop_without_predicate_is_loud() -> None:
+    wf = {
+        "entry": "a",
+        "nodes": [
+            {"name": "a", "type": "agent", "handler": None, "output_fields": []},
+            {"name": "b", "type": "agent", "handler": None, "output_fields": []},
+        ],
+        "edges": [{"from": "a", "to": "b", "kind": "edge"}],
+        "loops": [{"nodes": ["a", "b"], "while": "x", "max_rounds": 0}],
+    }
+    with pytest.raises(WorkflowBridgeError) as exc:
+        build_graph(wf, {"a": lambda s: {}, "b": lambda s: {}})
+    assert "a__while" in str(exc.value)
+
+
 def test_subagent_nodes_route_to_named_agents() -> None:
     """多 agent 编排：subagent 节点按 :handler 里的 agent 名路由到不同 harness。"""
     calls: list[str] = []
