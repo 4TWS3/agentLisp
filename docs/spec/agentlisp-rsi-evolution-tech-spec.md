@@ -8,24 +8,28 @@
 
 ---
 
-> ## ⚠️ 实况口径（as-built，2026-10-14 实测，基线提交 a54ce5f）
+> ## 实况口径（as-built，2026-10-18 实测）
 >
 > 本文是**设计草案**（2.0.0-RSI-DRAFT）。实现情况经机械核对如下：
 >
 > | 本文要求 | 实况 | 证据 |
 > |---|---|---|
-> | §3.1 EBNF 扩展（:evolution 块） | **已实现，仅编译期** ✓ | compiler/agentlisp_compiler.rkt:181 / 196 / 198（解析 + 越界拦截 + emit） |
-> | §3.2 突变目标与不可变禁区 | **已实现，仅编译期校验** ✓ | 同上：越界的 :evolution 在编译期被拦下 |
-> | §3.3 源码范例 repair_agent_rsi.al | **不存在** ✗ | git ls-files 无此文件 |
-> | §4.1 Racket 前端改造 | **部分**：:evolution 已支持；离线驱动未做 | 运行时/宿主引用 EVOLUTION = **0 处** |
-> | §4.2 离线流水线脚本 | **未实现** ✗ | scripts/ 与 tools/ 无 rsi / evolution 脚本 |
-> | §2 双循环（在线 + 离线进化） | **离线进化循环未实现** ✗ | 全仓 RSI 相关文件仅本规格 1 份 |
-> | §5 可追溯矩阵 / §6 验收清单 | 待与实现同步 | 本文档内 |
+> | §3.1 EBNF 扩展（:evolution 块） | **已实现** ✓ | `compiler/agentlisp_compiler.rkt`（parse-evolution + emit-evolution-dict） |
+> | §3.2 突变目标与不可变禁区 | **已实现（编译期拒绝）** ✓ | 实测：targets 含禁区 → `ERR_IMMUTABLE_INVARIANT_VIOLATION` |
+> | §3.3 源码范例 | **已补** ✓ | `examples/repair_agent_rsi.al`，编译 rc=0，产出 `self.EVOLUTION` |
+> | §4.1 Racket 前端改造 | **已实现** ✓ | 运行时 `_load_evolution_contract` 真读产物 |
+> | §4.2 离线流水线 | **已实现** ✓ | `scripts/evolver/cycle.py`（提案→worktree→双集→人工批准） |
+> | §2 双循环 | **在线 ✓ / 离线 ✓** | `_write_online_trace`（FR-EVO-3）+ `run_evolution_cycle` |
+> | §5 可追溯矩阵 | **5 条全绿** ✓ | `raco test` 4 passed + `pytest` 16 passed |
 >
-> **结论**：RSI 现状 = **编译期契约可用 ✓ / 运行时与离线闭环未实现 ✗**。
-> 与设计模式那条链同形：声明 ✓ / 执行 ✗。投产 RSI 需按 §4.2 新建离线流水线（工作量未估）。
+> **结论**：RSI 规格的 5 条 FR-EVO **全部实现并有测试**。
 >
-> 防误读：**不要把本规格当作已实现能力的清单**。判据以运行时代码与测试为准。
+> **但仍未到"能真跑"**：
+> - `cycle.py` 的真基准（`_default_bench`）要跑 `run_t2_bench`，需要数据集与模型；本轮只用注入的假基准验证了编排；
+> - 没有 CI job 跑进化循环（只有单测）；
+> - 没有 BDD 场景覆盖进化闭环。
+>
+> 防误读：**"契约 + 编排 + 单测"已齐，"用真实基准跑通一轮"未做。**
 ## 1. 导言与设计动机
 
 ### 1.1 背景与核心痛点
@@ -327,8 +331,8 @@ class OfflineEvolver:
 
 合并 RSI 模块至主干分支前，完成以下核验：
 
-- [ ] 更新 EBNF 语法扩展块。
-- [ ] 扩展 Racket 编译前端。
-- [ ] 落地离线自举脚本。
-- [ ] 补充 BDD 测试契约。
-- [ ] 配置 CI 流水线。
+- [x] 更新 EBNF 语法扩展块（本文件 §3.1）。
+- [x] 扩展 Racket 编译前端（parse + 越界拒绝 + emit，`compiler/agentlisp_compiler.rkt`）。
+- [x] 落地离线自举脚本（`scripts/evolver/cycle.py`，5 条测试）。
+- [ ] 补充 BDD 测试契约（未做）。
+- [ ] 配置 CI 流水线跑进化循环（未做；现在只有单测进 CI）。

@@ -530,6 +530,11 @@ class BaseHarnessV2:
         for key in ("mutation_targets", "immutable_invariants", "verifier_gate"):
             if key not in raw:
                 raise ValueError("EVOLUTION 契约缺键 " + key + "（规格 §5.1）")
+        # 归一化：DSL 里写 'skills，编译器发出来是 ":skills"。
+        # 不归一化，离线进化器的 TARGETS（"skills"）就永远匹配不上，属静默失配。
+        raw = dict(raw)
+        for key in ("mutation_targets", "immutable_invariants"):
+            raw[key] = [str(x).lstrip(":") for x in (raw.get(key) or [])]
         logger.info(
             "[Evolution] 契约已读取：targets=%s invariants=%s gate=%s",
             raw.get("mutation_targets"),

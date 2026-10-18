@@ -90,7 +90,12 @@ def test_harness_reads_evolution_contract(tmp_path: Path) -> None:
     assert run.returncode == 0, run.stderr[-500:]
     got = json.loads(run.stdout.strip().splitlines()[-1])
     assert got["has"] is True, "运行期未读取 EVOLUTION（契约空转）"
-    assert got["targets"] == [":pattern-macros", ":skills"]
+    # 归一化后不带前导冒号：DSL 写 'skills，编译器发 ":skills"，
+    # 离线进化器的 TARGETS 是 "skills"。不归一化就永远匹配不上（静默失配）。
+    assert got["targets"] == ["pattern-macros", "skills"]
+    from scripts.evolver.proposal import TARGETS
+
+    assert set(got["targets"]) <= set(TARGETS), "契约目标必须都在进化器支持的清单里"
 
 
 def test_harness_without_evolution_is_none(tmp_path: Path) -> None:
