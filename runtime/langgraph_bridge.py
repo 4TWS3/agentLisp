@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import importlib
 import inspect
+import itertools
 from collections.abc import Callable
 from typing import Any
 
@@ -280,6 +281,16 @@ def build_graph(
             # 这一条被 conditional-loop 接管（again / done 二选一）
             continue
         g.add_edge(e["from"], e["to"])
+
+    # 编译器在**校验**可达性时会合成环内边（loop-pairs），但**没有发射**它们。
+    # 桥必须自己补，否则 loop 的第二个及之后的节点运行时不可达（实测：整段循环被静默跳过）。
+    existing = {(e["from"], e["to"]) for e in plain}
+    for lp in loops:
+        ns = [str(x) for x in (lp.get("nodes") or [])]
+        for a, b in itertools.pairwise(ns):
+            if (a, b) not in existing:
+                g.add_edge(a, b)
+                existing.add((a, b))
 
     for plan in loop_plans:
         g.add_conditional_edges(

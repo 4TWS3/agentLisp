@@ -125,6 +125,39 @@ def test_conditional_loop_repeats_until_predicate_says_done() -> None:
     assert out["final"] == "done"
 
 
+def test_conditional_loop_synthesizes_intra_loop_edges() -> None:
+    """环内相邻节点的边由 loop 声明合成。
+
+    编译器校验可达性时会合成这些边，但**没发射** → 桥不补的话，
+    loop 的第二个节点运行时不可达（实测：整段循环被静默跳过）。
+    """
+    import asyncio
+
+    runs: list[str] = []
+    wf = {
+        "entry": "w",
+        "nodes": [
+            {"name": "w", "type": "agent", "handler": None, "output_fields": []},
+            {"name": "c", "type": "evaluator", "handler": None, "output_fields": []},
+            {"name": "z", "type": "agent", "handler": None, "output_fields": []},
+        ],
+        # 故意不写 w->c
+        "edges": [{"from": "c", "to": "z", "kind": "edge"}],
+        "loops": [{"nodes": ["w", "c"], "while": "x", "max_rounds": 0}],
+    }
+    app = build_graph(
+        wf,
+        {
+            "w": lambda s: (runs.append("w"), {})[1],
+            "c": lambda s: (runs.append("c"), {})[1],
+            "z": lambda s: (runs.append("z"), {})[1],
+            "w__while": lambda s: runs.count("c") < 2,
+        },
+    )
+    asyncio.run(app.ainvoke({}))
+    assert runs == ["w", "c", "w", "c", "z"], runs
+
+
 def test_conditional_loop_respects_max_rounds() -> None:
     """max_rounds 到顶就 done，不看判定函数。"""
     import asyncio

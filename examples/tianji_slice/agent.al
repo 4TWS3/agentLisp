@@ -36,7 +36,7 @@
             (report :type agent
                     :prompt (:static "把评审通过的草稿压缩成一句话结论。")
                     :output-fields (report)))
+    ;; draft->review 由 conditional-loop 的 :nodes 顺序合成，不用另写一条边
     :topology ((edge facts draft)
-               (edge draft review)
                (conditional-loop :nodes (draft review) :while "retry" :max-rounds 3)
                (edge review report))))
