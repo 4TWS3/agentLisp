@@ -24,7 +24,8 @@ def analyze_failure_traces(trace_dir: str | Path) -> list[dict[str, Any]]:
     out: list[dict[str, Any]] = []
     for path in sorted(Path(trace_dir).glob("*.json")):
         trace = json.loads(path.read_text(encoding="utf-8"))
-        if trace.get("status") == "failed":
+        # blocked 也算失败证据：被护栏拦下同样是「该改的地方」，不收集就丢了最重要的一类。
+        if trace.get("status") in ("failed", "blocked"):
             out.append(trace)
     return out
 

@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 import shutil
 import subprocess
+import tempfile
 from pathlib import Path
 
 
@@ -21,7 +22,12 @@ class GitWorktree:
     def __init__(self, repo: str | Path, base_ref: str = "HEAD", name: str = "evolver") -> None:
         self.repo = Path(repo).resolve()
         self.base_ref = base_ref
-        self.dir = self.repo.parent / (self.repo.name + "-evolver-worktree-" + name)
+        # 放在系统临时目录，不放仓库旁边：
+        #   1) 沙箱/权限常禁止写仓库的父目录（实测：Operation not permitted，git exit 128）；
+        #   2) 放仓库内会被 pytest / ruff 扫到。
+        # 可用 AGENTLISP_WORKTREE_ROOT 覆盖。
+        root = Path(os.environ.get("AGENTLISP_WORKTREE_ROOT") or tempfile.gettempdir())
+        self.dir = root / (self.repo.name + "-evolver-worktree-" + name)
 
     def __enter__(self) -> Path:
         if self.dir.exists():

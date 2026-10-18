@@ -113,21 +113,48 @@ def run_evolution_cycle(
         return result
 
 
-def _default_bench(worktree: Path) -> dict[str, Any]:
-    """真基准：调 run_t2_bench。没有数据集/模型会抛，属预期。"""
+def _run_bench_once(worktree: Path, seed: int, samples: int, tag: str) -> tuple[float, float]:
+    """跑一次 τ²-bench，返回 (pass_rate, mcnemar_p_value)。"""
     import json
+    import sys
 
-    p = subprocess.run(
-        ["python", "scripts/bench/run_t2_bench.py", "--suite", "t2-bench@v1.0", "--json"],
+    out_json = worktree / "artifacts" / (f"t2_{tag}.json")
+    out_json.parent.mkdir(parents=True, exist_ok=True)
+    subprocess.run(
+        [
+            sys.executable,
+            "scripts/bench/run_t2_bench.py",
+            "--dry-run",
+            "--samples",
+            str(samples),
+            "--seed",
+            str(seed),
+            "--report",
+            "json",
+            "--output",
+            str(out_json),
+        ],
         cwd=worktree,
         capture_output=True,
         text=True,
         check=False,
+        env=git_env(),
     )
-    data = json.loads(p.stdout or "{}")
-    pr = float(data.get("pass_rate", 0.0))
-    pv = float(data.get("mcnemar_p_value", 1.0))
-    return {"new": (pr, pv), "holdout": (pr, pv)}
+    if not out_json.is_file():
+        raise RuntimeError(f"基准没有产出 {out_json}（bench 失败）")
+    data = json.loads(out_json.read_text(encoding="utf-8"))
+    return float(data.get("rubric_ge_0_8_rate", 0.0)), float(data.get("mcnemar_p_value", 1.0))
+
+
+def _default_bench(worktree: Path) -> dict[str, Any]:
+    """真基准：调 run_t2_bench 跑**两个不相交的集**（不同 seed = 不同样本）。
+
+    为什么两个 seed 而不是同一组数字复制两份：双集验证的意义是防过拟合，
+    两份相同的数字等于没验证。
+    """
+    new = _run_bench_once(worktree, seed=1, samples=10, tag="new")
+    hold = _run_bench_once(worktree, seed=2, samples=10, tag="holdout")
+    return {"new": new, "holdout": hold, "source": "run_t2_bench --dry-run, seeds 1/2, n=10"}
 
 
 def main(argv: list[str] | None = None) -> int:
