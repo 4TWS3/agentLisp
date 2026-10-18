@@ -341,6 +341,13 @@
 ;; 状态字段：具名 + 类型 + 可选默认值。类型枚举封闭（新增类型要改这里，测试会红）。
 (define STATE-TYPE-ENUM '("dict" "str" "int" "float" "bool" "list"))
 
+;; F-AMS-3 扩展：state 字段的跨节点累积语义。没有 reducer 就是覆盖。
+(define STATE-REDUCER-ENUM '("merge" "append" "sum"))
+(define STATE-REDUCER-TYPES
+  (hash "merge" '("dict")
+        "append" '("list")
+        "sum" '("int" "float")))
+
 (define (parse-state form)
   (match form
     [`(:state . ,kvs)
@@ -355,14 +362,26 @@
                (unless (and (list? f) (>= (length f) 3) (symbol? (car f)))
                  (raise-parse ':state (format "字段格式应为 (名 :type T [:default D])，得到 ~s" f)))
                (define nm (symbol->string (car f)))
-               (define kw2 (keyword-kvs (cdr f) '(:type :default)))
+               (define kw2 (keyword-kvs (cdr f) '(:type :default :reducer)))
                (unless (hash-has-key? kw2 ':type)
                  (raise-parse ':state (format "字段 ~a 缺 :type" nm)))
                (define ty (to-str (hash-ref kw2 ':type)))
                (unless (member ty STATE-TYPE-ENUM)
                  (raise-parse ':state
                               (format "字段 ~a 的 :type 枚举=~a，得到 ~a" nm STATE-TYPE-ENUM ty)))
-               (hash 'name nm 'type ty
+               ;; F-AMS-3 扩展：:reducer 声明跨节点累积语义（bridge 用它合并 state）
+               (define rd (and (hash-has-key? kw2 ':reducer) (to-str (hash-ref kw2 ':reducer))))
+               (when rd
+                 (unless (member rd STATE-REDUCER-ENUM)
+                   (raise-parse ':state
+                                (format "字段 ~a 的 :reducer 枚举=~a，得到 ~a"
+                                        nm STATE-REDUCER-ENUM rd)))
+                 (define allowed (hash-ref STATE-REDUCER-TYPES rd))
+                 (unless (member ty allowed)
+                   (raise-parse ':state
+                                (format "字段 ~a 的 :type ~a 不支持 :reducer ~a（仅 ~a）"
+                                        nm ty rd allowed))))
+               (hash 'name nm 'type ty 'reducer rd
                      'has-default (hash-has-key? kw2 ':default)
                      'default (if (hash-has-key? kw2 ':default) (hash-ref kw2 ':default) #f)))))]
     [_ (raise-parse ':state "必需是 (:state :fields ((名 :type T [:default D]) …))")]))
@@ -945,6 +964,9 @@
                     (py-string (hash-ref f 'type))
                     (if (hash-ref f 'has-default)
                         (string-append ", 'default': " (py-literal (hash-ref f 'default)))
+                        "")
+                    (if (hash-ref f 'reducer #f)
+                        (string-append ", 'reducer': " (py-string (hash-ref f 'reducer)))
                         "")
                     "}"))
                  ", "))

@@ -27,6 +27,14 @@ from typing import Any
 
 NodeFn = Callable[[dict[str, Any]], dict[str, Any]]
 
+# state 字段的累积语义（与编译器 STATE-REDUCER-ENUM 一一对应）。
+# 没有 reducer 的字段就是覆盖——这是最容易丢数据的地方，所以显式声明。
+REDUCERS: dict[str, Callable[[Any, Any], Any]] = {
+    "merge": lambda old, new: {**(old or {}), **(new or {})},
+    "append": lambda old, new: [*(old or []), *(new or [])],
+    "sum": lambda old, new: (old or 0) + (new or 0),
+}
+
 
 class WorkflowBridgeError(RuntimeError):
     """图与实现对不上（缺节点实现、边引用非法等）。"""
@@ -62,10 +70,15 @@ def _resolve(node: dict[str, Any], handlers: dict[str, NodeFn]) -> NodeFn:
     )
 
 
-def _node_fn(node: dict[str, Any], handlers: dict[str, NodeFn]) -> Callable[..., Any]:
+def _node_fn(
+    node: dict[str, Any],
+    handlers: dict[str, NodeFn],
+    reducers: dict[str, Callable[[Any, Any], Any]] | None = None,
+) -> Callable[..., Any]:
     impl = _resolve(node, handlers)
     name = node["name"]
     outputs = list(node.get("output_fields") or [])
+    field_reducers = reducers or {}
 
     def _merge(state: dict[str, Any], result: Any) -> dict[str, Any]:
         if not isinstance(result, dict):
@@ -73,7 +86,12 @@ def _node_fn(node: dict[str, Any], handlers: dict[str, NodeFn]) -> Callable[...,
                 f"节点 {name!r} 必须返回 dict（状态增量），得到 {type(result).__name__}"
             )
         delta = {k: result[k] for k in outputs if k in result} if outputs else result
-        return {**state, **delta}
+        merged = {**state, **delta}
+        # 声明了 reducer 的字段走累积，不覆盖（chapters / trace_log / total 这类）。
+        for key, fn in field_reducers.items():
+            if key in result:
+                merged[key] = fn(state.get(key), result[key])
+        return merged
 
     if inspect.iscoroutinefunction(impl) or inspect.isasyncgenfunction(impl):
 
@@ -105,6 +123,7 @@ def build_graph(
     *,
     state_schema: Any = None,
     checkpointer: Any = None,
+    state_fields: dict[str, Any] | None = None,
 ) -> Any:
     """按 WORKFLOW 建 LangGraph 应用。
 
@@ -126,9 +145,20 @@ def build_graph(
     if entry not in known:
         raise WorkflowBridgeError(f":entry {entry!r} 不是已声明节点")
 
+    # 从 :state 的 :reducer 声明里取累积规则（编译产物里的 STATE_FIELDS）
+    field_reducers: dict[str, Callable[[Any, Any], Any]] = {}
+    for fname, fspec in (state_fields or {}).items():
+        red = (fspec or {}).get("reducer") if isinstance(fspec, dict) else None
+        if red:
+            if red not in REDUCERS:
+                raise WorkflowBridgeError(
+                    f"state 字段 {fname!r} 的 :reducer {red!r} 未实现；已支持 {sorted(REDUCERS)}"
+                )
+            field_reducers[fname] = REDUCERS[red]
+
     g = StateGraph(state_schema if state_schema is not None else dict)
     for n in nodes:
-        g.add_node(n["name"], _node_fn(n, handlers))
+        g.add_node(n["name"], _node_fn(n, handlers, field_reducers))
 
     edges = workflow.get("edges") or []
     plain = [e for e in edges if e.get("kind", "edge") == "edge"]

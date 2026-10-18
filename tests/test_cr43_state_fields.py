@@ -59,6 +59,34 @@ def test_state_fields_in_artifact(tmp_path: Path) -> None:
     assert "'default': \"\"" in src
 
 
+def test_state_reducer_is_emitted(tmp_path: Path) -> None:
+    """F-AMS-3 扩展：:reducer 声明跨节点累积语义，产物里要带出来。"""
+    cp = _compile(
+        tmp_path,
+        "(:state :fields ((chapters :type dict :reducer merge)"
+        " (log :type list :reducer append :default ())"
+        " (total :type int :reducer sum :default 0)))",
+    )
+    assert cp.returncode == 0, cp.stderr[-400:]
+    src = (tmp_path / "o.py").read_text(encoding="utf-8")
+    assert "'reducer': \"merge\"" in src
+    assert "'reducer': \"append\"" in src
+    assert "'reducer': \"sum\"" in src
+
+
+def test_state_reducer_type_mismatch_fails(tmp_path: Path) -> None:
+    """sum 只对数字有意义；放到 str 上必须编译期拒绝。"""
+    cp = _compile(tmp_path, '(:state :fields ((x :type str :reducer sum :default "")))')
+    assert cp.returncode != 0
+    assert "不支持 :reducer" in cp.stderr
+
+
+def test_state_unknown_reducer_fails(tmp_path: Path) -> None:
+    cp = _compile(tmp_path, "(:state :fields ((x :type dict :reducer nope)))")
+    assert cp.returncode != 0
+    assert ":reducer 枚举" in cp.stderr
+
+
 def test_duplicate_state_block_fails(tmp_path: Path) -> None:
     cp = _compile(
         tmp_path,

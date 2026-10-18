@@ -42,6 +42,40 @@ def test_linear_runs_in_order_and_merges_state() -> None:
     assert out == {"x": 1, "y": 2, "z": 3}, "state 必须逐节点累积"
 
 
+def test_reducers_accumulate_instead_of_overwrite() -> None:
+    """:state 声明了 :reducer 的字段要累积；没声明的才覆盖。"""
+    wf = _wf(("a", "agent"), ("b", "agent"), edges=[("a", "b")])
+    fields = {
+        "chapters": {"type": "dict", "reducer": "merge"},
+        "log": {"type": "list", "reducer": "append"},
+        "total": {"type": "int", "reducer": "sum"},
+        "last": {"type": "str"},
+    }
+    app = build_graph(
+        wf,
+        {
+            "a": lambda s: {"chapters": {"ch1": "x"}, "log": ["a"], "total": 1, "last": "a"},
+            "b": lambda s: {"chapters": {"ch2": "y"}, "log": ["b"], "total": 2, "last": "b"},
+        },
+        state_fields=fields,
+    )
+    out = app.invoke({})
+    assert out["chapters"] == {"ch1": "x", "ch2": "y"}, out
+    assert out["log"] == ["a", "b"], out
+    assert out["total"] == 3, out
+    assert out["last"] == "b", "没有 reducer 的字段应覆盖"
+
+
+def test_unknown_reducer_is_loud() -> None:
+    with pytest.raises(WorkflowBridgeError) as exc:
+        build_graph(
+            _wf(("a", "agent"), edges=[]),
+            {"a": lambda s: {}},
+            state_fields={"x": {"type": "dict", "reducer": "nope"}},
+        )
+    assert "nope" in str(exc.value)
+
+
 def test_async_node_is_awaited() -> None:
     """agent 节点通常是 async（要跑 agentLisp harness），LangGraph 必须 await 它。"""
     import asyncio

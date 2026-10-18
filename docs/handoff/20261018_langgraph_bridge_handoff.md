@@ -72,6 +72,25 @@ DEEPSEEK_API_KEY=... python3 examples/tianji_slice/run_pipeline.py
 
 ---
 
+## 5.1 state 累积（:reducer，2026-10-18 补）
+
+节点多了一定会遇到「后面节点把前面写的键覆盖掉」。现在 DSL 能声明累积语义：
+
+```lisp
+(:state :fields ((chapters :type dict :reducer merge)
+                 (trace_log :type list :reducer append :default ())
+                 (total :type int :reducer sum :default 0)))
+```
+
+| 项 | 说明 |
+|---|---|
+| 枚举 | `merge`（dict）/ `append`（list）/ `sum`（int/float） |
+| 编译期 | 类型不匹配或枚举越界直接报错（`sum` 放到 `str` 上会被拒） |
+| 产物 | `STATE_FIELDS[字段]['reducer']` |
+| 运行时 | 桥按 reducer 合并；**没声明的字段仍然覆盖**（这是最容易丢数据的地方） |
+
+---
+
 ## 6. 未做
 
 | 项 | 说明 |
