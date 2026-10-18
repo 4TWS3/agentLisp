@@ -2,7 +2,7 @@
 
 > 文档代号：`agentlisp_srs` · 版本：`2.3.0` · 基线日期：`2026-10-03`
 > 标准：**ISO/IEC/IEEE 29148:2018 Systems and software engineering — Life cycle processes — Requirements engineering**
-> 上级文档：[agentlisp_specification.md](file:///Users/lee/products/agentLisp/docs/spec/agentlisp_specification.md)（语言设计规范，非验收级）
+> **本文是唯一权威需求文档。** 原「上级文档」`agentlisp_specification.md` 已归档到 `docs/archive/spec/`（内容并入本文 §7/§8/§9）。
 > 验收原则：**每条需求必须可验证（可量化 / 可复现 / 可判定 PASS/FAIL）**，不可验证项必须返工到「可写出测试代码」的形状。
 
 ---
@@ -287,6 +287,159 @@ class BaseHarnessV2(Protocol):
 | **τ²_pass(sample) 的成功判定（三条件 AND）**| (1) Agent 生成的 `git diff` 应用到代码后**无 SyntaxError / ImportError**（`python -m compileall` / `tsc --noEmit`）；(2) `pytest tests/` 对该 bug 的失败用例全部通过（不得用 `--deselect`/跳过/xfail）；(3) `reviewer-agent`（若启用）打分 ≥ 0.8（[0,1] 连续分，人工评审 10% 采样校准） |
 | **运行命令** | `agentlisp-bench run --dataset t2-bench/v1.0 --timeout 600s --sample-range 1..1000 --max-turns 30 --report json > report.json`；报告需包含 `fix_rate_total` 字段 + `sample_id` 级 `detail[]` 数组 |
 | **通过阈值** | `fix_rate_total ≥ 0.90`（**≥ 900 / 1000** samples 成功）为 AC-3 PASS |
+
+## 7 实况能力矩阵（as-built · 2026-10-18）
+
+> 本章回答一个问题：**今天这个仓库能做什么、不能做什么。**
+> 判据只认机器可复现的证据（测试文件 / 编译产物 / 实测命令），不认设计文档的承诺。
+
+### 7.1 能力总表
+
+| 能力 | 状态 | 证据 |
+|---|---|---|
+| DSL 编译（43 个构造 / 21 模式 kind） | 已实现 | `racket compiler/main.rkt -i x.al -o x.py` |
+| 静态校验（缺块 / 越界 / 不可达 / 未声明字段） | 已实现 | `--check-only --json-errors` |
+| 产物可 import + 可跑 | 已实现 | `examples/dist/repair_agent.py` |
+| 工具（bash / read-file / write-back / patch-text / grep + 别名） | 已实现 | `runtime/builtin_tools.py` |
+| 护栏（constrain / verify / correct） | 已实现 | `tests/patterns_runtime/test_three_guards_e2e.py` |
+| 记忆（三层 markdown） | 已实现 | `runtime/memory_fs.py` |
+| 21 个模式（13 落地 / 8 声明层） | 部分 | `scripts/check_slot_model.py` |
+| 编排器（chain/planner/router/parallel/decomposition） | 已实现 | `runtime/orchestrator.py` + `tests/test_orchestrator_*.py` |
+| 子 Agent 真跑（spawn / fanout 并发） | 已实现 | `tests/test_orchestrator_real_subagents.py` |
+| **节点图执行（:workflow）** | 已实现（依赖 LangGraph） | `runtime/langgraph_bridge.py` |
+| **state 跨节点累积（:reducer）** | 已实现 | `tests/test_langgraph_bridge.py` |
+| **多 Agent 按名路由（subagent）** | 已实现 | 同上 |
+| **图级重试（conditional-loop）** | 已实现 | 同上 |
+| 网关（HTTP/SSE + 鉴权 + HITL 审批） | 已实现 | `host/gateway_sse.py` + `host/tests/test_gateway_auth.py` |
+| RSI 契约 + 离线进化闭环 | 已实现（管道）/ 弱（统计力） | `scripts/evolver/cycle.py` |
+| **持久化长任务（Temporal）** | **未实现** | `TemporalRunner.submit` 抛 `DurableExecutionUnavailableError` |
+| 模式宏动态改写（pattern-macros 进化） | 未实现 | 只能落到 agent 私有 `patterns/` |
+
+### 7.2 三条不变式（机器检查）
+
+| 不变式 | 检查器 |
+|---|---|
+| 每个 kind 要么占槽位、要么有声明层理由 | `scripts/check_slot_model.py` |
+| 口径短语三处逐字一致 | `scripts/check_pattern_consistency.py` |
+| C1 禁动类文件改动必须追认 | `scripts/check_c1_freeze.py` |
+
+### 7.3 已知未做（诚实登记）
+
+| 项 | 说明 |
+|---|---|
+| Temporal 长任务 | 只有骨架；降级时会打 WARNING 并退回 DirectRunner |
+| 图级 interrupt/resume | 交给 LangGraph 原生能力，桥不包装 |
+| 领域逻辑（OLAP / 报告 / PDF） | 不覆盖，由用户 handler 提供 |
+| 真实云厂商端点验收 | 只验过 Ollama 与 DeepSeek |
+
+---
+
+## 8 工作流与编排
+
+### 8.1 语法（编译期校验，C1 冻结）
+
+```lisp
+(:workflow :entry facts
+  :nodes ((facts :type computation :handler "m.facts" :output-fields (facts))
+          (draft :type subagent :handler "writer"
+                 :prompt (:static "写研判" :dynamic "事实：{facts}")
+                 :output-fields (draft))
+          (review :type evaluator :handler "m.review" :output-fields (ok))
+          (report :type agent :output-fields (report)))
+  :topology ((edge facts draft)
+             (conditional-loop :nodes (draft review) :while "retry" :max-rounds 3)
+             (edge review report)))
+```
+
+| 项 | 规则 |
+|---|---|
+| 节点类型 | `agent` / `computation` / `evaluator` / `subagent` |
+| `:handler` | computation 必填；subagent 填 **agent 注册名**（`[A-Za-z_][A-Za-z0-9_-]*`）；其余填 `模块.函数` |
+| `:prompt` | `:static` 不许插值；`:dynamic` 用 `{字段}`，字段必须在 `:state` 声明 |
+| `:output-fields` | 必须是 `:state` 已声明字段（F-AMS-3） |
+| 环 | 未用 `conditional-loop` 声明的环 → 编译期失败（F-AMS-1） |
+
+### 8.2 执行：交给 LangGraph
+
+**agentLisp 不自己实现图引擎。** 分工：
+
+| 层 | 谁管 |
+|---|---|
+| 图 / 中断 / 恢复 / checkpoint | **LangGraph**（`langgraph>=0.2`） |
+| 节点内的 agent（护栏 / 工具 / trace / 模式） | **agentLisp** |
+
+```python
+from runtime.langgraph_bridge import build_graph
+
+app = build_graph(
+    harness.WORKFLOW,
+    handlers={"facts": ..., "draft__while": lambda s: not s["ok"]},
+    agents={"writer": lambda: WriterHarness(llm_client=llm)},
+    state_fields=harness.STATE_FIELDS,
+)
+app.invoke({})
+```
+
+| 桥的行为 | 说明 |
+|---|---|
+| 节点解析 | `handlers[名]` → `handlers[:handler]` → 自动 import → subagent 走 `agents` |
+| 异步节点 | `async def` 自动 await |
+| state | 节点返回 dict 合并；声明了 `:reducer` 的按累积语义 |
+| 环内边 | 由桥按 `:nodes` 顺序合成（编译器校验时会合成但不发射） |
+| 宽限 | 不装 langgraph 时 `build_graph` 报错；`:workflow` 仍可作纯声明 |
+
+### 8.3 state 累积（`:reducer`）
+
+| reducer | 类型 | 语义 |
+|---|---|---|
+| `merge` | dict | 字典合并 |
+| `append` | list | 列表追加 |
+| `sum` | int / float | 数值累加 |
+
+类型不匹配或枚举越界 → **编译期拒绝**。没有 reducer 的字段是覆盖语义。
+
+---
+
+## 9 递归自我进化（RSI）
+
+### 9.1 定位（规格 §1.1 原文口径）
+
+RSI 让**用它编出来的 agent** 进化它自己的外部制品（skills / prompt / harness 参数 / 模式宏）。
+
+**不是** agentLisp 编译器自我修改。
+
+| 约束 | 执行点 |
+|---|---|
+| `:mutation-targets` 撞上 `:immutable-invariants` | 编译期 `ERR_IMMUTABLE_INVARIANT_VIOLATION` |
+| 补丁不许落进共享编译器（`compiler/` `.github/` `docs/spec/`） | `resolve_patch_path` → `rejected-protected-path` |
+| 工作区必须是该 agent 自己的库 | `is_shared_agentlisp_repo` → `rejected-shared-repo` |
+
+### 9.2 双循环
+
+| 循环 | 实现 |
+|---|---|
+| 在线执行 | `:online-trace #t` → `_write_online_trace` 只写元数据，绝不写回 `.al` |
+| 离线进化 | `scripts/evolver/cycle.py`：失败轨迹 → 提案 → 隔离 worktree → 双集判定 → 人工批准 |
+
+### 9.3 五条 FR-EVO 状态
+
+| ID | 要求 | 状态 |
+|---|---|---|
+| FR-EVO-1 | 解析 `:evolution` | ✅ `compiler/tests/test_evolution.rkt` |
+| FR-EVO-2 | 越界编译期拒绝 | ✅ `test_checker_evolution.rkt` |
+| FR-EVO-3 | 在线只读留痕 | ✅ `runtime/tests/test_online_trace.py` |
+| FR-EVO-4 | 双集门槛 | ✅ `scripts/bench/tests/test_evolver_gate.py` |
+| FR-EVO-5 | 隔离 worktree + 清理 | ✅ `scripts/evolver/tests/test_git_worktree.py` |
+
+### 9.4 已跑通的证据与边界
+
+| 项 | 实测 |
+|---|---|
+| 一轮真循环 | 真 trace → 模型生成补丁 → worktree 静态检查通过 → 双集判定 → `rejected`（p=1.0） |
+| 发现过的真缺陷 | thinking 模式 `reasoning_content` 未回传 → 400（已修 + 回归测试） |
+| 边界 | 题量仅 6（两半各 3），McNemar 无统计力；补丁只作用到 `system_prompt` |
+
+---
 
 ---
 

@@ -77,7 +77,7 @@
 | 标准判据 | `python3 tools/standards_check.py` | **17 通过 / 0 失败 / 0 跳过** |
 | 静态检查 | `ruff check .` | **All checks passed** |
 | 格式 | `ruff format --check tests/ tools/ runtime/ host/` | 全部已格式化 |
-| 格式（全仓） | `ruff format --check .` | **1 处失败**：`docs/spec/agentlisp_pattern_runtime_design.md`（既有问题，非本轮引入） |
+| 格式（全仓） | `ruff format --check .` | **1 处失败**：`docs/archive/spec/agentlisp_pattern_runtime_design.md`（既有问题，非本轮引入） |
 
 **判据数变化**：改动前 12 通过 / 4 跳过。跳过原因：检查器找不到 `racket`。本轮修了解析器（PATH 优先，回退 `.racket/bin`）。
 

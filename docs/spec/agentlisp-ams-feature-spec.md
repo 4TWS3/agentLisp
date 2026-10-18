@@ -276,14 +276,14 @@ agentLisp 现在的模式模型是 `kind → handler 类`。21 个 kind 各自�
 
 | 栏 | 内容 |
 |---|---|
-| 来源 | 仅设计参考。AMS 无此实现；agentLisp 已有设计 `docs/spec/agentlisp_orchestrator_design.md`（提交 `c362cd1`） |
+| 来源 | 仅设计参考。AMS 无此实现；agentLisp 已有设计 `docs/archive/spec/agentlisp_orchestrator_design.md`（提交 `c362cd1`） |
 | 必要性 | 必须 |
 | 归属 | 运行期 |
 | 重构设计 | 复用已有设计，不重写 |
 
 **说明**：此项归属 agentLisp 自身路线，不是从 AMS 搬。列出是为了让 F-AMS-6 的 `orchestrate` 槽位有落点。
 
-已有设计见 [agentlisp_orchestrator_design.md](agentlisp_orchestrator_design.md)。
+已有设计见 [agentlisp_orchestrator_design.md](../../archive/spec/agentlisp_orchestrator_design.md)。
 已有设计已定：新增 `runtime/orchestrator.py`，唯一决策点 `select_next(state) -> Action`。
 四个动作：`step` / `spawn` / `fanout` / `finish`。
 

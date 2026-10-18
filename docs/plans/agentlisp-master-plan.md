@@ -177,7 +177,7 @@
 | P4-2 | 5 个编排 kind 接线（router/chain/parallel/planner/decomposition） | P4-1 |
 | P4-3 | `spawn` / `fanout` 原语 | P4-1 |
 
-已有设计见 `docs/spec/agentlisp_orchestrator_design.md`。不重写。
+已有设计见 `docs/archive/spec/agentlisp_orchestrator_design.md`。不重写。
 
 ### P5 · 制品与发布
 
