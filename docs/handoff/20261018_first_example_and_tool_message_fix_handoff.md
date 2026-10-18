@@ -1,13 +1,15 @@
-# 第一个可跑示例 + 两个真缺陷
+# 第一个示例跑通（DeepSeek）+ 三个真缺陷
 
 > 日期：2026-10-18
-> 目标：从零做一个示例，边做边暴露问题
+> 目标：用真模型跑通一个端到端示例
 
 ---
 
 ## 1. 结论
 
-示例跑通了（Mock 与真模型都通）。过程中打出**两个真缺陷**，都已修。
+示例跑通：DeepSeek `deepseek-v4-flash` → 真调 bash → 答案 **955**（= 仓库 .py 真实数量）。
+
+过程中打出 **3 个真缺陷**，全部已修。前两个是 Mock 测试永远碰不到的。
 
 ---
 
@@ -15,64 +17,53 @@
 
 | 文件 | 作用 |
 |---|---|
-| `examples/first-agent.al` | DSL 源码：命令行助手，声明用 bash |
-| `examples/first_agent_run.py` | 跑法：注入工具注册表 + 选 Mock / 真模型 |
-| `examples/dist/first_agent.py` | 编译产物（`FirstAgentHarness`） |
-
-跑法：
+| `examples/first-agent.al` | DSL：命令行助手，声明用 bash |
+| `examples/first_agent_run.py` | 三种模式：Mock / `--real`(Ollama) / `--deepseek` |
+| `examples/dist/first_agent.py` | 编译产物 |
 
 ```bash
 racket compiler/main.rkt -i examples/first-agent.al -o examples/dist/first_agent.py
-python examples/first_agent_run.py            # Mock
-OPENAI_BASE_URL=http://127.0.0.1:11434/v1 python examples/first_agent_run.py --real
+DEEPSEEK_API_KEY=sk-... python3 examples/first_agent_run.py --deepseek
 ```
 
-实测输出：
+实测：
 
-| 模式 | status | final |
-|---|---|---|
-| Mock | success | `OK, done.` |
-| 真模型（qwen3:4b） | success | `955`（= 仓库里 .py 文件真实数量） |
+```
+status: success
+final : 955
+```
 
 ---
 
-## 3. 缺陷 1：工具消息 content 是 dict（P0）
+## 3. 三个缺陷
 
-**现象**：真模型第一轮出 tool_call 后，第二轮请求 400。
-```
-invalid message content type: map[string]interface {}
-```
+| # | 缺陷 | 现象 | 修法 |
+|---|---|---|---|
+| 1 | tool 消息 content 是 dict | OpenAI 兼容端点 400 | dict/list 序列化成 JSON 字符串 |
+| 2 | `arguments` 可能是 JSON 字符串 | `constrain` 抛 AttributeError | 字符串就 json.loads |
+| 3 | tool 消息缺 `tool_call_id`，且前面没有 assistant(tool_calls) | DeepSeek 422 | 补 id + 补 assistant 消息 |
 
-**根因**：`base_harness_v2` 把 observation（dict）直接当 `role="tool"` 的 content。
+为什么前两个测试抓不到：**MockLLMClient 不出 tool_calls**，测试永远走不到第二条消息。
 
-**为什么测试没抓到**：MockLLMClient 不出 tool_calls，永远走不到第二条消息。
-
-**修法**：dict/list 一律 `json.dumps` 成字符串。
-
----
-
-## 4. 缺陷 2：工具参数可能是 JSON 字符串
-
-**现象**：自定义 client 回 OpenAI 原始形状（`arguments` 是字符串）时，
-`constrain` 里 `args.get(...)` 抛 `AttributeError: 'str' object has no attribute 'get'`。
-
-**修法**：两种形状都收——字符串就 `json.loads`，dict 直接用。
+第三个只有真模型（严格校验）才暴露：Ollama 不查，DeepSeek 查。
 
 ---
 
-## 5. 验证
+## 4. 验证
 
 | 项 | 命令 | 结果 |
 |---|---|---|
-| 回归测试 | `pytest tests/test_tool_message_content_is_str.py` | 1 passed |
-| Mock 跑通 | `python examples/first_agent_run.py` | success |
-| 真模型跑通 | `... --real` | success，答案 = 真实文件数 |
+| 回归 | `pytest tests/test_tool_message_content_is_str.py` | 1 passed（含 id + assistant 顺序断言） |
+| Mock | `python examples/first_agent_run.py` | success |
+| DeepSeek | `--deepseek` | success，answer=955 = 真实数量 |
+| 真实数量 | `find . -name '*.py' | wc -l` | 955 |
 
 ---
 
-## 6. 未做（新登记）
+## 5. 未做
 
 | 项 | 说明 |
 |---|---|
-| `:tools` 不自动接线 | 产物只带 `tools_config`，bash 等实现要调用方注入。示例里手写了 20 行注册表 |
-| 内置工具库 | 没有 `import-builtin bash` 的现成实现，需自己写 |
+| `:tools` 自动接线 | 产物只带配置，bash 实现要调用方注入（示例里手写 20 行） |
+| 内置工具库 | 没有现成实现 |
+| 流式输出 | 未验 |

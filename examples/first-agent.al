@@ -8,7 +8,7 @@
   (:model :provider "openai"
           :name "qwen3:4b"
           :temperature 0.1
-          :system-prompt "你是命令行助手。需要事实时必须调用 bash 工具，不要凭空回答。回答用中文，一句话。")
+          :system-prompt "你是命令行助手。需要事实时必须调用 bash 工具，不要凭空回答。统计文件数量时用递归命令（如 find . -name '*.py' | wc -l），不要只数当前层。回答用中文，一句话。")
   (:tools (import-builtin bash))
   (:context :memory-policy (:markdown-fs "./memory/first-agent.md"
                             :layers (L0-Abstract)

@@ -6,6 +6,7 @@
 用法：
   python examples/first_agent_run.py            # Mock 模型，只看链路通不通
   python examples/first_agent_run.py --real     # 真模型（需 Ollama 在 11434）
+  python examples/first_agent_run.py --deepseek # DeepSeek（需 ~/.deepseek-key）
 """
 
 from __future__ import annotations
@@ -71,7 +72,8 @@ def main() -> None:
         from runtime.llm_client import OpenAIClient
 
         llm = OpenAIClient(
-            model=os.getenv("DEEPSEEK_MODEL", "deepseek-chat"),
+            # 默认用 flash：便宜。要更强换 DEEPSEEK_MODEL=deepseek-v4-pro。
+            model=os.getenv("DEEPSEEK_MODEL", "deepseek-v4-flash"),
             api_key=_deepseek_key(),
             base_url=os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com/v1"),
         )
@@ -88,7 +90,7 @@ def main() -> None:
     else:
         h = FirstAgentHarness(tool_registry=BashTool())
 
-    trace = asyncio.run(h.run("当前目录有多少个 .py 文件？只回答数字。"))
+    trace = asyncio.run(h.run("仓库里一共有多少个 .py 文件（含子目录）？只回答数字。"))
     print("status:", trace.status)
     print("final :", trace.final_answer)
 

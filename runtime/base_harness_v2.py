@@ -1327,6 +1327,26 @@ class BaseHarnessV2:
                         action_input = dict(_raw_args)
                     else:
                         action_input = {}
+                    # OpenAI 兼容协议：tool 消息必须带 tool_call_id，且它前面必须有
+                    # assistant(tool_calls) 消息。此前两者都缺 → DeepSeek 422
+                    # missing field `tool_call_id`。
+                    _tc_id = str(tc.get("id") or "call_0")
+                    self.trajectory.append(
+                        {
+                            "role": "assistant",
+                            "content": content,
+                            "tool_calls": [
+                                {
+                                    "id": _tc_id,
+                                    "type": "function",
+                                    "function": {
+                                        "name": tool_name,
+                                        "arguments": json.dumps(action_input, ensure_ascii=False),
+                                    },
+                                }
+                            ],
+                        }
+                    )
                     tool_call = {"tool_name": tool_name, "args": action_input}
 
                     turn.action = tool_name
@@ -1339,7 +1359,13 @@ class BaseHarnessV2:
                     if not allowed:
                         turn.status = "blocked"
                         self.trajectory.append(
-                            {"role": "tool", "name": tool_name, "content": reason, "blocked": True}
+                            {
+                                "role": "tool",
+                                "name": tool_name,
+                                "tool_call_id": _tc_id,
+                                "content": reason,
+                                "blocked": True,
+                            }
                         )
                         self.status_bar.on_step(self._trace.run_id, turn.index, "blocked", reason)
                         await self._save_checkpoint()
@@ -1395,6 +1421,7 @@ class BaseHarnessV2:
                                 {
                                     "role": "tool",
                                     "name": tool_name,
+                                    "tool_call_id": _tc_id,
                                     "content": verify_msg,
                                     "verify_failed": True,
                                 }
@@ -1418,6 +1445,7 @@ class BaseHarnessV2:
                             {
                                 "role": "tool",
                                 "name": tool_name,
+                                "tool_call_id": _tc_id,
                                 "content": verify_msg,
                                 "retry": True,
                             }
@@ -1441,7 +1469,12 @@ class BaseHarnessV2:
                     else:
                         stdout_for_traj = str(observation.get("stdout", ""))
                     self.trajectory.append(
-                        {"role": "tool", "name": tool_name, "content": stdout_for_traj}
+                        {
+                            "role": "tool",
+                            "name": tool_name,
+                            "tool_call_id": _tc_id,
+                            "content": stdout_for_traj,
+                        }
                     )
                     self.status_bar.on_step(
                         self._trace.run_id, turn.index, "tool_result", observation

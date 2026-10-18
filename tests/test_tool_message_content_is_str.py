@@ -73,3 +73,12 @@ def test_tool_message_content_is_json_string() -> None:
     content = tool_msgs[0]["content"]
     assert isinstance(content, str), f"必须是字符串，实际 {type(content).__name__}"
     assert "hi" in content
+
+    # OpenAI 兼容协议：tool 消息必须带 tool_call_id，且前面必须有 assistant(tool_calls)。
+    # 缺任一条 → DeepSeek 422 missing field `tool_call_id`（实测）。
+    assert tool_msgs[0].get("tool_call_id"), f"缺 tool_call_id：{tool_msgs[0]}"
+    msgs = llm.calls[1]
+    idx_tool = msgs.index(tool_msgs[0])
+    asst = [m for m in msgs[:idx_tool] if m.get("role") == "assistant" and m.get("tool_calls")]
+    assert asst, "tool 消息之前必须有带 tool_calls 的 assistant 消息"
+    assert asst[-1]["tool_calls"][0]["id"] == tool_msgs[0]["tool_call_id"], "id 必须对得上"
