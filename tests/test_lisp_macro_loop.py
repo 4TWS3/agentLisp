@@ -83,6 +83,20 @@ def test_macro_expands_in_lisp_helper(tmp_path: Path) -> None:
     assert out["total"] == 42
 
 
+def test_macro_is_hygienic(tmp_path: Path) -> None:
+    """模板引入的绑定不许捕获调用方同名变量。
+
+    不卫生时 (f 5) 会得到 101（s 被模板的 let 捕获）；
+    卫生时模板的 s 改名为 s_m0，调用方的 s 保持 5 -> 6。
+    """
+    macros = "(:macro (with-s (v body) `(let ((s ,v)) ,body)))"
+    lisp = "(define (f s) (with-s 100 (+ s 1)))"
+    out = _run(tmp_path, '(hash "total" (f 5) "n" 5)', macros=macros, lisp=lisp)
+    assert out["total"] == 6, out["total"]
+    src = (tmp_path / "o.py").read_text(encoding="utf-8")
+    assert "s_m0 = 100" in src, "模板绑定必须被改名"
+
+
 def test_macro_arity_mismatch_is_loud(tmp_path: Path) -> None:
     macros = '(:macro (unless (c body) `(if (not ,c) ,body "no")))'
     src = BASE.format(body='(hash "flag" (unless (> 1 0)))', macros=macros, lisp="")

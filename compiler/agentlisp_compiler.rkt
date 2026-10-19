@@ -680,6 +680,50 @@
 (define (macro-call? form macros)
   (and (pair? form) (symbol? (car form)) (hash-has-key? macros (car form))))
 
+;; 卫生：模板自己引入的绑定（let/let*/lambda/define 的绑定名）改名，
+;; 避免捕获调用方传进来的同名变量。参数名不受影响（它们在 env 里）。
+(define (binder-syms t)
+  (cond
+    [(pair? t)
+     (define head (and (symbol? (car t)) (car t)))
+     (append
+      (cond
+        [(memq head '(let let*))
+         (append (for/list ([b (in-list (cadr t))] #:when (and (pair? b) (symbol? (car b))))
+                   (car b))
+                 (binder-syms-list (cddr t)))]
+        [(eq? head 'lambda)
+         (append (filter symbol? (cadr t)) (binder-syms-list (cddr t)))]
+        [(eq? head 'define)
+         (append (if (and (pair? (cadr t)) (symbol? (caadr t))) (list (caadr t)) '())
+                 (binder-syms-list (cddr t)))]
+        [else (binder-syms-list t)])
+      '())]
+    [else '()]))
+
+(define (binder-syms-list forms)
+  (append* (map binder-syms (if (list? forms) forms '()))))
+
+(define (rename-syms t mapping)
+  (cond
+    [(symbol? t) (hash-ref mapping t t)]
+    [(pair? t)
+     (cond
+       [(eq? (car t) 'quote) t]   ; 引号内不改
+       [(eq? (car t) 'quasiquote) (list 'quasiquote (rename-syms (cadr t) mapping))]
+       [(and (pair? (car t)) (eq? (caar t) 'unquote))
+        (list (list 'unquote (cadr (car t))))]  ; ,x 的参数由 subst 处理，这里不动
+       [else (map (lambda (x) (rename-syms x mapping)) t)])]
+    [else t]))
+
+(define (hygienize template prefix)
+  (define syms (binder-syms template))
+  (if (null? syms)
+      template
+      (rename-syms template
+                   (for/hash ([s (in-list (remove-duplicates syms))])
+                     (values s (string->symbol (format "~a_~a" s prefix)))))))
+
 (define (subst template env)
   (cond
     [(and (pair? template) (eq? (car template) 'unquote))
@@ -712,10 +756,19 @@
        (raise-parse ':macro
                     (format "宏 ~a 需要 ~a 个参数，得到 ~a"
                             (car form) (length params) (length args))))
-     (expand-macros (subst (hash-ref m 'template) (for/hash ([p params] [a args]) (values p a)))
-                    macros)]
+     ;; 每次展开用独立前缀，模板引入的绑定名不会撞上调用方变量。
+     ;; 宏表是不可变 hash，计数器用模块级变量（编译器单线程）。
+     (define fresh (format "m~a" MACRO-GENSYM-COUNTER))
+     (set! MACRO-GENSYM-COUNTER (add1 MACRO-GENSYM-COUNTER))
+     (expand-macros
+      (subst (hygienize (hash-ref m 'template) fresh)
+             (for/hash ([p params] [a args]) (values p a)))
+      macros)]
     [(pair? form) (map (lambda (x) (expand-macros x macros)) form)]
     [else form]))
+
+;; 宏展开的自增计数（保证每次展开的卫生前缀不同）
+(define MACRO-GENSYM-COUNTER 0)
 
 (define (macros->hash ms)
   (for/hash ([m (in-list (or ms '()))]) (values (hash-ref m 'name) m)))
