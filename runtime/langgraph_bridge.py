@@ -196,6 +196,7 @@ def build_graph(
     checkpointer: Any = None,
     state_fields: dict[str, Any] | None = None,
     agents: dict[str, Any] | None = None,
+    entry_router: Callable[[dict[str, Any]], str] | None = None,
 ) -> Any:
     """按 WORKFLOW 建 LangGraph 应用。
 
@@ -296,7 +297,7 @@ def build_graph(
         g.add_conditional_edges(
             plan["last"],
             _loop_predicate(plan["pred"], plan["key"], plan["max_rounds"]),
-            {"again": plan["first"], "done": plan["next"] or "__end__"},
+            {"again": plan["first"], "done": plan["next"] or END},
         )
 
     # 条件边：同一源的多条条件边共用一个路由函数 handlers["<源>__route"]
@@ -309,9 +310,14 @@ def build_graph(
             raise WorkflowBridgeError(
                 f"{src!r} 有 {len(targets)} 条 conditional-edge，但缺路由函数 handlers['{src}__route']"
             )
-        g.add_conditional_edges(src, router, {t: t for t in targets})
+        # 条件是可以指向 END 的（实测 tianxuan 有 {"clarify_prepare": ..., "END": END}）
+        g.add_conditional_edges(src, router, {t: (END if t == "END" else t) for t in targets})
 
-    g.add_edge(START, entry)
+    # 入口本身可以是条件路由（tianxuan 的 route_after_start）
+    if entry_router is not None:
+        g.add_conditional_edges(START, entry_router, {**{n: n for n in known}, "END": END})
+    else:
+        g.add_edge(START, entry)
 
     # 终端节点（没有出边）连到 END
     has_out = {e["from"] for e in edges}

@@ -205,6 +205,56 @@ def test_conditional_loop_without_predicate_is_loud() -> None:
     assert "a__while" in str(exc.value)
 
 
+def test_conditional_edge_can_target_end() -> None:
+    """条件边可以直接指向 END（tianxuan 的 {"clarify_prepare": ..., "END": END}）。"""
+    import asyncio
+
+    wf = {
+        "entry": "s",
+        "nodes": [
+            {"name": "s", "type": "agent", "handler": None, "output_fields": []},
+            {"name": "t", "type": "agent", "handler": None, "output_fields": []},
+        ],
+        "edges": [
+            {"from": "s", "to": "t", "kind": "conditional-edge"},
+            {"from": "s", "to": "END", "kind": "conditional-edge"},
+        ],
+    }
+    runs: list[str] = []
+    app = build_graph(
+        wf,
+        {
+            "s": lambda st: (runs.append("s"), {})[1],
+            "t": lambda st: (runs.append("t"), {})[1],
+            "s__route": lambda st: "END",
+        },
+    )
+    asyncio.run(app.ainvoke({}))
+    assert runs == ["s"], runs
+
+
+def test_entry_can_be_a_router() -> None:
+    """入口本身可以是条件路由（tianxuan 的 add_conditional_edges(START, route_after_start)）。"""
+    import asyncio
+
+    wf = {
+        "entry": "a",
+        "nodes": [
+            {"name": "a", "type": "agent", "handler": None, "output_fields": []},
+            {"name": "b", "type": "agent", "handler": None, "output_fields": []},
+        ],
+        "edges": [],
+    }
+    runs: list[str] = []
+    app = build_graph(
+        wf,
+        {"a": lambda s: (runs.append("a"), {})[1], "b": lambda s: (runs.append("b"), {})[1]},
+        entry_router=lambda s: "b",
+    )
+    asyncio.run(app.ainvoke({}))
+    assert runs == ["b"], runs
+
+
 def test_subagent_nodes_route_to_named_agents() -> None:
     """多 agent 编排：subagent 节点按 :handler 里的 agent 名路由到不同 harness。"""
     calls: list[str] = []
