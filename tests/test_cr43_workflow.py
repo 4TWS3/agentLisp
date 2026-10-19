@@ -106,6 +106,18 @@ def test_unreachable_node_fails(tmp_path: Path) -> None:
     assert "不可达" in cp.stderr
 
 
+def test_edge_can_target_end(tmp_path: Path) -> None:
+    """END 是合法汇点：edge / conditional-edge 都可以指向它（复刻 tianxuan 时需要）。"""
+    cp = _compile(
+        tmp_path,
+        """(:workflow :entry a
+             :nodes ((a :type agent))
+             :topology ((conditional-edge :from a :to END)))""",
+    )
+    assert cp.returncode == 0, cp.stderr
+    assert "'to': \"END\"" in (tmp_path / "o.py").read_text(encoding="utf-8")
+
+
 def test_conditional_edge_cycle_is_allowed_with_warning(tmp_path: Path) -> None:
     """条件边成环合法（作者显式声明了分支），只告警不失败。
 

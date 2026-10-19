@@ -573,7 +573,9 @@
           (define a (to-str (cadr t)))
           (define b (to-str (caddr t)))
           (unless (node-exists? a) (raise-parse ':workflow (format "edge 引用不存在的节点 ~a" a)))
-          (unless (node-exists? b) (raise-parse ':workflow (format "edge 引用不存在的节点 ~a" b)))
+          ;; END 是合法汇点（LangGraph 的终止哨兵），不是节点
+          (unless (or (node-exists? b) (string=? b "END"))
+            (raise-parse ':workflow (format "edge 引用不存在的节点 ~a" b)))
           (set! edges (cons (hash 'from a 'to b 'kind "edge") edges))]
          [(string=? ty "conditional-edge")
           (define kw3 (keyword-kvs (cdr t) '(:from :to :when)))
@@ -583,7 +585,7 @@
           (define b (to-str (hash-ref kw3 ':to)))
           (unless (node-exists? a)
             (raise-parse ':workflow (format "conditional-edge 引用不存在的节点 ~a" a)))
-          (unless (node-exists? b)
+          (unless (or (node-exists? b) (string=? b "END"))
             (raise-parse ':workflow (format "conditional-edge 引用不存在的节点 ~a" b)))
           (set! edges (cons (hash 'from a 'to b 'kind "conditional-edge") edges))]
          [else
