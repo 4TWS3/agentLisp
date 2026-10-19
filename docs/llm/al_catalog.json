@@ -104,6 +104,10 @@
     "_al.length": [
       "length"
     ],
+    "_al.list_index": [
+      "index-of",
+      "list-index"
+    ],
     "_al.list_ref": [
       "list-ref"
     ],

@@ -455,6 +455,19 @@ class BaseHarnessV2:
         # 为什么要自动：DSL 写了 (:tools (import-builtin bash))，跑起来却没有工具，
         # 就是「说的和做的不一致」。声明了但没实现的工具 → 构造时直接报错，不静默。
         if tool_registry is None:
+            # 模型 B：产物自带 .al 里写的工具体时，优先用它们（含内建兜底）。
+            # 注意：此处仍在 __init__ 中，self.trace 尚未就绪，只能走模块日志。
+            try:
+                from runtime.al_tools import from_harness as _tools_from_harness
+
+                tool_registry = _tools_from_harness(self)
+            except Exception as exc:
+                # 不静默：注册表装配失败要说出来，再用内建兜底
+                logging.getLogger("agentlisp.tools").warning(
+                    "DSL 工具体注册表装配失败，退回内建工具：%s('%s')", type(exc).__name__, exc
+                )
+                tool_registry = None
+        if tool_registry is None:
             from .builtin_tools import BuiltinToolRegistry
 
             tool_registry = BuiltinToolRegistry.from_config(self.tools_config)

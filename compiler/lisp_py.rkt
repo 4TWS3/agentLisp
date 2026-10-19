@@ -11,7 +11,7 @@
 
 (require racket/list racket/string racket/format)
 
-(provide lisp->py-expr lisp->py-defun lisp->py-body py-string lit->py)
+(provide lisp->py-expr lisp->py-defun lisp->py-body lisp->py-body-lines py-string lit->py py-name)
 
 ;; ---------- 名字 ----------
 ;; Racket 标识符 -> Python 标识符。
@@ -79,6 +79,7 @@
     [(filter) "_al.filter_list"]
     [(foldl) "_al.foldl"]
     [(null? empty?) "_al.null_p"]
+    [(index-of list-index) "_al.list_index"]
     [(error) "_al.al_error"]
     [(llm llm-complete) "_al.llm_complete"]
     [(interrupt) "_al.interrupt_payload"]
@@ -111,7 +112,8 @@
     ;; 比较（链式）
     [(member head CMP-INFIX)
      (format "(~a)" (string-join (map arg args) (format " ~a " head)))]
-    [(member head '(= equal? string=? eq?))
+    ;; equal 与 equal? 都接受（用户常写前者；Racket 标准是后者）
+    [(member head '(= equal? equal string=? eq?))
      (format "_al.equal(~a)" (string-join (map arg args) ", "))]
     [(member head '(not equal-not))
      (format "_al.al_not(~a)" (arg (car args)))]
@@ -165,6 +167,18 @@
                         (if rest-acc rest-acc "None"))]
                [else rest-acc]))))
      (or (fold clauses #f) "None")]
+    ;; 表达式位的 let：用 lambda 立即调用来做绑定（Python 没有带绑定的表达式）
+    ;; (let ((x e1)) body) -> (lambda x: body)(e1)
+    [(and (pair? e) (memq (car e) '(let let*)))
+     (define bs (cadr e))
+     (define params (string-join (map (lambda (b) (py-name (car b))) bs) ", "))
+     (define args (string-join (map (lambda (b) (lisp->py-expr (cadr b))) bs) ", "))
+     (define body (cddr e))
+     (cond
+       [(null? body) (error 'lisp->py-expr "let 体不能为空")]
+       [(null? (cdr body))
+        (format "(lambda ~a: ~a)(~a)" params (lisp->py-expr (car body)) args)]
+       [else (error 'lisp->py-expr "表达式位 let 的体只支持单个表达式；多条语句请用节点体")])]
     [(eq? (car e) 'lambda)
      (define params (map py-name (cadr e)))
      (define body (cddr e))

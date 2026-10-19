@@ -156,6 +156,15 @@ def foldl(f, init: Any, lst: Any) -> Any:
     return acc
 
 
+def list_index(lst: Any, x: Any, default: int = -1) -> int:
+    """Racket 没有 list-index，但阶序判断常用；找不到返回 default。"""
+    seq = list(lst or [])
+    for i, v in enumerate(seq):
+        if v == x:
+            return i
+    return default
+
+
 def null_p(x: Any) -> bool:
     return x is None or (isinstance(x, (list, tuple, dict, str)) and len(x) == 0)
 
@@ -283,15 +292,31 @@ def py_attr(obj: Any, name: str) -> Any:
     return getattr(obj, name)
 
 
+def _resolve_target(target: str) -> Any:
+    """把 "a.b.c" 解析成对象：先找最长的可导入前缀，再逐级 getattr。
+
+    为什么不能简单 rpartition：实际写法有 pathlib.Path.read_text 这种
+    「模块.类.方法」，rpartition 会把 pathlib.Path 当成模块名 -> ModuleNotFoundError。
+    """
+    parts = target.split(".")
+    if len(parts) < 2:
+        raise ValueError(f"py/call 需要 '模块.函数' 形式，得到 {target!r}")
+    errors: list[str] = []
+    for i in range(len(parts) - 1, 0, -1):
+        try:
+            obj: Any = importlib.import_module(".".join(parts[:i]))
+        except ImportError as exc:
+            errors.append(f"{'.'.join(parts[:i])}: {exc}")
+            continue
+        for part in parts[i:]:
+            obj = getattr(obj, part)
+        return obj
+    raise ImportError(f"py/call 无法解析 {target!r}；尝试过：{errors}")
+
+
 def py_call(target: str, *args: Any, **kwargs: Any) -> Any:
     """(py/call "模块.函数" arg...) -> 调用。目标不存在时抛 ImportError/AttributeError。"""
-    mod_name, _, attr = target.rpartition(".")
-    if not mod_name:
-        raise ValueError(f"py/call 需要 '模块.函数' 形式，得到 {target!r}")
-    obj: Any = importlib.import_module(mod_name)
-    for part in attr.split("."):
-        obj = getattr(obj, part)
-    return obj(*args, **kwargs)
+    return _resolve_target(target)(*args, **kwargs)
 
 
 def py_method(obj: Any, name: str, *args: Any, **kwargs: Any) -> Any:

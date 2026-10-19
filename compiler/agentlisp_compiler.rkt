@@ -811,13 +811,23 @@
              [`(import-mcp ,url)
               (unless (string? url) (raise-parse ':tools "import-mcp URL 必须是字符串"))
               (loop (cdr cs) builtins (append mcps (list url)) define-tools)]
-             [`(define-tool ,tool-name ,inputs ,outputs)
+             [`(define-tool ,tool-name ,inputs ,outputs . ,rest)
+              ;; 模型 B：工具体可以用 :body 写在 DSL 里（编译成 Python 函数）。
+              ;; 不写 :body 就是纯声明（由外部 tool_registry 实现）。
+              (define tbody
+                (cond
+                  [(null? rest) #f]
+                  [(and (= (length rest) 2) (eq? (car rest) ':body)) (cadr rest)]
+                  [else (raise-parse ':tools
+                                     (format "define-tool ~a 只接受 (… 入参 出参 [:body 表达式])"
+                                             tool-name))]))
               (loop (cdr cs) builtins mcps
                     (append define-tools
                             (list (hash 'name (to-str tool-name)
                                         'inputs (map (lambda (kv) (list (to-str (car kv)) (to-str (cadr kv))))
                                                      inputs)
-                                        'outputs outputs))))]
+                                        'outputs outputs
+                                        'body tbody))))]
              [_ (raise-parse ':tools (format "未知 tools 子句：~s" (car cs)))])]))]
     [_ (raise-parse ':tools (format "必需是 (:tools …)，得到 ~s" form))]))
 
@@ -1022,6 +1032,35 @@
 (define (al-node-fn-name nm)
   (string-append "_al_node_" (regexp-replace* #rx"[^A-Za-z0-9_]" (to-str nm) "_")))
 
+;; 模型 B：define-tool 的 :body -> 模块级 Python 函数。
+;; 入参声明变成局部变量，工具实现由调用方（al_tools.registry）按名字分发。
+(define (al-tool-fn-name nm)
+  (string-append "_al_tool_" (regexp-replace* #rx"[^A-Za-z0-9_]" (to-str nm) "_")))
+
+(define (emit-lisp-tool-bodies parsed)
+  (define tools (hash-ref parsed 'tools #f))
+  (define defs (and tools (hash-ref tools 'define_tools '())))
+  (define with-body (filter (lambda (t) (hash-ref t 'body #f)) (or defs '())))
+  (if (null? with-body)
+      ""
+      (string-append
+       "# define-tool 的 :body（Lisp -> Python）\n"
+       (string-join
+        (for/list ([t (in-list with-body)])
+          (define nm (hash-ref t 'name))
+          (define inputs (hash-ref t 'inputs '()))
+          (define bindings
+            (for/list ([kv (in-list inputs)])
+              (format "    ~a = kwargs.get(~s)" (py-name (string->symbol (car kv))) (car kv))))
+          (define b (hash-ref t 'body))
+          (define body-forms (if (and (pair? b) (eq? (car b) 'begin)) (cdr b) (list b)))
+          (define lines (lisp->py-body-lines body-forms))
+          (string-append
+           (format "def ~a(**kwargs):\n" (al-tool-fn-name nm))
+           (string-join (append bindings (for/list ([l (in-list lines)]) (format "    ~a" l))) "\n")
+           "\n"))
+        "\n"))))
+
 ;; :lisp 辅助函数：模块级函数，节点体可以调用。
 (define (emit-lisp-helpers parsed)
   (define defs (hash-ref parsed 'lisp #f))
@@ -1145,6 +1184,7 @@
    ;; 模型 B：节点体用 Lisp 写，编译后调用这个核心库（hash-ref / format / py-call …）
    "from runtime import al_core as _al\n\n"
    ;; 节点体函数必须在类之前定义（WORKFLOW 里的 'body' 直接引用函数对象）
+   (emit-lisp-tool-bodies parsed)
    (emit-lisp-helpers parsed)
    (emit-lisp-bodies parsed)
    (format "class ~a(BaseHarnessV2):\n" cls-name)
@@ -1289,11 +1329,17 @@ EOS
 (define (emit-tools-config tools)
   (define builtins (py-list/str (map to-str (hash-ref tools 'builtins '()))))
   (define mcp      (py-list/str (hash-ref tools 'mcp_servers '())))
+  ;; 注意：这里的 inputs 必须是**真的 dict 列表**。
+  ;; 之前用 py-list/str 包了一层，结果每个元素变成字符串 '{"name": ...}'，
+  ;; 运行时按 dict 取值就报 TypeError: string indices must be integers（实测）。
+  (define (inputs-literal t)
+    (format "[~a]"
+            (string-join
+             (for/list ([x (hash-ref t 'inputs)])
+               (format "{'name': ~s, 'type': ~s}" (car x) (cadr x)))
+             ", ")))
   (define defs     (for/list ([t (in-list (hash-ref tools 'define_tools '()))])
-                     (format "{'name': ~s, 'inputs': ~a}"
-                             (hash-ref t 'name)
-                             (py-list/str (for/list ([x (hash-ref t 'inputs)])
-                                            (format "{'name': ~s, 'type': ~s}" (car x) (cadr x)))))))
+                     (format "{'name': ~s, 'inputs': ~a}" (hash-ref t 'name) (inputs-literal t))))
   (define tools-schema
     (string-join
      `(,@(if (null? (hash-ref tools 'builtins '()))
@@ -1308,6 +1354,16 @@ EOS
      "\n"))
   (define defs-dump
     (if (null? defs) "[]" (string-append "[" (string-join defs ", ") "]")))
+  ;; 模型 B：把有 :body 的工具函数注册进去，运行期按名字分发
+  (define body-defs (filter (lambda (t) (hash-ref t 'body #f)) (hash-ref tools 'define_tools '())))
+  (define bodies-dump
+    (if (null? body-defs)
+        "{}"
+        (format "{~a}"
+                (string-join
+                 (for/list ([t (in-list body-defs)])
+                   (format "~s: ~a" (hash-ref t 'name) (al-tool-fn-name (hash-ref t 'name))))
+                 ", "))))
   (format #<<EOS
         tools_config: Dict[str, Any] = {
             'tools_schema': ~a,
@@ -1320,6 +1376,8 @@ EOS
             'mcp_servers': ~a,
             'define_tools': ~a,
         }
+        # 模型 B：写在 DSL 里的工具体（名字 -> 编译后的 Python 函数）
+        self.TOOL_BODIES: Dict[str, Any] = ~a
 
 EOS
           (py-string tools-schema)
@@ -1328,7 +1386,8 @@ EOS
           defs-dump
           builtins
           mcp
-          defs-dump))
+          defs-dump
+          bodies-dump))
 
 (define (emit-harness-dict h)
   (define c (hash-ref h 'constrain))
