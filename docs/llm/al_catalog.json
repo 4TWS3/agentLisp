@@ -129,6 +129,9 @@
     "_al.py_call": [
       "py/call"
     ],
+    "_al.py_call_kw": [
+      "py/call-kw"
+    ],
     "_al.py_import": [
       "py/import"
     ],

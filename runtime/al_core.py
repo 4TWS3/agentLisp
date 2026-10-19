@@ -319,5 +319,19 @@ def py_call(target: str, *args: Any, **kwargs: Any) -> Any:
     return _resolve_target(target)(*args, **kwargs)
 
 
+def py_call_kw(target: str, *args: Any) -> Any:
+    """(py/call-kw "模块.函数" arg... (hash "kw" v)) -> 带关键字参数调用。
+
+    为什么需要：os.makedirs(name, mode, exist_ok) 的 exist_ok 是第三个参数，
+    位置传 True 会变成 mode=True（权限位 1）→ 目录建出来但没有写权限，
+    后续写文件报 PermissionError（实测踩过）。
+    """
+    kwargs: dict[str, Any] = {}
+    if args and isinstance(args[-1], dict):
+        kwargs = dict(args[-1])
+        args = args[:-1]
+    return _resolve_target(target)(*args, **kwargs)
+
+
 def py_method(obj: Any, name: str, *args: Any, **kwargs: Any) -> Any:
     return getattr(obj, name)(*args, **kwargs)

@@ -87,6 +87,8 @@
     [(fanout-safe) "_al.fanout_safe"]
     [(py/import) "_al.py_import"]
     [(py/call) "_al.py_call"]
+    ;; kwargs 走最后一个 hash 参数：py/call-kw "m.f" a (hash "k" v)
+    [(py/call-kw) "_al.py_call_kw"]
     [(py/attr) "_al.py_attr"]
     [(py/method) "_al.py_method"]
     [(list vector) "_al_list"]
