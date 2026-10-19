@@ -46,6 +46,30 @@ def test_check_roadmap_traceability_legal_scenario_exit_zero_and_stdout_empty():
     assert not re.search(r"^ROADMAP-", cp.stderr, re.M)
 
 
+def test_appendix_b_row_baseline_is_declarative():
+    """附录 B 行数基线从 SRS 读，不再写死 32（2026-10-18 升级到 47）。"""
+    content = SRS_MD.read_text(encoding="utf-8")
+    assert "APPB_ROWS_BASELINE: 47" in content, "SRS 必须声明行数基线"
+    cp = _run_cli(SRS_MD)
+    assert cp.returncode == 0, cp.stderr
+    assert "rows=" not in cp.stderr, f"当前行数与基线一致，不该告警：{cp.stderr}"
+
+
+def test_appendix_b_row_drift_warns_but_does_not_fail():
+    content = SRS_MD.read_text(encoding="utf-8")
+    drifted = content.replace("APPB_ROWS_BASELINE: 47", "APPB_ROWS_BASELINE: 40", 1)
+    assert drifted != content
+    with tempfile.NamedTemporaryFile("w", suffix=".md", delete=False, encoding="utf-8") as tmp:
+        tmp.write(drifted)
+        tmp_srs = pathlib.Path(tmp.name)
+    try:
+        cp = _run_cli(tmp_srs)
+    finally:
+        tmp_srs.unlink(missing_ok=True)
+    assert cp.returncode == 0, "行数漂移只告警，不失败"
+    assert "rows=47" in cp.stderr and "APPB_ROWS_BASELINE=40" in cp.stderr
+
+
 def test_check_roadmap_traceability_id_drift_exit_one_and_prefix_count_one():
     content = SRS_MD.read_text(encoding="utf-8")
     drifted = content.replace(

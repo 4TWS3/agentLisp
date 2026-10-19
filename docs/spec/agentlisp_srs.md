@@ -464,6 +464,10 @@ RSI 让**用它编出来的 agent** 进化它自己的外部制品（skills / pr
 > **历史**：128（CR-39 GA 永久锚，L289）→ 158（CR-41 中期声明，未附复现命令）→ 146（CR-41 R2 实测，含 V1 合法化、端到端编译测试 21 例、标记独立断言 22 例）。
 > **纪律**：本值只允许在「测试集发生已登记变化」时调整，且必须同步更新本复现命令的输出；禁止无说明地下调。`。锚定证据（VERBATIM）：pytest patterns `70 passed, 1 warning`（V1 10 + V2 30 + NFR01 15 + NFR02 15）+ RackUnit V1 `5 success(es)` / V2 `10 success(es) 0 failure(s)` + `PATTERNS V2 AST OK (30/30 legal Core AST)`。本轮同时把附录 B 的 AC-2 矩阵行 128→158（矩阵行跟随当前 GA 基线演进；CR-39 GA **128 永久锚**仍完整保留于本段 prose）。
 CR41_BASELINE_PASSED_COUNT: 158
+APPB_ROWS_BASELINE: 47
+
+> **附录 B 行数基线（2026-10-18 升级）**：47 行（含 CR-40 O13 新增的 5 条 PATTERN-ID 行）。
+> `check_roadmap_traceability.py` 从这里读期望值，允差 ±1；改行数只改这一行。
 
 | 需求 ID | Scenario 数 | Passed | Failed | Skip/Xfail | pytest / RackUnit 代表性用例 ID | 代码锚（精确文件:行范围） |
 |---|---:|---:|---:|---:|---|---|

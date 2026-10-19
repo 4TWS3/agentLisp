@@ -245,6 +245,9 @@ def check_baseline(srs: str, args: argparse.Namespace, stderr_list: list[str]) -
             )
 
 
+APPB_ROWS_FALLBACK = 32
+
+
 def check_32rows_scn_eq_pas(srs: str, stderr_list: list[str]) -> None:
     app_b = srs.split("## 附录 B", 1)[1].split("## 附录 C", 1)[0]
     lines = app_b.splitlines()
@@ -273,7 +276,9 @@ def check_32rows_scn_eq_pas(srs: str, stderr_list: list[str]) -> None:
         rows += 1
         scn_sum += scn
         pas_sum += pas
-    row_diff = abs(rows - 32)
+    # 期望行数从 SRS 取（GA 基线升级后只改 SRS 一处）。缺省回退 32 兼容旧文档。
+    expect_rows = _extract_int(r"APPB_ROWS_BASELINE[:=]\s*(\d+)", srs) or APPB_ROWS_FALLBACK
+    row_diff = abs(rows - expect_rows)
     allow_scn_neq_pas = os.environ.get("AGENTLISP_ROADMAP_ALLOW_SCN_NEQ_PAS", "") == "1"
     if scn_sum != pas_sum and not allow_scn_neq_pas:
         stderr_list.append(
@@ -282,9 +287,9 @@ def check_32rows_scn_eq_pas(srs: str, stderr_list: list[str]) -> None:
             f"expect_PasSum==ScnSum (fail_on_diff=true；若需临时跳过此核查可导出 AGENTLISP_ROADMAP_ALLOW_SCN_NEQ_PAS=1)"
         )
         return
-    if row_diff > 6:
+    if row_diff > 1:
         print(
-            f"[warn O2] rows={rows} not 32 (diff={row_diff}, allowed ±6; 允差含 CR-40 O13 新增 5 条 PATTERN-ID 行，下一轮 GA 基线升级后重置允差 ±1); "
+            f"[warn O2] rows={rows} != APPB_ROWS_BASELINE={expect_rows} (diff={row_diff}, allowed ±1); "
             f"ScnSum={scn_sum} PasSum={pas_sum}; only warn, not fail",
             file=sys.stderr,
         )
