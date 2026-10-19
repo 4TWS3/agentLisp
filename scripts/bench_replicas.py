@@ -55,6 +55,21 @@ def compile_al(proj: Path) -> tuple[bool, str]:
     return True, ", ".join(outs)
 
 
+def clean_state(proj: Path) -> None:
+    """清掉上一次跑留下的 data/ 状态。
+
+    不清理的话基准不可重复：spec-writer 的 scan 看到上次生成的
+    data/kb/01-chart-of-accounts.md，kb_missing 变空 -> 走另一条分支 -> 测试红。
+    """
+    data = proj / "data"
+    for name in ("kb", "out", "phase.txt"):
+        target = data / name
+        if target.is_dir():
+            shutil.rmtree(target, ignore_errors=True)
+        elif target.exists():
+            target.unlink()
+
+
 def run_tests(proj: Path, timeout: int = 180) -> tuple[bool, str]:
     # 必须给单项目超时：实测某个项目的测试能挂住（图里有回流），
     # 不设超时整个基准就跑不完，且看不到任何中间结果。
@@ -107,6 +122,8 @@ def main() -> int:
             ok_c, msg_c = True, "跳过"
         else:
             ok_c, msg_c = compile_al(p)
+        if ok_c:
+            clean_state(p)
         ok_t, msg_t = run_tests(p) if ok_c else (False, "未跑（编译失败）")
         if not (ok_c and ok_t):
             failed += 1
