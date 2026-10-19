@@ -81,6 +81,22 @@
 
 ---
 
+## 5.2 两个非图架构也复刻完了（2026-10-18）
+
+| 项目 | 原版形态 | 复刻后 | 提交 |
+|---|---|---|---|
+| `~/products/agentlisp-xuanji` | 手写 async 流水线（非图） | **4 节点 DAG + 并行扇出** | `9c1e5ee` |
+| `~/products/agentlisp-yaoguang` | 单 Agent ReAct + 阶段机（非图） | **`:harness` + `define-tool` 两个工具** | `9633463` |
+
+两条判定的修正：
+
+| 原判断 | 修正后 |
+|---|---|
+| xuanji「不能被 DSL 表达」 | **错**。它就是 4 步流水线，只是没写成图。并行扇出在 handler 里 `asyncio.gather`，不需要图级能力 |
+| yaoguang「架构不同，要重写」 | **不必重写**。agentLisp 的 `:harness` 本身就是那个 ReAct 循环，阶段机落在自定义工具里 |
+
+---
+
 ## 6. 一句话
 
 **图型 agent（4 个）今天的 agentLisp 都能复刻；非图的 2 个（yaoguang / xuanji）不是 DSL 能表达的形状，得先改它们的架构。**
