@@ -7,7 +7,8 @@
 ;; 修复 Code Review 14 项问题（详见仓库对话历史 review 清单）
 ;; =====================================================================
 
-(require racket/string
+(require "lisp_py.rkt"   ; 模型 B：节点体 Lisp -> Python 表达式编译器
+         racket/string
          racket/function
          racket/match
          racket/file
@@ -468,7 +469,7 @@
          (unless (and (list? n) (pair? n) (symbol? (car n)))
            (raise-parse ':workflow (format "节点格式应为 (名 :type T …)，得到 ~s" n)))
          (define nm (symbol->string (car n)))
-         (define kw2 (keyword-kvs (cdr n) '(:type :handler :prompt :output-fields :effect :isolation)))
+         (define kw2 (keyword-kvs (cdr n) '(:type :handler :prompt :output-fields :effect :isolation :body)))
          (unless (hash-has-key? kw2 ':type)
            (raise-parse ':workflow (format "节点 ~a 缺 :type" nm)))
          (define ty (to-str (hash-ref kw2 ':type)))
@@ -489,8 +490,13 @@
                                     "subagent 节点 ~a 的 :handler 应为 agent 注册名，得到 ~s"
                                     "节点 ~a 的 :handler 格式应为 模块.函数 或 模块.类.方法，得到 ~s")
                                 nm h)))
-         (when (and (string=? ty "computation") (not h))
-           (raise-parse ':workflow (format "computation 节点 ~a 必须给 :handler（F-AMS-2）" nm)))
+         ;; 模型 B：节点体可以直接用 Lisp 写在 :body 里（编译成 Python），
+         ;; 也可以用 :handler 指向外部函数（逃逸口）。二者必须有其一。
+         (define body-form (and (hash-has-key? kw2 ':body) (hash-ref kw2 ':body)))
+         (when (and (string=? ty "computation") (not h) (not body-form))
+           (raise-parse ':workflow (format "computation 节点 ~a 必须给 :handler 或 :body（F-AMS-2）" nm)))
+         (when (and h body-form)
+           (raise-parse ':workflow (format "节点 ~a 不能同时给 :handler 与 :body" nm)))
          ;; F-AMS-3：:output-fields 必须来自 :state 已声明字段
          (define outs (map to-str (hash-ref kw2 ':output-fields '())))
          (for ([o (in-list outs)])
@@ -524,7 +530,7 @@
                         (format "节点 ~a 的 :isolation 只允许 scoped 或省略，得到 ~a" nm iso)))
          (hash 'name nm 'type ty 'handler h 'outputs outs
                'static stat 'dynamic dyn 'reads (reverse reads) 'effect eff
-               'isolation iso)))
+               'isolation iso 'body body-form)))
      ;; F-AMS-8：non_revertible 在并发（parallel）中必须串行 -> 编译期拦
      (when has-parallel
        (define nr (for/list ([n (in-list nodes)]
@@ -984,6 +990,25 @@
         [(list? v) (string-append "[" (string-join (map py-literal v) ", ") "]")]
         [else (py-string (to-str v))]))
 
+;; 模型 B：把节点的 :body（Lisp 表达式）编译成 Python 函数。
+;; 函数名固定为 _al_node_<节点名>，供 WORKFLOW 里的 'body' 键直接引用（不走 import 路径）。
+(define (al-node-fn-name nm)
+  (string-append "_al_node_" (regexp-replace* #rx"[^A-Za-z0-9_]" (to-str nm) "_")))
+
+(define (emit-lisp-bodies parsed)
+  (define wf (hash-ref parsed 'workflow #f))
+  (if (not wf)
+      ""
+      (string-join
+       (for/list ([n (in-list (hash-ref wf 'nodes))] #:when (hash-ref n 'body #f))
+         (string-append
+          (format "# 节点体（Lisp -> Python）：~a\n" (hash-ref n 'name))
+          (lisp->py-defun (string->symbol (al-node-fn-name (hash-ref n 'name)))
+                          '(state)
+                          (let ([b (hash-ref n 'body)])
+                            (if (and (pair? b) (eq? (car b) 'begin)) (cdr b) (list b))))))
+       "\n\n")))
+
 (define (emit-state-dict parsed)
   (define st (hash-ref parsed 'state #f))
   (define body
@@ -1021,7 +1046,7 @@
                    (format (string-append
                             "{'name': ~a, 'type': ~a, 'handler': ~a, "
                             "'static': ~a, 'dynamic': ~a, 'output_fields': [~a], "
-                            "'effect': ~a, 'isolation': ~a}")
+                            "'effect': ~a, 'isolation': ~a~a}")
                            (py-string (hash-ref n 'name))
                            (py-string (hash-ref n 'type))
                            (if (hash-ref n 'handler)
@@ -1031,7 +1056,11 @@
                            (py-string (hash-ref n 'dynamic '""))
                            (string-join (map py-string (hash-ref n 'outputs '())) ", ")
                            (py-string (hash-ref n 'effect 'pure))
-                           (py-string (hash-ref n 'isolation ""))))
+                           (py-string (hash-ref n 'isolation ""))
+                           ;; 有 :body 就把函数对象放进 WORKFLOW（不走 import 路径）
+                           (if (hash-ref n 'body #f)
+                               (format ", 'body': ~a" (al-node-fn-name (hash-ref n 'name)))
+                               "")))
                  ", ")
                 (string-join
                  (for/list ([ed (in-list (hash-ref wf 'edges))])
@@ -1073,7 +1102,11 @@
    (format "~a = \"\"\n" CONTENT-SHA256-FIELD)
    "\n"
    "from typing import Any, Dict, List, Optional\n"
-   "from runtime.base_harness_v2 import BaseHarnessV2, build_kv_aligned_context\n\n"
+   "from runtime.base_harness_v2 import BaseHarnessV2, build_kv_aligned_context\n"
+   ;; 模型 B：节点体用 Lisp 写，编译后调用这个核心库（hash-ref / format / py-call …）
+   "from runtime import al_core as _al\n\n"
+   ;; 节点体函数必须在类之前定义（WORKFLOW 里的 'body' 直接引用函数对象）
+   (emit-lisp-bodies parsed)
    (format "class ~a(BaseHarnessV2):\n" cls-name)
    (format "    agent_name = ~s\n" agent-name)
    (format "    AGENT_NAME = ~s\n\n" agent-name)

@@ -103,6 +103,10 @@ def _resolve(
     name = node["name"]
     if name in handlers:
         return handlers[name]
+    # 模型 B：节点体用 Lisp 写，编译器已把它编成函数对象放进 WORKFLOW['body']
+    body = node.get("body")
+    if callable(body):
+        return body
     handler = node.get("handler")
     if handler and handler in handlers:
         return handlers[handler]

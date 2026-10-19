@@ -1,0 +1,203 @@
+"""agentLisp 运行时核心库：编译产物调用的辅助函数。
+
+设计原则：
+1. 不引入解释器。产物是**生成的 Python 代码**，这里只提供被调用的函数。
+2. 名字带 al_ 前缀，避免污染产物命名空间。
+3. 语义对齐 Racket 的核心形式（hash-ref / format / list-ref 等）。
+"""
+
+from __future__ import annotations
+
+import importlib
+from typing import Any
+
+
+# ---------- 字典（Racket hash 的对应物） ----------
+def hash_ref(d: Any, key: Any, default: Any = None) -> Any:
+    """Racket (hash-ref d key [default])。非 dict 时返回 default，不抛。"""
+    if isinstance(d, dict):
+        return d.get(key, default)
+    return default
+
+
+def hash_set(d: Any, key: Any, val: Any) -> dict:
+    """返回新 dict（Racket hash-set 是不可变的）。"""
+    out = dict(d) if isinstance(d, dict) else {}
+    out[key] = val
+    return out
+
+
+def al_hash(*kvs: Any) -> dict:
+    """(hash k1 v1 k2 v2 ...) -> dict。"""
+    if len(kvs) % 2:
+        raise ValueError("al_hash 需要偶数个参数")
+    return {kvs[i]: kvs[i + 1] for i in range(0, len(kvs), 2)}
+
+
+def hash_keys(d: Any) -> list:
+    return list(d.keys()) if isinstance(d, dict) else []
+
+
+def hash_has_key(d: Any, key: Any) -> bool:
+    return isinstance(d, dict) and key in d
+
+
+# ---------- 字符串 ----------
+def al_format(fmt: str, *args: Any) -> str:
+    """Racket 风格 format：把 ~a / ~s / ~v 依次替换成参数。"""
+    out = []
+    idx = 0
+    i = 0
+    while i < len(fmt):
+        ch = fmt[i]
+        if ch == "~" and i + 1 < len(fmt):
+            nxt = fmt[i + 1]
+            if nxt in "asv":
+                if idx < len(args):
+                    out.append(str(args[idx]))
+                    idx += 1
+                i += 2
+                continue
+            if nxt == "n":
+                out.append("\n")
+                i += 2
+                continue
+            if nxt == "%":
+                out.append("\n")
+                i += 2
+                continue
+        out.append(ch)
+        i += 1
+    return "".join(out)
+
+
+def string_append(*parts: Any) -> str:
+    return "".join("" if p is None else str(p) for p in parts)
+
+
+def string_split(s: Any, sep: str = " ") -> list:
+    return str(s).split(sep)
+
+
+def string_contains(s: Any, sub: Any) -> bool:
+    return str(sub) in str(s)
+
+
+def string_upcase(s: Any) -> str:
+    return str(s).upper()
+
+
+def string_downcase(s: Any) -> str:
+    return str(s).lower()
+
+
+def string_join(parts: Any, sep: str = "") -> str:
+    return sep.join("" if p is None else str(p) for p in (parts or []))
+
+
+# ---------- 列表 ----------
+def first(lst: Any) -> Any:
+    if isinstance(lst, (list, tuple)) and lst:
+        return lst[0]
+    return None
+
+
+def rest(lst: Any) -> list:
+    if isinstance(lst, (list, tuple)):
+        return list(lst[1:])
+    return []
+
+
+def list_ref(lst: Any, i: int, default: Any = None) -> Any:
+    """Racket 的 list-ref：越界/类型不符时返回 default，不抛。
+
+    这里刻意不用 try/except：仓库标准禁止静默 except（P5/E3）。
+    显式判型同样安全，且失败路径可见。
+    """
+    if isinstance(lst, (list, tuple, str)) and -len(lst) <= i < len(lst):
+        return lst[i]
+    return default
+
+
+def length(x: Any) -> int:
+    """Racket 的 length：无长度的值返回 0（不抛，也不静默吞异常）。"""
+    if isinstance(x, (list, tuple, dict, str, set)):
+        return len(x)
+    return 0
+
+
+def al_append(*seqs: Any) -> list:
+    out: list = []
+    for s in seqs:
+        if isinstance(s, (list, tuple)):
+            out.extend(s)
+        elif s is not None:
+            out.append(s)
+    return out
+
+
+def al_cons(x: Any, lst: Any) -> list:
+    return [x] + (list(lst) if isinstance(lst, (list, tuple)) else [])
+
+
+def map_list(f, lst: Any) -> list:
+    return [f(x) for x in (lst or [])]
+
+
+def filter_list(f, lst: Any) -> list:
+    return [x for x in (lst or []) if f(x)]
+
+
+def foldl(f, init: Any, lst: Any) -> Any:
+    acc = init
+    for x in lst or []:
+        acc = f(x, acc)
+    return acc
+
+
+def null_p(x: Any) -> bool:
+    return x is None or (isinstance(x, (list, tuple, dict, str)) and len(x) == 0)
+
+
+# ---------- 比较与布尔 ----------
+def num_eq(*xs: Any) -> bool:
+    return all(xs[i] == xs[i + 1] for i in range(len(xs) - 1))
+
+
+def equal(*xs: Any) -> bool:
+    return all(xs[i] == xs[i + 1] for i in range(len(xs) - 1))
+
+
+def al_not(x: Any) -> bool:
+    return not x
+
+
+# ---------- 错误 ----------
+def al_error(msg: Any) -> None:
+    raise RuntimeError(str(msg))
+
+
+# ---------- 宿主互操作 ----------
+def py_import(name: str) -> Any:
+    return importlib.import_module(name)
+
+
+def py_attr(obj: Any, name: str) -> Any:
+    if isinstance(obj, str):
+        obj = importlib.import_module(obj)
+    return getattr(obj, name)
+
+
+def py_call(target: str, *args: Any, **kwargs: Any) -> Any:
+    """(py/call "模块.函数" arg...) -> 调用。目标不存在时抛 ImportError/AttributeError。"""
+    mod_name, _, attr = target.rpartition(".")
+    if not mod_name:
+        raise ValueError(f"py/call 需要 '模块.函数' 形式，得到 {target!r}")
+    obj: Any = importlib.import_module(mod_name)
+    for part in attr.split("."):
+        obj = getattr(obj, part)
+    return obj(*args, **kwargs)
+
+
+def py_method(obj: Any, name: str, *args: Any, **kwargs: Any) -> Any:
+    return getattr(obj, name)(*args, **kwargs)
