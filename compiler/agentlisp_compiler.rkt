@@ -199,6 +199,7 @@
      (hash 'name name
            'patterns parsed-patterns
            'evolution parsed-evolution
+           'lisp (hash-ref pb 'lisp #f)
            'model   (parse-model model)
            'context (parse-context ctx)
            'tools   (parse-tools tools)
@@ -651,37 +652,46 @@
   ;; US-05：:workflow 至多一次（与 :multiagent 互斥，在 parse-defagent 里拦）。
   ;; 返回 hash，键：model context tools harness multiagent state workflow patterns evolution order
   (let loop ([bs blocks] [model #f] [ctx #f] [tools #f] [harness #f] [multi #f] [st #f] [wf #f]
-             [pats '()] [evo #f] [order '()])
+             [pats '()] [evo #f] [lisp #f] [order '()])
     (if (null? bs)
         (hash 'model model 'context ctx 'tools tools 'harness harness
               'multiagent multi 'state st 'workflow wf 'patterns (reverse pats)
-              'evolution evo 'order (reverse order))
+              'evolution evo 'lisp lisp 'order (reverse order))
         (let ([b (car bs)] [rest (cdr bs)])
           (define tag (and (pair? b) (car b)))
           (cond
             [(eq? tag ':model)   (when model (raise-parse `(defagent ,agent-name) ":model 块重复"))
-                                 (loop rest b ctx tools harness multi st wf pats evo (cons ':model order))]
+                                 (loop rest b ctx tools harness multi st wf pats evo lisp (cons ':model order))]
             [(eq? tag ':context) (when ctx (raise-parse `(defagent ,agent-name) ":context 块重复"))
-                                 (loop rest model b tools harness multi st wf pats evo (cons ':context order))]
+                                 (loop rest model b tools harness multi st wf pats evo lisp (cons ':context order))]
             [(eq? tag ':tools)   (when tools (raise-parse `(defagent ,agent-name) ":tools 块重复"))
-                                 (loop rest model ctx b harness multi st wf pats evo (cons ':tools order))]
+                                 (loop rest model ctx b harness multi st wf pats evo lisp (cons ':tools order))]
             [(eq? tag ':harness) (when harness (raise-parse `(defagent ,agent-name) ":harness 块重复"))
-                                 (loop rest model ctx tools b multi st wf pats evo (cons ':harness order))]
+                                 (loop rest model ctx tools b multi st wf pats evo lisp (cons ':harness order))]
             [(eq? tag ':multiagent) (when multi (raise-parse `(defagent ,agent-name) ":multiagent 块重复"))
-                                     (loop rest model ctx tools harness b st wf pats evo (cons ':multiagent order))]
+                                     (loop rest model ctx tools harness b st wf pats evo lisp (cons ':multiagent order))]
             [(eq? tag ':state)   (when st (raise-parse `(defagent ,agent-name) ":state 块重复"))
-                                 (loop rest model ctx tools harness multi b wf pats evo (cons ':state order))]
+                                 (loop rest model ctx tools harness multi b wf pats evo lisp (cons ':state order))]
             [(eq? tag ':workflow) (when wf (raise-parse `(defagent ,agent-name) ":workflow 块重复"))
-                                  (loop rest model ctx tools harness multi st b pats evo (cons ':workflow order))]
+                                  (loop rest model ctx tools harness multi st b pats evo lisp (cons ':workflow order))]
             [(eq? tag ':pattern)
              ;; CR-42：模式块交给注册表校验（kind/config），可多次出现
-             (loop rest model ctx tools harness multi st wf (cons b pats) evo (cons ':pattern order))]
+             (loop rest model ctx tools harness multi st wf (cons b pats) evo lisp (cons ':pattern order))]
             [(eq? tag ':evolution)
              ;; RSI 契约 §5.1：至多一次；不存在时为 #f
              (when evo (raise-parse `(defagent ,agent-name) ":evolution 块重复"))
-             (loop rest model ctx tools harness multi st wf pats b (cons ':evolution order))]
+             (loop rest model ctx tools harness multi st wf pats b lisp (cons ':evolution order))]
+            [(eq? tag ':lisp)
+             ;; 模型 B：辅助函数。每个元素必须是 (define (名 参数…) 体…)。
+             (when lisp (raise-parse `(defagent ,agent-name) ":lisp 块重复"))
+             (let ([defs (cdr b)])
+               (for ([d (in-list defs)])
+                 (unless (and (pair? d) (eq? (car d) 'define) (pair? (cadr d)) (symbol? (caadr d)))
+                   (raise-parse ':lisp
+                                (format ":lisp 里只允许 (define (名 参数…) 体…)，得到 ~s" d))))
+               (loop rest model ctx tools harness multi st wf pats evo defs (cons ':lisp order)))]
             [else (raise-parse `(defagent ,agent-name)
-                                (format "未知块 ~s；应为 :model/:context/:tools/:harness（可选 :state/:workflow/:multiagent/:pattern/:evolution）" tag))])))))
+                                (format "未知块 ~s；应为 :model/:context/:tools/:harness（可选 :state/:workflow/:multiagent/:pattern/:evolution/:lisp）" tag))])))))
 
 ;;; ---------- parse-model (修复 MAJOR-3 temperature 范围 + PROVIDER-ENUM 值域) ----------
 (define (parse-model form)
@@ -995,6 +1005,18 @@
 (define (al-node-fn-name nm)
   (string-append "_al_node_" (regexp-replace* #rx"[^A-Za-z0-9_]" (to-str nm) "_")))
 
+;; :lisp 辅助函数：模块级函数，节点体可以调用。
+(define (emit-lisp-helpers parsed)
+  (define defs (hash-ref parsed 'lisp #f))
+  (if (not defs)
+      ""
+      (string-append
+       "# :lisp 辅助函数（Lisp -> Python）\n"
+       (string-join
+        (for/list ([d (in-list defs)])
+          (lisp->py-defun (caadr d) (cdadr d) (cddr d)))
+        "\n"))))
+
 (define (emit-lisp-bodies parsed)
   (define wf (hash-ref parsed 'workflow #f))
   (if (not wf)
@@ -1106,6 +1128,7 @@
    ;; 模型 B：节点体用 Lisp 写，编译后调用这个核心库（hash-ref / format / py-call …）
    "from runtime import al_core as _al\n\n"
    ;; 节点体函数必须在类之前定义（WORKFLOW 里的 'body' 直接引用函数对象）
+   (emit-lisp-helpers parsed)
    (emit-lisp-bodies parsed)
    (format "class ~a(BaseHarnessV2):\n" cls-name)
    (format "    agent_name = ~s\n" agent-name)

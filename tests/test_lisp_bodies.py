@@ -28,6 +28,7 @@ BASE = """(define-agent demo
   (:model :provider "openai" :name "m" :system-prompt "s")
   (:tools (import-builtin read-file))
   (:context :memory-policy (:markdown-fs "./m.md" :layers (L0-Abstract) :auto-append #f))
+  {lisp}
   (:state :fields ((facts :type dict) (draft :type str) (ok :type bool)))
   (:harness (:constrain :require-human-approval () :forbidden-commands ("rm -rf"))
             (:verify :json-schema #f :linter-check #f :test-runner "")
@@ -50,9 +51,13 @@ NODES = """(facts :type computation
 
 
 def _compile(
-    tmp_path: Path, nodes: str = NODES, order: str = "facts draft gate", entry: str = "facts"
+    tmp_path: Path,
+    nodes: str = NODES,
+    order: str = "facts draft gate",
+    entry: str = "facts",
+    lisp: str = "",
 ) -> subprocess.CompletedProcess:
-    src = BASE.format(nodes=nodes, order=order, entry=entry)
+    src = BASE.format(nodes=nodes, order=order, entry=entry, lisp=lisp)
     (tmp_path / "c.al").write_text(src, encoding="utf-8")
     assert RACKET is not None
     return subprocess.run(
@@ -112,6 +117,61 @@ def test_py_call_interop(tmp_path: Path) -> None:
     assert cp.returncode == 0, cp.stderr[-500:]
     src = (tmp_path / "o.py").read_text(encoding="utf-8")
     assert '_al.py_call("json.loads"' in src
+
+
+def test_lisp_block_emits_helper_functions(tmp_path: Path) -> None:
+    """:lisp 里的 define 发射成模块级函数，节点体可以调用。"""
+    lisp = """(:lisp
+    (define (fmt-metrics f) (format "营收 ~a" (hash-ref f "revenue")))
+    (define (has-tag? d tag) (string-contains? d tag)))"""
+    nodes = """(facts :type computation
+                    :body (hash "facts" (hash "revenue" 138000))
+                    :output-fields (facts))
+             (draft :type computation
+                    :body (hash "draft" (fmt-metrics (hash-ref state "facts")))
+                    :output-fields (draft))
+             (gate :type computation
+                   :body (hash "ok" (has-tag? (hash-ref state "draft" "") "营收"))
+                   :output-fields (ok))"""
+    cp = _compile(tmp_path, nodes=nodes, lisp=lisp)
+    assert cp.returncode == 0, cp.stderr[-500:]
+    src = (tmp_path / "o.py").read_text(encoding="utf-8")
+    assert "def fmt_metrics(f):" in src
+    assert "def has_tag_p(d, tag):" in src
+    # 节点体调用了辅助函数
+    assert 'fmt_metrics(_al.hash_ref(state, "facts"))' in src
+
+
+def test_lisp_helper_runs_end_to_end(tmp_path: Path) -> None:
+    lisp = """(:lisp (define (fmt-metrics f) (format "营收 ~a" (hash-ref f "revenue"))))"""
+    nodes = """(facts :type computation
+                    :body (hash "facts" (hash "revenue" 42))
+                    :output-fields (facts))
+             (draft :type computation
+                    :body (hash "draft" (fmt-metrics (hash-ref state "facts")))
+                    :output-fields (draft))
+             (gate :type computation
+                   :body (hash "ok" #t)
+                   :output-fields (ok))"""
+    cp = _compile(tmp_path, nodes=nodes, lisp=lisp)
+    assert cp.returncode == 0, cp.stderr[-500:]
+    import importlib.util
+
+    from runtime.langgraph_bridge import build_graph
+
+    spec = importlib.util.spec_from_file_location("compiled_helper", tmp_path / "o.py")
+    assert spec and spec.loader
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    h = mod.DemoHarness()
+    out = build_graph(h.WORKFLOW, handlers={}, state_fields=h.STATE_FIELDS).invoke({})
+    assert out["draft"] == "营收 42"
+
+
+def test_lisp_block_rejects_non_define(tmp_path: Path) -> None:
+    cp = _compile(tmp_path, lisp='(:lisp (displayln "x"))')
+    assert cp.returncode != 0
+    assert ":lisp 里只允许" in cp.stderr
 
 
 def test_handler_and_body_are_mutually_exclusive(tmp_path: Path) -> None:
