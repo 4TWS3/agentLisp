@@ -80,6 +80,36 @@ return _al.al_hash("draft", ...)
 
 ---
 
+## 4.1 第二次尝试的新证据（2026-10-18 晚）
+
+修好 list/pair 遍历后重做，**仍未出标记**，但拿到了更精确的事实：
+
+| 探针 | 结果 | 结论 |
+|---|---|---|
+| 独立探针（同一文件、同一 walk） | `table=50`，节点体行号 = 18 | **读+建表+查找本身是对的** |
+| main.rkt 打印表大小 | `DEBUG lines=50` | 表建好并传到 main |
+| 发射器打印表大小 | `DEBUG emitter tbl=50` | **参数跨模块共享成功** |
+| 产物标记数 | **0** | 查找未命中 |
+
+换 `make-hasheq` → `make-hash`（equal? 键）仍是 0。
+给 `expand-macros` 加「无变化返回原对象」仍是 0。
+
+**结论：断点在「read 得到的 datum」与「发射器拿到的 form」之间。**
+候选：`expand-pattern-macros/via-subprocess`（子进程往返）、
+`keyword-kvs`（可能重建子句列表）、或 `parse-workflow` 的某个复制点。
+
+**下一步必须先定位这个断点**，用一个最小探针：
+
+```racket
+;; 在 parse-workflow 里、取到 body-form 之后
+(eprintf "body eq? to original: ~a\n"
+         (eq? body-form (original-body-of form)))
+```
+
+不定位它，改发射器是白改 —— 这一点我已在两轮里各浪费一次。
+
+---
+
 ## 5. 我犯的错
 
 按「对象同一性」设计映射，**假设没验证就写了两百行**。
