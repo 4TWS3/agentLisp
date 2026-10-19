@@ -70,6 +70,12 @@
     "_al.al_hash": [
       "hash"
     ],
+    "_al.fanout": [
+      "fanout"
+    ],
+    "_al.fanout_safe": [
+      "fanout-safe"
+    ],
     "_al.filter_list": [
       "filter"
     ],
@@ -91,6 +97,9 @@
     ],
     "_al.hash_set": [
       "hash-set"
+    ],
+    "_al.interrupt_payload": [
+      "interrupt"
     ],
     "_al.length": [
       "length"

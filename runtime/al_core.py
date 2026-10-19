@@ -225,6 +225,53 @@ def llm_complete(prompt: str, system: str | None = None) -> str:
     return str(box.get("v") or "")
 
 
+# ---------- 人工中断（LangGraph 的 interrupt） ----------
+def interrupt_payload(payload: Any) -> Any:
+    """在节点体里暂停等人工输入。
+
+    LangGraph 的 interrupt() 用 contextvar 定位运行中的任务，
+    从任意调用深度调用都可以 —— 所以这里可以直接包一层。
+    恢复时 LangGraph 会重跑整个节点，interrupt() 返回用户给的值。
+    """
+    from langgraph.types import interrupt as _lg_interrupt
+
+    return _lg_interrupt(payload)
+
+
+# ---------- 并行扇出 ----------
+def fanout(items: Any, fn) -> list:
+    """并行跑 N 个子任务，任一失败则整体抛出（顺序与输入一致）。"""
+    seq = list(items or [])
+    if not seq:
+        return []
+    from concurrent.futures import ThreadPoolExecutor
+
+    with ThreadPoolExecutor(max_workers=min(8, len(seq))) as pool:
+        return list(pool.map(fn, seq))
+
+
+def fanout_safe(items: Any, fn) -> list:
+    """并行扇出 + 失败隔离：每项返回 {ok, value, error}，不因单项失败中断。
+
+    xuanji 的 dispatch 语义：单星失败不拖垮整体。
+    """
+    seq = list(items or [])
+    if not seq:
+        return []
+
+    def _one(item: Any) -> dict:
+        try:
+            return {"ok": True, "value": fn(item), "error": None}
+        except Exception as exc:
+            # 失败隔离是这里的语义本身；错误被**记录**并发给调用方，不是静默吞掉
+            return {"ok": False, "value": None, "error": f"{type(exc).__name__}('{exc}')"}
+
+    from concurrent.futures import ThreadPoolExecutor
+
+    with ThreadPoolExecutor(max_workers=min(8, len(seq))) as pool:
+        return list(pool.map(_one, seq))
+
+
 # ---------- 宿主互操作 ----------
 def py_import(name: str) -> Any:
     return importlib.import_module(name)

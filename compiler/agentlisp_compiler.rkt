@@ -519,6 +519,23 @@
              (raise-parse ':workflow
                           (format "节点 ~a 的 :dynamic 引用未声明字段 ~a（F-AMS-5 R3/R4）" nm f)))
            (set! reads (cons f reads)))
+         ;; 节点体读状态也算「读」：扫描 (hash-ref state "字段") 形式。
+         ;; 不扫的话，:body 读过的字段会被误报「只写不读」，警告一多就没人看。
+         (define (collect-state-reads form)
+           (cond
+             [(pair? form)
+              (append
+               (if (and (eq? (car form) 'hash-ref)
+                        (>= (length form) 3)
+                        (eq? (cadr form) 'state)
+                        (string? (caddr form)))
+                   (list (caddr form))
+                   '())
+               (append* (map collect-state-reads form)))]
+             [else '()]))
+         (for ([f (in-list (collect-state-reads body-form))])
+           (when (member f state-fields)
+             (set! reads (cons f reads))))
          ;; F-AMS-8（US-53）：效应等级。默认 pure。
          (define eff (to-str (hash-ref kw2 ':effect "pure")))
          (unless (member eff WORKFLOW-EFFECT-ENUM)
