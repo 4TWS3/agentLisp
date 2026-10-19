@@ -1,0 +1,178 @@
+{
+  "blocks": [
+    ":context",
+    ":evolution",
+    ":harness",
+    ":lisp",
+    ":model",
+    ":multiagent",
+    ":pattern",
+    ":state",
+    ":tools",
+    ":workflow"
+  ],
+  "enums": {
+    "memory_layer": [
+      "L0-Abstract",
+      "L1-Overview",
+      "L2-FullText"
+    ],
+    "provider": [
+      "anthropic",
+      "openai",
+      "qwen",
+      "mock"
+    ],
+    "state_reducer": [
+      "merge",
+      "append",
+      "sum"
+    ],
+    "state_type": [
+      "dict",
+      "str",
+      "int",
+      "float",
+      "bool",
+      "list"
+    ],
+    "workflow_effect": [
+      "pure",
+      "revertible",
+      "non_revertible"
+    ],
+    "workflow_node_type": [
+      "agent",
+      "computation",
+      "evaluator",
+      "subagent"
+    ],
+    "workflow_topology": [
+      "sequential",
+      "edge",
+      "conditional-edge",
+      "conditional-loop"
+    ]
+  },
+  "lisp_core": {
+    "_al.al_append": [
+      "append"
+    ],
+    "_al.al_cons": [
+      "cons"
+    ],
+    "_al.al_error": [
+      "error"
+    ],
+    "_al.al_format": [
+      "format"
+    ],
+    "_al.al_hash": [
+      "hash"
+    ],
+    "_al.filter_list": [
+      "filter"
+    ],
+    "_al.first": [
+      "car",
+      "first"
+    ],
+    "_al.foldl": [
+      "foldl"
+    ],
+    "_al.hash_has_key": [
+      "hash-has-key?"
+    ],
+    "_al.hash_keys": [
+      "hash-keys"
+    ],
+    "_al.hash_ref": [
+      "hash-ref"
+    ],
+    "_al.hash_set": [
+      "hash-set"
+    ],
+    "_al.length": [
+      "length"
+    ],
+    "_al.list_ref": [
+      "list-ref"
+    ],
+    "_al.map_list": [
+      "map"
+    ],
+    "_al.null_p": [
+      "empty?",
+      "null?"
+    ],
+    "_al.py_attr": [
+      "py/attr"
+    ],
+    "_al.py_call": [
+      "py/call"
+    ],
+    "_al.py_import": [
+      "py/import"
+    ],
+    "_al.py_method": [
+      "py/method"
+    ],
+    "_al.rest": [
+      "cdr",
+      "rest"
+    ],
+    "_al.string_append": [
+      "string-append"
+    ],
+    "_al.string_contains": [
+      "string-contains?"
+    ],
+    "_al.string_downcase": [
+      "string-downcase"
+    ],
+    "_al.string_join": [
+      "string-join"
+    ],
+    "_al.string_split": [
+      "string-split"
+    ],
+    "_al.string_upcase": [
+      "string-upcase"
+    ],
+    "_al_list": [
+      "list",
+      "vector"
+    ]
+  },
+  "lisp_special_forms": [
+    "if",
+    "cond",
+    "let",
+    "let*",
+    "begin",
+    "and",
+    "or",
+    "not",
+    "lambda",
+    "quote"
+  ],
+  "notes": [
+    "节点体用 :body 写 Lisp，编译器发射 _al_node_<名> 函数",
+    ":handler 是逃逸口，指向外部 Python 函数",
+    "完备性靠 (py/call \"模块.函数\" …) 宿主互操作"
+  ],
+  "source": "compiler/agentlisp_compiler.rkt",
+  "state_reducer_types": {
+    "append": [
+      "list"
+    ],
+    "merge": [
+      "dict"
+    ],
+    "sum": [
+      "int",
+      "float"
+    ]
+  },
+  "version": 1
+}

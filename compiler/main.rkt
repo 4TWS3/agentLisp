@@ -319,6 +319,31 @@
       (else
        (list (hasheq 'ok? #t 'title "empty-ast" 'message "no define-agent forms, trivially pass static checks"))))))
 
+;; 错误信息就是文档：docs/llm/errors.json 存「匹配串 -> 原因 / 怎么改 / 例子」。
+;; 命中就多打三行。目的是让人或模型一次就能改对，而不是回去翻规范。
+(define (load-error-hints)
+  (define p (build-path PROJECT-ROOT "docs" "llm" "errors.json"))
+  (with-handlers ([exn:fail? (lambda (e) '())])
+    (if (file-exists? p)
+        (let* ([data (with-input-from-file p (lambda () (read-json)))]
+               [hs (hash-ref data 'hints '())])
+          (for/list ([h hs])
+            (list (hash-ref h 'match "")
+                  (hash-ref h 'cause "")
+                  (hash-ref h 'fix "")
+                  (hash-ref h 'example ""))))
+        '())))
+
+(define (print-error-hint msg)
+  (for/first ([entry (in-list (load-error-hints))]
+              #:when (and (string? msg)
+                          (regexp-match? (regexp (regexp-quote (list-ref entry 0))) msg)))
+    (fprintf (current-error-port)
+             "  原因: ~a\n  怎么改: ~a\n  例子:\n    ~a\n"
+             (list-ref entry 1) (list-ref entry 2)
+             (string-replace (list-ref entry 3) "\n" "\n    "))
+    #t))
+
 (define (report-checks results)
   (define bad (for/list ((r results) #:unless (hash-ref r 'ok? #f)) r))
   (cond
@@ -328,7 +353,8 @@
          (fprintf (current-error-port)
                   "  (CHECK FAILED) ~a: ~a\n"
                   (hash-ref b 'title "?")
-                  (hash-ref b 'message ""))))
+                  (hash-ref b 'message ""))
+         (print-error-hint (hash-ref b 'message ""))))
      #f)
     (else #t)))
 

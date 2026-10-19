@@ -1,0 +1,66 @@
+{
+  "version": 1,
+  "purpose": "错误信息就是文档：每条匹配给出 原因 / 怎么改 / 最小例子。main.rkt 在报错后按顺序匹配第一条。",
+  "hints": [
+    {
+      "match": ":output-fields 含未声明字段",
+      "cause": "节点声明的输出字段没有在 (:state :fields …) 里登记。",
+      "fix": "在 (:state :fields ((字段 :type 类型))) 里补上该字段。",
+      "example": "(:state :fields ((draft :type str)))\n(:nodes ((draft :type agent :output-fields (draft))))"
+    },
+    {
+      "match": ":dynamic 引用未声明字段",
+      "cause": "提示词 {:字段} 插值引用了不存在的 state 字段。",
+      "fix": "把该字段加进 (:state :fields …)，或改用已声明的字段名。",
+      "example": ":prompt (:static \"写研判\" :dynamic \"事实：{facts}\")"
+    },
+    {
+      "match": "computation 节点",
+      "cause": "类型为 computation 的节点必须给出实现：:body 或 :handler。",
+      "fix": "用 :body 写 Lisp，或用 :handler \"模块.函数\" 指向 Python。",
+      "example": "(gate :type computation :body (hash \"ok\" #t) :output-fields (ok))"
+    },
+    {
+      "match": "不能同时给 :handler 与 :body",
+      "cause": "一个节点只能有一种实现来源。",
+      "fix": "二选一：保留 :body（DSL 内实现）或 :handler（外部函数）。",
+      "example": "(draft :type agent :body (hash \"draft\" \"…\") :output-fields (draft))"
+    },
+    {
+      "match": ":reducer 枚举",
+      "cause": ":reducer 只支持 merge / append / sum。",
+      "fix": "改成这三个之一；没有累积语义就删掉 :reducer。",
+      "example": "(chapters :type dict :reducer merge)"
+    },
+    {
+      "match": "不支持 :reducer",
+      "cause": "reducer 与字段类型不匹配：merge 用于 dict，append 用于 list，sum 用于数字。",
+      "fix": "换字段类型，或换匹配的 reducer。",
+      "example": "(total :type int :reducer sum :default 0)"
+    },
+    {
+      "match": ":handler 格式应为",
+      "cause": "非 subagent 节点的 :handler 必须是 模块.函数。",
+      "fix": "写成 \"包.模块.函数\"；或改用 :body 在 DSL 里实现。",
+      "example": ":handler \"handlers.gate.check\""
+    },
+    {
+      "match": "不可达",
+      "cause": "有节点从 :entry 走不到（漏了边）。",
+      "fix": "补一条 (edge 前驱 该节点)，或把它写进 conditional-loop 的 :nodes。",
+      "example": ":topology ((edge facts draft) (edge draft review))"
+    },
+    {
+      "match": "未声明环",
+      "cause": "无条件边构成了环（没有任何判定能打断它）。",
+      "fix": "把环改成 conditional-loop，或把其中一条边改成 conditional-edge。",
+      "example": "(conditional-loop :nodes (draft review) :while \"retry\" :max-rounds 3)"
+    },
+    {
+      "match": ":lisp 里只允许",
+      "cause": ":lisp 块只接受函数定义。",
+      "fix": "写成 (define (名 参数…) 体…)。",
+      "example": "(:lisp (define (fmt-metrics f) (format \"营收 ~a\" (hash-ref f \"revenue\"))))"
+    }
+  ]
+}
