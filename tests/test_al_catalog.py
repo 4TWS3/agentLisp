@@ -53,6 +53,32 @@ def test_every_error_hint_is_complete() -> None:
             assert h.get(key), f"缺 {key}：{h}"
 
 
+def test_every_hint_matches_a_real_compiler_message() -> None:
+    """提示不能凭空写：每条 match 必须是编译器源码里真实出现的报错文案。
+
+    这条防的是「提示腐烂」—— 报错改了措辞，提示还在讲旧话。
+    """
+    data = json.loads(ERRORS.read_text(encoding="utf-8"))
+    src = ""
+    for f in ("agentlisp_compiler.rkt", "checker.rkt", "patterns.rkt"):
+        p = ROOT / "compiler" / f
+        if p.is_file():
+            src += p.read_text(encoding="utf-8")
+    stale = [h["match"] for h in data["hints"] if h["match"] not in src]
+    assert not stale, f"这些提示在编译器源码里找不到对应文案（已腐烂）：{stale}"
+
+
+def test_hint_order_is_specific_first() -> None:
+    """先匹配的必须更具体：短的、泛化的放在后面，否则会被抢先命中。"""
+    data = json.loads(ERRORS.read_text(encoding="utf-8"))
+    matches = [h["match"] for h in data["hints"]]
+    # 通用词不许出现在更具体词之前
+    for i, m in enumerate(matches):
+        for j in range(i + 1, len(matches)):
+            later = matches[j]
+            assert not (later in m and later != m), f"更具体的 {later!r} 排在了 {m!r} 之后"
+
+
 def test_error_hint_shows_up_in_real_compile() -> None:
     """真实报错必须带出「原因 / 怎么改 / 例子」。"""
     if not RACKET:

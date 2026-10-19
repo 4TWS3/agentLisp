@@ -1,6 +1,6 @@
 {
-  "version": 1,
-  "purpose": "错误信息就是文档：每条匹配给出 原因 / 怎么改 / 最小例子。main.rkt 在报错后按顺序匹配第一条。",
+  "version": 2,
+  "purpose": "错误信息就是文档：每条匹配给出 原因 / 怎么改 / 最小例子。main.rkt 按顺序匹配第一条。",
   "hints": [
     {
       "match": ":output-fields 含未声明字段",
@@ -15,28 +15,22 @@
       "example": ":prompt (:static \"写研判\" :dynamic \"事实：{facts}\")"
     },
     {
-      "match": "computation 节点",
-      "cause": "类型为 computation 的节点必须给出实现：:body 或 :handler。",
-      "fix": "用 :body 写 Lisp，或用 :handler \"模块.函数\" 指向 Python。",
-      "example": "(gate :type computation :body (hash \"ok\" #t) :output-fields (ok))"
-    },
-    {
       "match": "不能同时给 :handler 与 :body",
       "cause": "一个节点只能有一种实现来源。",
       "fix": "二选一：保留 :body（DSL 内实现）或 :handler（外部函数）。",
       "example": "(draft :type agent :body (hash \"draft\" \"…\") :output-fields (draft))"
     },
     {
-      "match": ":reducer 枚举",
-      "cause": ":reducer 只支持 merge / append / sum。",
-      "fix": "改成这三个之一；没有累积语义就删掉 :reducer。",
-      "example": "(chapters :type dict :reducer merge)"
+      "match": "computation 节点",
+      "cause": "类型为 computation 的节点必须给出实现：:body 或 :handler。",
+      "fix": "用 :body 写 Lisp，或用 :handler \"模块.函数\" 指向 Python。",
+      "example": "(gate :type computation :body (hash \"ok\" #t) :output-fields (ok))"
     },
     {
-      "match": "不支持 :reducer",
-      "cause": "reducer 与字段类型不匹配：merge 用于 dict，append 用于 list，sum 用于数字。",
-      "fix": "换字段类型，或换匹配的 reducer。",
-      "example": "(total :type int :reducer sum :default 0)"
+      "match": "subagent 节点",
+      "cause": "subagent 节点的 :handler 要写 agent 注册名，不是模块路径。",
+      "fix": "写 :handler \"<agent 名>\"，并在 build_graph(agents={…}) 里注册它。",
+      "example": "(assess :type subagent :handler \"tianji\" :output-fields (judge))"
     },
     {
       "match": ":handler 格式应为",
@@ -45,10 +39,16 @@
       "example": ":handler \"handlers.gate.check\""
     },
     {
-      "match": "不可达",
-      "cause": "有节点从 :entry 走不到（漏了边）。",
-      "fix": "补一条 (edge 前驱 该节点)，或把它写进 conditional-loop 的 :nodes。",
-      "example": ":topology ((edge facts draft) (edge draft review))"
+      "match": "不支持 :reducer",
+      "cause": "reducer 与字段类型不匹配：merge 用于 dict，append 用于 list，sum 用于数字。",
+      "fix": "换字段类型，或换匹配的 reducer。",
+      "example": "(total :type int :reducer sum :default 0)"
+    },
+    {
+      "match": ":reducer 枚举",
+      "cause": ":reducer 只支持 merge / append / sum。",
+      "fix": "改成这三个之一；没有累积语义就删掉 :reducer。",
+      "example": "(chapters :type dict :reducer merge)"
     },
     {
       "match": "未声明环",
@@ -57,10 +57,202 @@
       "example": "(conditional-loop :nodes (draft review) :while \"retry\" :max-rounds 3)"
     },
     {
+      "match": "不可达",
+      "cause": "有节点从 :entry 走不到（漏了边）。",
+      "fix": "补一条 (edge 前驱 该节点)，或把它写进 conditional-loop 的 :nodes。",
+      "example": ":topology ((edge facts draft) (edge draft review))"
+    },
+    {
+      "match": "conditional-loop 缺 :nodes",
+      "cause": "conditional-loop 必须声明参与循环的节点序列。",
+      "fix": "补 :nodes (首个 … 末个)。",
+      "example": "(conditional-loop :nodes (draft review) :while \"retry\")"
+    },
+    {
+      "match": "conditional-loop 缺 :while",
+      "cause": "conditional-loop 必须给出退出判定名。",
+      "fix": "补 :while \"判定名\"，运行时用 handlers[\"<首个节点>__while\"] 提供函数。",
+      "example": "(conditional-loop :nodes (draft review) :while \"retry\" :max-rounds 3)"
+    },
+    {
+      "match": "conditional-loop 引用不存在的节点",
+      "cause": "循环里的节点名拼错或没在 :nodes 里声明。",
+      "fix": "核对名字与 :nodes 声明一致。",
+      "example": ":nodes ((draft …) (review …))"
+    },
+    {
       "match": ":lisp 里只允许",
       "cause": ":lisp 块只接受函数定义。",
       "fix": "写成 (define (名 参数…) 体…)。",
-      "example": "(:lisp (define (fmt-metrics f) (format \"营收 ~a\" (hash-ref f \"revenue\"))))"
+      "example": "(:lisp (define (fmt f) (format \"营收 ~a\" (hash-ref f \"revenue\"))))"
+    },
+    {
+      "match": "缺少必需的 :model 块",
+      "cause": "define-agent 缺少 :model。",
+      "fix": "补 (:model :provider … :name … :system-prompt …)。",
+      "example": "(:model :provider \"openai\" :name \"m\" :system-prompt \"s\")"
+    },
+    {
+      "match": "缺少必需的 :context 块",
+      "cause": "define-agent 缺少 :context。",
+      "fix": "补 (:context :memory-policy …)。",
+      "example": "(:context :memory-policy (:markdown-fs \"./m.md\" :layers (L0-Abstract) :auto-append #f))"
+    },
+    {
+      "match": "缺少必需的 :tools 块",
+      "cause": "define-agent 缺少 :tools。",
+      "fix": "补 (:tools …)，至少一种工具源。",
+      "example": "(:tools (import-builtin bash))"
+    },
+    {
+      "match": "缺少必需的 :harness 块",
+      "cause": "define-agent 缺少 :harness。",
+      "fix": "补三个子块：:constrain / :verify / :correct。",
+      "example": "(:harness (:constrain :require-human-approval () :forbidden-commands (\"rm -rf\"))\n          (:verify :json-schema #f :linter-check #f :test-runner \"\")\n          (:correct :max-retries 1 :on-failure abort))"
+    },
+    {
+      "match": "顶层必须是",
+      "cause": "文件顶层不是 (define-agent …)。",
+      "fix": "一个 .al 文件以 (define-agent 名 块…) 开头。",
+      "example": "(define-agent demo\n  (:model …) …)"
+    },
+    {
+      "match": "未知块",
+      "cause": "出现了未定义的块名。",
+      "fix": "只能用 :model/:context/:tools/:harness/:state/:workflow/:multiagent/:pattern/:evolution/:lisp。",
+      "example": "(:state :fields …)"
+    },
+    {
+      "match": ":workflow 与 :multiagent 互斥",
+      "cause": "同一个 agent 不能同时声明图工作和多 agent。",
+      "fix": "二者只留一个；多 agent 可以改用 subagent 节点。",
+      "example": "(:workflow :entry a :nodes (…) :topology (…))"
+    },
+    {
+      "match": "缺必需 :entry",
+      "cause": ":workflow 没写入口节点。",
+      "fix": "补 :entry <节点名>。",
+      "example": "(:workflow :entry facts …)"
+    },
+    {
+      "match": "缺必需 :nodes",
+      "cause": ":workflow 没写节点表。",
+      "fix": "补 :nodes ((名 :type T …) …)。",
+      "example": "(:nodes ((facts :type computation :body … :output-fields (facts))))"
+    },
+    {
+      "match": "节点格式应为",
+      "cause": "节点不是 (名 :type T …) 形式。",
+      "fix": "第一个元素是节点名（符号），随后是关键字。",
+      "example": "(draft :type agent :output-fields (draft))"
+    },
+    {
+      "match": "拓扑格式应为",
+      "cause": "拓扑条目不是已知形式。",
+      "fix": "用 (edge a b) / (sequential (a b)) / (conditional-edge …) / (conditional-loop …)。",
+      "example": ":topology ((sequential (a b c)))"
+    },
+    {
+      "match": "拓扑类型枚举",
+      "cause": "拓扑类型拼错。",
+      "fix": "只能是 sequential / edge / conditional-edge / conditional-loop。",
+      "example": "(edge facts draft)"
+    },
+    {
+      "match": "缺必需 :fields",
+      "cause": ":state 块没写字段表。",
+      "fix": "补 :fields ((名 :type 类型 [:default 值] [:reducer 语义]))。",
+      "example": "(:state :fields ((facts :type dict)))"
+    },
+    {
+      "match": "字段格式应为",
+      "cause": "字段不是 (名 :type T …) 形式。",
+      "fix": "第一个元素是字段名（符号）。",
+      "example": "(draft :type str :default \"\")"
+    },
+    {
+      "match": "缺必需 :provider",
+      "cause": ":model 没写 :provider。",
+      "fix": "补 :provider，值取 anthropic / openai / qwen / mock。",
+      "example": "(:model :provider \"openai\" :name \"m\" :system-prompt \"s\")"
+    },
+    {
+      "match": "缺必需 :system-prompt",
+      "cause": ":model 没写 :system-prompt。",
+      "fix": "补非空字符串。",
+      "example": ":system-prompt \"你是经营研判分析师\""
+    },
+    {
+      "match": ":provider 枚举",
+      "cause": ":provider 不在允许集合里。",
+      "fix": "用 anthropic / openai / qwen / mock 之一。",
+      "example": ":provider \"openai\""
+    },
+    {
+      "match": ":temperature 必须是",
+      "cause": "temperature 超出 [0.0, 1.0]。",
+      "fix": "给 0.0 到 1.0 之间的数。",
+      "example": ":temperature 0.2"
+    },
+    {
+      "match": "layer 枚举",
+      "cause": "memory 层名拼错。",
+      "fix": "只能是 L0-Abstract / L1-Overview / L2-FullText。",
+      "example": ":layers (L0-Abstract L1-Overview)"
+    },
+    {
+      "match": ":max-retries 必须",
+      "cause": ":max-retries 超出 1..10。",
+      "fix": "给 1 到 10 的整数。",
+      "example": ":max-retries 2"
+    },
+    {
+      "match": ":on-failure 枚举",
+      "cause": ":on-failure 值拼错。",
+      "fix": "用 abort / retry 之一。",
+      "example": ":on-failure abort"
+    },
+    {
+      "match": "未知 tools 子句",
+      "cause": ":tools 里出现了不认识的子句。",
+      "fix": "只能用 (import-builtin …) / (import-mcp \"url\") / (define-tool 名 入参 出参)。",
+      "example": "(define-tool switch_phase ((phase str)) ((ok str)))"
+    },
+    {
+      "match": "静态块 (:model/:tools) 出现在动态块 :context 之后",
+      "cause": "块顺序错了：静态块必须在 :context 之前。",
+      "fix": "按 :model → :tools → :context → :harness 排列。",
+      "example": "(:model …)\n(:tools …)\n(:context …)"
+    },
+    {
+      "match": "有副作用工具",
+      "cause": "用了 bash 等有副作用的工具，但护栏不满足。",
+      "fix": "把工具名加进 :require-human-approval，并保证 forbidden-commands 至少一条非空。",
+      "example": "(:constrain :require-human-approval (\"bash\") :forbidden-commands (\"rm -rf\"))"
+    },
+    {
+      "match": "工具名冲突",
+      "cause": "兄弟 scoped-worker 的工具名重复。",
+      "fix": "给每个 worker 的工具改不同的名字。",
+      "example": "(scoped-worker a :tools (define-tool fa …))"
+    },
+    {
+      "match": ":immutable-invariants 必须包含全部禁区",
+      "cause": ":evolution 的不可变不变量没有覆盖全部禁区。",
+      "fix": "把禁区全部写进 :immutable-invariants。",
+      "example": ":immutable-invariants (:harness :constrain :verify)"
+    },
+    {
+      "match": "未知突变目标",
+      "cause": ":mutation-targets 里有不认识的目标。",
+      "fix": "用 :skills / :prompt / :harness / :pattern-macros 之一。",
+      "example": ":mutation-targets (:prompt)"
+    },
+    {
+      "match": ":online-trace",
+      "cause": ":online-trace 只接受布尔。",
+      "fix": "写 #t 或 #f。",
+      "example": ":online-trace #t"
     }
   ]
 }
