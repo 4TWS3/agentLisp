@@ -205,6 +205,39 @@ def test_conditional_loop_without_predicate_is_loud() -> None:
     assert "a__while" in str(exc.value)
 
 
+def test_sequential_edges_are_followed() -> None:
+    """:topology ((sequential (a b c))) 发射的边 kind="sequential"，必须当无条件边走。
+
+    踩过的坑：桥只认 kind=="edge"，导致整段 sequential 被忽略，
+    图退化成只有入口节点（节点全都不跑，输出全空）。
+    """
+    import asyncio
+
+    wf = {
+        "entry": "a",
+        "nodes": [
+            {"name": "a", "type": "agent", "handler": None, "output_fields": []},
+            {"name": "b", "type": "agent", "handler": None, "output_fields": []},
+            {"name": "c", "type": "agent", "handler": None, "output_fields": []},
+        ],
+        "edges": [
+            {"from": "a", "to": "b", "kind": "sequential"},
+            {"from": "b", "to": "c", "kind": "sequential"},
+        ],
+    }
+    runs: list[str] = []
+    app = build_graph(
+        wf,
+        {
+            "a": lambda s: (runs.append("a"), {})[1],
+            "b": lambda s: (runs.append("b"), {})[1],
+            "c": lambda s: (runs.append("c"), {})[1],
+        },
+    )
+    asyncio.run(app.ainvoke({}))
+    assert runs == ["a", "b", "c"], runs
+
+
 def test_conditional_edge_can_target_end() -> None:
     """条件边可以直接指向 END（tianxuan 的 {"clarify_prepare": ..., "END": END}）。"""
     import asyncio

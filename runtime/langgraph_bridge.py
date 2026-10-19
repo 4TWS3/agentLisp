@@ -230,7 +230,9 @@ def build_graph(
             field_reducers[fname] = REDUCERS[red]
 
     edges = workflow.get("edges") or []
-    plain = [e for e in edges if e.get("kind", "edge") == "edge"]
+    # sequential 也是无条件边（编译器给它 kind="sequential"）。
+    # 只认 "edge" 会让 :topology ((sequential (...))) 整段被忽略，图退化成只有入口节点。
+    plain = [e for e in edges if e.get("kind", "edge") in ("edge", "sequential")]
     conditional = [e for e in edges if e.get("kind") == "conditional-edge"]
     loops = workflow.get("loops") or []
 

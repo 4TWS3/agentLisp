@@ -57,6 +57,30 @@
 
 ---
 
+## 5.1 四个图型 agent 全部复刻完成（2026-10-18）
+
+| 项目 | 节点 | 条件边 | 中断 | 提交 |
+|---|---:|---:|---:|---|
+| `~/products/agentlisp-specwriter` | 15 | 12 | 4 | `9e49610` |
+| `~/products/agentlisp-tianxuan` | 11 | 12 | 2 | `418f6bd` |
+| `~/products/agentlisp-tianji` | 6 | 0 | 0 | `23f7593` |
+| `~/products/agentlisp-triz` | 5 | 0 | 0 | `9786388` |
+
+**复刻过程中给 agentLisp 补的 5 个能力**（全部来自实测，不是设计推演）：
+
+| # | 能力 | 触发的 agent |
+|---|---|---|
+| 1 | 条件边成环合法（F-AMS-1 放宽） | spec-writer |
+| 2 | 条件边可指向 `END` | tianxuan |
+| 3 | 入口条件路由（`entry_router=`） | tianxuan |
+| 4 | `END` 可作普通边目标（DSL） | tianxuan |
+| 5 | `sequential` 边当无条件边处理 | tianji / triz |
+
+第 5 条是真 bug：桥只认 `kind=="edge"`，导致 `:topology ((sequential ...))` **整段被忽略**，
+图退化成只有入口节点，所有 agent 节点静默不跑。
+
+---
+
 ## 6. 一句话
 
 **图型 agent（4 个）今天的 agentLisp 都能复刻；非图的 2 个（yaoguang / xuanji）不是 DSL 能表达的形状，得先改它们的架构。**
