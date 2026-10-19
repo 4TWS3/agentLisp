@@ -106,6 +106,23 @@ def test_unreachable_node_fails(tmp_path: Path) -> None:
     assert "不可达" in cp.stderr
 
 
+def test_conditional_edge_cycle_is_allowed_with_warning(tmp_path: Path) -> None:
+    """条件边成环合法（作者显式声明了分支），只告警不失败。
+
+    依据：spec-writer 的 5 个环全由条件边构成（draft↔review、gm_review↔gm_qa、
+    revise→review、confirm_clarify 自环、create_missing_foundation→scan）。
+    """
+    cp = _compile(
+        tmp_path,
+        """(:workflow :entry a
+             :nodes ((a :type agent) (b :type agent))
+             :topology ((conditional-edge :from a :to b)
+                        (conditional-edge :from b :to a)))""",
+    )
+    assert cp.returncode == 0, cp.stderr
+    assert "条件边成环" in cp.stderr
+
+
 def test_undeclared_cycle_fails(tmp_path: Path) -> None:
     cp = _compile(
         tmp_path,

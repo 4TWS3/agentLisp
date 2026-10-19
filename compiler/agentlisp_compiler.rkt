@@ -610,8 +610,29 @@
           (append (for/list ([a ns] [b (cdr ns)]) (cons a b))
                   (list (cons (last ns) (first ns)))))))
      (define all-pairs (append forward loop-pairs))
+     ;; F-AMS-1 修订（2026-10-18）：环的判定只看**无条件边**。
+     ;; 为什么：条件边本身就是「作者显式声明的分支」，经条件边成环是有意为之
+     ;;（实测 spec-writer 的 5 个环全由条件边构成：draft↔review、gm_review↔gm_qa、
+     ;;  revise→review、confirm_clarify 自环、create_missing_foundation→scan）。
+     ;; 无条件边成环才是真 bug（没有任何判定会打断它）。
+     ;; 条件环仍然要**看见**：打一条 eprintf，说明依赖运行时递归上限兜底。
+     ;; 除了 conditional-edge，其余（edge / sequential / …）都算无条件边：
+     ;; 它们没有路由函数打断，成环就是真 bug。
+     (define unconditional
+       (for/list ([e (in-list edges)]
+                  #:unless (equal? (hash-ref e 'kind) "conditional-edge"))
+         (cons (hash-ref e 'from) (hash-ref e 'to))))
+     (define cond-cycles
+       (for/list ([x (in-list (wf-cycle-problems nodes forward))]
+                  #:when (not (member x (wf-cycle-problems nodes unconditional))))
+         x))
+     (for ([w (in-list cond-cycles)])
+       (eprintf (string-append
+                 "[WARN] " w
+                 "（条件边成环：由路由函数决定是否退出；靠 LangGraph recursion_limit 兜底）\n")))
      (define structure-problems
-       (append (wf-reach-problems entry nodes all-pairs) (wf-cycle-problems nodes forward)))
+       (append (wf-reach-problems entry nodes all-pairs)
+               (wf-cycle-problems nodes unconditional)))
      (when (pair? structure-problems)
        (raise-parse ':workflow (string-join structure-problems "；")))
      (hash 'entry entry 'nodes nodes 'edges (reverse edges) 'loops (reverse loops))]
