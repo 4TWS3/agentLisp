@@ -212,13 +212,49 @@
 
 (define (emit-last f last-fn)
   (cond
+    [(loop? f) (emit-loop f last-fn)]
     [(and (pair? f) (memq (car f) '(let let*)))
      (append (let-assigns (cadr f)) (emit-into (cddr f) last-fn))]
     [(and (pair? f) (eq? (car f) 'begin)) (emit-into (cdr f) last-fn)]
     [else (last-fn f)]))
 
+;; ---- 循环：Python 没有尾调用优化，深递归会炸 ----
+;; (loop ((i 0) (acc 0))
+;;   (if (< i n) (recur (+ i 1) (+ acc i)) acc))
+;; 编译成 while True:，迭代次数不受栈深限制。
+(define (loop? f) (and (pair? f) (eq? (car f) 'loop)))
+
+(define (emit-loop f last-fn)
+  (define binds (cadr f))
+  (define body (cddr f))
+  (unless (and (= (length body) 1) (pair? (car body)) (eq? (caar body) 'if))
+    (error 'lisp->py "loop 体只支持 (if 条件 (recur …) 结束值)"))
+  (define if-form (car body))
+  (define parts (cdr if-form))
+  (unless (= (length parts) 3)
+    (error 'lisp->py "loop 里的 if 必须有三个分支"))
+  (define then (cadr parts))
+  (unless (and (pair? then) (eq? (car then) 'recur))
+    (error 'lisp->py "loop 的 if 真分支必须是 (recur …)"))
+  (define vars (map (lambda (b) (py-name (car b))) binds))
+  (define inits (map (lambda (b) (lisp->py-expr (cadr b))) binds))
+  (define nexts (map lisp->py-expr (cdr then)))
+  (unless (= (length vars) (length nexts))
+    (error 'lisp->py "recur 的参数个数必须与 loop 的绑定个数一致"))
+  (append
+   (for/list ([v (in-list vars)] [i (in-list inits)])
+     (format "~a = ~a" v i))
+   (list "while True:")
+   (list (format "    if ~a:" (lisp->py-expr (car parts))))
+   (list (format "        ~a = ~a" (string-join vars ", ") (string-join nexts ", ")))
+   (list "        continue")
+   (for/list ([line (in-list (last-fn (caddr parts)))])
+     (format "    ~a" line))
+   (list "    break")))
+
 (define (emit-stmt f)
   (cond
+    [(loop? f) (emit-loop f (lambda (x) (list (format "_ = ~a" (lisp->py-expr x)))))]
     [(and (pair? f) (memq (car f) '(let let*)))
      (append (let-assigns (cadr f))
              (emit-into (cddr f) (lambda (x) (list (format "_ = ~a" (lisp->py-expr x))))))]

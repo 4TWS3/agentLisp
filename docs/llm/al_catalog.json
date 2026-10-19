@@ -4,6 +4,7 @@
     ":evolution",
     ":harness",
     ":lisp",
+    ":macro",
     ":model",
     ":multiagent",
     ":pattern",

@@ -196,10 +196,12 @@
      ;; RSI 契约 §5.1：(:evolution …) 可选；缺省 #f
      (define evo (hash-ref pb 'evolution #f))
      (define parsed-evolution (and evo (parse-evolution evo)))
-     (hash 'name name
+     (expand-parsed-macros
+      (macros->hash (hash-ref pb 'macros '()))
+      (hash 'name name
            'patterns parsed-patterns
            'evolution parsed-evolution
-           'lisp (hash-ref pb 'lisp #f)
+           'lisp (expand-macros (hash-ref pb 'lisp #f) (macros->hash (hash-ref pb 'macros '())))
            'model   (parse-model model)
            'context (parse-context ctx)
            'tools   (parse-tools tools)
@@ -217,7 +219,7 @@
                        [multi (multi->workflow (parse-multi multi))]
                        [else #f])
            'order   (hash-ref pb 'order)
-           'raw form)]
+           'raw form))]
     [_ (raise-parse 'parse-defagent (format "顶层必须是 (defagent NAME BLOCK…)，得到：~s" form))]))
 
 ;;; ---------- RSI 演进契约 §5.1：(:evolution …) ----------
@@ -664,40 +666,114 @@
      (hash 'entry entry 'nodes nodes 'edges (reverse edges) 'loops (reverse loops))]
     [_ (raise-parse ':workflow "必需是 (:workflow :entry N :nodes (…) [:topology (…)])")]))
 
+;; ---------- 宏：(:macro (名 参数…) 模板…) ----------
+;; 模板用 quasiquote 写：`(if (not ,c) ,body #f)
+;; 支持 ,x（取值）与 ,@xs（展开拼接）。不做卫生宏，够用于业务抽象。
+(define (parse-macro form)
+  (match form
+    [`(,name ,params ,template)
+     (unless (and (symbol? name) (list? params) (andmap symbol? params))
+       (raise-parse ':macro (format "宏格式应为 (名 (参数…) 模板)，得到 ~s" form)))
+     (hash 'name name 'params params 'template template)]
+    [_ (raise-parse ':macro (format "宏格式应为 (名 (参数…) 模板)，得到 ~s" form))]))
+
+(define (macro-call? form macros)
+  (and (pair? form) (symbol? (car form)) (hash-has-key? macros (car form))))
+
+(define (subst template env)
+  (cond
+    [(and (pair? template) (eq? (car template) 'unquote))
+     (define v (cadr template))
+     (cond [(and (symbol? v) (hash-has-key? env v)) (hash-ref env v)]
+           [else (raise-parse ':macro (format "模板里的 ,~a 不是宏参数" v))])]
+    [(and (pair? template) (eq? (car template) 'quasiquote)) (subst (cadr template) env)]
+    [(pair? template)
+     (append*
+      (for/list ([x (in-list template)])
+        (cond
+          [(and (pair? x) (eq? (car x) 'unquote-splicing))
+           (define v (cadr x))
+           (unless (and (symbol? v) (hash-has-key? env v))
+             (raise-parse ':macro (format "模板里的 ,@~a 不是宏参数" v)))
+           (define val (hash-ref env v))
+           (unless (list? val)
+             (raise-parse ':macro (format ",@~a 的值必须是列表，得到 ~s" v val)))
+           val]
+          [else (list (subst x env))])))]
+    [else template]))
+
+(define (expand-macros form macros)
+  (cond
+    [(macro-call? form macros)
+     (define m (hash-ref macros (car form)))
+     (define args (cdr form))
+     (define params (hash-ref m 'params))
+     (unless (= (length args) (length params))
+       (raise-parse ':macro
+                    (format "宏 ~a 需要 ~a 个参数，得到 ~a"
+                            (car form) (length params) (length args))))
+     (expand-macros (subst (hash-ref m 'template) (for/hash ([p params] [a args]) (values p a)))
+                    macros)]
+    [(pair? form) (map (lambda (x) (expand-macros x macros)) form)]
+    [else form]))
+
+(define (macros->hash ms)
+  (for/hash ([m (in-list (or ms '()))]) (values (hash-ref m 'name) m)))
+
+;; 宏展开作用于所有「用户能写代码」的地方：节点体、:lisp 函数、工具体。
+(define (expand-parsed-macros macros parsed)
+  (define (x form) (and form (expand-macros form macros)))
+  (define wf (hash-ref parsed 'workflow #f))
+  (define tools (hash-ref parsed 'tools #f))
+  (hash-set*
+   parsed
+   'workflow (and wf (hash-set wf 'nodes (for/list ([n (in-list (hash-ref wf 'nodes))])
+                                           (hash-set n 'body (x (hash-ref n 'body #f))))))
+   'lisp (x (hash-ref parsed 'lisp #f))
+   'tools (and tools
+               (hash-set tools 'define_tools
+                         (for/list ([t (in-list (hash-ref tools 'define_tools '()))])
+                           (hash-set t 'body (x (hash-ref t 'body #f))))))))
+
 (define (partition-blocks blocks agent-name)
   ;; CR-42：:pattern 可多次；:evolution 至多一次。US-04：:state 至多一次。
   ;; US-05：:workflow 至多一次（与 :multiagent 互斥，在 parse-defagent 里拦）。
   ;; 返回 hash，键：model context tools harness multiagent state workflow patterns evolution order
   (let loop ([bs blocks] [model #f] [ctx #f] [tools #f] [harness #f] [multi #f] [st #f] [wf #f]
-             [pats '()] [evo #f] [lisp #f] [order '()])
+             [pats '()] [evo #f] [lisp #f] [macs '()] [order '()])
     (if (null? bs)
         (hash 'model model 'context ctx 'tools tools 'harness harness
               'multiagent multi 'state st 'workflow wf 'patterns (reverse pats)
-              'evolution evo 'lisp lisp 'order (reverse order))
+              'evolution evo 'lisp lisp 'macros (reverse macs) 'order (reverse order))
         (let ([b (car bs)] [rest (cdr bs)])
           (define tag (and (pair? b) (car b)))
           (cond
             [(eq? tag ':model)   (when model (raise-parse `(defagent ,agent-name) ":model 块重复"))
-                                 (loop rest b ctx tools harness multi st wf pats evo lisp (cons ':model order))]
+                                 (loop rest b ctx tools harness multi st wf pats evo lisp macs (cons ':model order))]
             [(eq? tag ':context) (when ctx (raise-parse `(defagent ,agent-name) ":context 块重复"))
-                                 (loop rest model b tools harness multi st wf pats evo lisp (cons ':context order))]
+                                 (loop rest model b tools harness multi st wf pats evo lisp macs (cons ':context order))]
             [(eq? tag ':tools)   (when tools (raise-parse `(defagent ,agent-name) ":tools 块重复"))
-                                 (loop rest model ctx b harness multi st wf pats evo lisp (cons ':tools order))]
+                                 (loop rest model ctx b harness multi st wf pats evo lisp macs (cons ':tools order))]
             [(eq? tag ':harness) (when harness (raise-parse `(defagent ,agent-name) ":harness 块重复"))
-                                 (loop rest model ctx tools b multi st wf pats evo lisp (cons ':harness order))]
+                                 (loop rest model ctx tools b multi st wf pats evo lisp macs (cons ':harness order))]
             [(eq? tag ':multiagent) (when multi (raise-parse `(defagent ,agent-name) ":multiagent 块重复"))
-                                     (loop rest model ctx tools harness b st wf pats evo lisp (cons ':multiagent order))]
+                                     (loop rest model ctx tools harness b st wf pats evo lisp macs (cons ':multiagent order))]
             [(eq? tag ':state)   (when st (raise-parse `(defagent ,agent-name) ":state 块重复"))
-                                 (loop rest model ctx tools harness multi b wf pats evo lisp (cons ':state order))]
+                                 (loop rest model ctx tools harness multi b wf pats evo lisp macs (cons ':state order))]
             [(eq? tag ':workflow) (when wf (raise-parse `(defagent ,agent-name) ":workflow 块重复"))
-                                  (loop rest model ctx tools harness multi st b pats evo lisp (cons ':workflow order))]
+                                  (loop rest model ctx tools harness multi st b pats evo lisp macs (cons ':workflow order))]
             [(eq? tag ':pattern)
              ;; CR-42：模式块交给注册表校验（kind/config），可多次出现
-             (loop rest model ctx tools harness multi st wf (cons b pats) evo lisp (cons ':pattern order))]
+             (loop rest model ctx tools harness multi st wf (cons b pats) evo lisp macs (cons ':pattern order))]
             [(eq? tag ':evolution)
              ;; RSI 契约 §5.1：至多一次；不存在时为 #f
              (when evo (raise-parse `(defagent ,agent-name) ":evolution 块重复"))
-             (loop rest model ctx tools harness multi st wf pats b lisp (cons ':evolution order))]
+             (loop rest model ctx tools harness multi st wf pats b lisp macs (cons ':evolution order))]
+            [(eq? tag ':macro)
+             ;; 宏：可多次给出；每条 (名 (参数…) 模板)
+             (loop rest model ctx tools harness multi st wf pats evo lisp
+                   (append (reverse (map parse-macro (cdr b))) macs)
+                   (cons ':macro order))]
             [(eq? tag ':lisp)
              ;; 模型 B：辅助函数。每个元素必须是 (define (名 参数…) 体…)。
              (when lisp (raise-parse `(defagent ,agent-name) ":lisp 块重复"))
@@ -706,7 +782,7 @@
                  (unless (and (pair? d) (eq? (car d) 'define) (pair? (cadr d)) (symbol? (caadr d)))
                    (raise-parse ':lisp
                                 (format ":lisp 里只允许 (define (名 参数…) 体…)，得到 ~s" d))))
-               (loop rest model ctx tools harness multi st wf pats evo defs (cons ':lisp order)))]
+               (loop rest model ctx tools harness multi st wf pats evo defs macs (cons ':lisp order)))]
             [else (raise-parse `(defagent ,agent-name)
                                 (format "未知块 ~s；应为 :model/:context/:tools/:harness（可选 :state/:workflow/:multiagent/:pattern/:evolution/:lisp）" tag))])))))
 
