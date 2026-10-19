@@ -80,6 +80,7 @@
     [(foldl) "_al.foldl"]
     [(null? empty?) "_al.null_p"]
     [(error) "_al.al_error"]
+    [(llm llm-complete) "_al.llm_complete"]
     [(py/import) "_al.py_import"]
     [(py/call) "_al.py_call"]
     [(py/attr) "_al.py_attr"]

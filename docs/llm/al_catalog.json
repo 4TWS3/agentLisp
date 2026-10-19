@@ -98,6 +98,10 @@
     "_al.list_ref": [
       "list-ref"
     ],
+    "_al.llm_complete": [
+      "llm",
+      "llm-complete"
+    ],
     "_al.map_list": [
       "map"
     ],

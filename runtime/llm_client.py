@@ -424,6 +424,7 @@ class OpenAIClient:
         model: str = "gpt-4o",
         api_key: str | None = None,
         base_url: str | None = None,
+        timeout: float | None = None,
     ) -> None:
         try:
             from openai import AsyncOpenAI  # type: ignore[import-not-found]
@@ -434,9 +435,12 @@ class OpenAIClient:
         # 为什么要参数：Ollama / DeepSeek / llama.cpp 都是 OpenAI 兼容端点，
         # 只靠全局环境变量没法在同一进程里切模型。
         _url = base_url or os.getenv("OPENAI_BASE_URL") or None
+        # timeout 默认交给 SDK；慢端点（长提示词 + 推理模型）需要放宽，实测 60s 仍会超时
+        _to = timeout or float(os.getenv("AGENTLISP_LLM_TIMEOUT", "0") or 0) or None
         self.client = AsyncOpenAI(
             api_key=api_key or os.getenv("OPENAI_API_KEY"),
             **({"base_url": _url} if _url else {}),
+            **({"timeout": _to} if _to else {}),
         )
 
     async def next(

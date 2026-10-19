@@ -9,6 +9,7 @@
 from __future__ import annotations
 
 import importlib
+import os
 from typing import Any
 
 
@@ -175,6 +176,53 @@ def al_not(x: Any) -> bool:
 # ---------- 错误 ----------
 def al_error(msg: Any) -> None:
     raise RuntimeError(str(msg))
+
+
+# ---------- LLM（节点体在 Lisp 里直接调模型） ----------
+def llm_complete(prompt: str, system: str | None = None) -> str:
+    """在节点体里调一次模型。
+
+    没配 DEEPSEEK_API_KEY 时返回确定性桩（离线可跑、可测）。
+    同步签名：LangGraph 的同步节点跑在执行器线程里，没有运行中的事件循环；
+    若真有循环（ainvoke 直接调同步节点），放到子线程里跑，避免 asyncio.run 报错。
+    """
+    key = os.getenv("DEEPSEEK_API_KEY", "").strip()
+    if not key:
+        return f"[scripted] {prompt[:60]}"
+
+    import asyncio
+    import threading
+
+    async def _call() -> str:
+        from runtime.llm_client import OpenAIClient
+
+        llm = OpenAIClient(
+            model=os.getenv("DEEPSEEK_MODEL", "deepseek-v4-flash"),
+            api_key=key,
+            base_url=os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com/v1"),
+            timeout=float(os.getenv("AGENTLISP_LLM_TIMEOUT", "180")),
+        )
+        messages = []
+        if system:
+            messages.append({"role": "system", "content": system})
+        messages.append({"role": "user", "content": prompt})
+        out = await llm.achat(messages)
+        return str(out.get("content") or "").strip()
+
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        return asyncio.run(_call())
+
+    box: dict[str, object] = {}
+
+    def _worker() -> None:
+        box["v"] = asyncio.run(_call())
+
+    th = threading.Thread(target=_worker)
+    th.start()
+    th.join()
+    return str(box.get("v") or "")
 
 
 # ---------- 宿主互操作 ----------
