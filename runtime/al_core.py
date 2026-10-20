@@ -226,7 +226,13 @@ def llm_complete(prompt: str, system: str | None = None) -> str:
     box: dict[str, object] = {}
 
     def _worker() -> None:
-        box["v"] = asyncio.run(_call())
+        # 显式建/关事件循环：asyncio.run 在子线程里退出时会留
+        # "RuntimeError: Event loop is closed"（实测污染日志，结果不受影响）。
+        loop = asyncio.new_event_loop()
+        try:
+            box["v"] = loop.run_until_complete(_call())
+        finally:
+            loop.close()
 
     th = threading.Thread(target=_worker)
     th.start()
