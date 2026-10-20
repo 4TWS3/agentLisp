@@ -55,9 +55,13 @@ flowchart TB
     end
 
     subgraph EXT["⑥ 外部件"]
-        DB[("OLAP / SQLite")]
-        KB[("知识库")]
-        PDF["PDF 导出"]
+        DB[("OLAP / SQLite<br/>经营事实")]
+        subgraph KBL["知识库（三层 · 均来自知识星球语料）"]
+            ATOMS[("atoms.db<br/>27,001 原子 · 经验层<br/>只来自数据熊")]
+            KN[("knowledge.db<br/>3,075 篇 · 证据层")]
+            CPA[("cpa.db<br/>口径层 · 命中税/准则才注入")]
+        end
+        PDF["PDF 渲染<br/>reportlab"]
     end
 
     subgraph UI["⑦ 界面"]
@@ -75,7 +79,9 @@ flowchart TB
     G -.-> CP
     B -.-> K
     K -.-> DB
-    K -.-> KB
+    K -.-> ATOMS
+    K -.-> KN
+    K -.-> CPA
     K -.-> PDF
 
     WEB <-.->|SSE| GW
@@ -231,8 +237,59 @@ TIANJI_CPA_LAYER=1
 **不进分析**。
 
 **对我复刻的影响**：复刻的 `knowledge_supply` 节点用假数据，与真实
-供给的形态差得远——真实形态是「按章注入结构化拆解规则」，
-不是一段文本。
+供给的形态差得远——真实形态是「按章注入结构化拆解规则」，不是一段文本。
+
+### 6.2 知识注入路径（真实形态）
+
+```mermaid
+flowchart LR
+    subgraph 数据准备
+        Z1["数据熊会员群<br/>779 篇"]
+        Z2["战略咨询文库<br/>1,547 篇"]
+        Z3["CPA 资料库"]
+    end
+
+    subgraph 库
+        A[("atoms.db<br/>27,001 原子")]
+        K[("knowledge.db<br/>3,075 篇")]
+        C[("cpa.db")]
+    end
+
+    subgraph 天玑节点
+        S["knowledge_supply<br/>按章注入六章提示词"]
+        A2["assemble<br/>材料附录"]
+    end
+
+    Z1 --> A
+    Z1 --> K
+    Z2 --> K
+    Z3 --> C
+
+    A -->|"星域过滤 22,134/27,001<br/>--star 天玑"| S
+    C -->|"命中税/准则关键词"| S
+    K -->|"附录引用"| A2
+
+    S -->|"直接影响分析"| A2
+```
+
+**关键限定**
+
+| 项 | 事实 |
+|---|---|
+| 经验层来源 | **只有数据熊一个星球** |
+| 战略咨询文库 | **只在证据层，不进分析** |
+| 星域过滤 | 天玑可见 22,134 / 全库 27,001 |
+| 触发方式 | `TIANJI_KB_MODULE` / `TIANJI_KB_STAR` / `TIANJI_CPA_LAYER` |
+
+### 6.3 复刻的知识层要做到什么
+
+| 档 | 内容 | 前置条件 |
+|---|---|---|
+| 形态复刻 | 三个库的**接口形状**（按章注入 + 星域过滤 + 关键词触发），数据用桩 | 无 |
+| 行为复刻 | 接真语料 | **需要那三个库的数据** |
+
+没有数据时，只能交付形态复刻；此时报告里的「知识供给」内容是桩，
+**不能当作天玑的真实分析结果**。
 
 ---
 
