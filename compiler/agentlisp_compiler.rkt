@@ -548,9 +548,15 @@
          (unless (member iso '("" "scoped"))
            (raise-parse ':workflow
                         (format "节点 ~a 的 :isolation 只允许 scoped 或省略，得到 ~a" nm iso)))
+         ;; 逃逸口：用 :handler 指向外部 Python 的节点，绕开了 DSL 的
+         ;; 护栏/trace/演化检查。必须**可见**，否则"强制纪律"就是空话。
+         (when (and h (not body-form))
+           (eprintf (string-append
+                     "[WARN] 节点 " nm " 逃逸出契约（:handler 指向外部函数，"
+                     "护栏/校验/trace 不覆盖它）\n")))
          (hash 'name nm 'type ty 'handler h 'outputs outs
                'static stat 'dynamic dyn 'reads (reverse reads) 'effect eff
-               'isolation iso 'body body-form)))
+               'isolation iso 'body body-form 'escaped (and h (not body-form)))))
      ;; F-AMS-8：non_revertible 在并发（parallel）中必须串行 -> 编译期拦
      (when has-parallel
        (define nr (for/list ([n (in-list nodes)]
@@ -1253,7 +1259,7 @@
                    (format (string-append
                             "{'name': ~a, 'type': ~a, 'handler': ~a, "
                             "'static': ~a, 'dynamic': ~a, 'output_fields': [~a], "
-                            "'effect': ~a, 'isolation': ~a~a}")
+                            "'effect': ~a, 'isolation': ~a~a, 'escaped': ~a}")
                            (py-string (hash-ref n 'name))
                            (py-string (hash-ref n 'type))
                            (if (hash-ref n 'handler)
@@ -1267,7 +1273,8 @@
                            ;; 有 :body 就把函数对象放进 WORKFLOW（不走 import 路径）
                            (if (hash-ref n 'body #f)
                                (format ", 'body': ~a" (al-node-fn-name (hash-ref n 'name)))
-                               "")))
+                               "")
+                           (if (hash-ref n 'escaped #f) "True" "False")))
                  ", ")
                 (string-join
                  (for/list ([ed (in-list (hash-ref wf 'edges))])
